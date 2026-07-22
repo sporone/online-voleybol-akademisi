@@ -1,12 +1,12 @@
 export const SITE_URL = "https://voleybolokullari.com.tr";
 
 export const pageRoutes = {
-  home: "/", courses: "/voleybol-dersleri", videos: "/egitim-videolari",
-  exams: "/sinavlar", "junior-referee": "/junior-hakem", demo: "/demo",
-  pricing: "/ucretler", register: "/kayit", "registered-schools": "/kayitli-spor-okullari",
-  profiles: "/giris", about: "/hakkimizda", contact: "/iletisim",
-  privacy: "/gizlilik-politikasi", help: "/yardim-merkezi",
-  coaches: "/egitmenler", live: "/canli-dersler",
+  home: "/", courses: "/voleybol-dersleri/", videos: "/egitim-videolari/",
+  exams: "/sinavlar/", "junior-referee": "/junior-hakem/", demo: "/demo/",
+  pricing: "/ucretler/", register: "/kayit/", "registered-schools": "/kayitli-spor-okullari/",
+  profiles: "/giris/", about: "/hakkimizda/", contact: "/iletisim/",
+  privacy: "/gizlilik-politikasi/", help: "/yardim-merkezi/",
+  coaches: "/egitmenler/", live: "/canli-dersler/",
 };
 
 export const routePages = Object.fromEntries(Object.entries(pageRoutes).map(([page, route]) => [route, page]));
@@ -17,8 +17,8 @@ export const slugifyTr = (value = "") => value.toLocaleLowerCase("tr-TR").normal
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 export const routeFor = (page, course) => {
-  if (page === "course" && course) return `/voleybol-dersleri/${slugifyTr(course[1])}`;
-  if (page === "lesson" && course) return `/voleybol-dersleri/${slugifyTr(course[1])}/egitim`;
+  if (page === "course" && course) return `/voleybol-dersleri/${slugifyTr(course[1])}/`;
+  if (page === "lesson" && course) return `/voleybol-dersleri/${slugifyTr(course[1])}/egitim/`;
   return pageRoutes[page] || `/${slugifyTr(page)}`;
 };
 
@@ -31,7 +31,7 @@ export const resolveRoute = (pathname, courses) => {
     const course = courses.find((item) => slugifyTr(item[1]) === match[1]);
     if (course) return { page: lessonMatch ? "lesson" : "course", course };
   }
-  return { page: routePages[path] || "home", course: null };
+  return { page: routePages[path] || routePages[`${path}/`] || "home", course: null };
 };
 
 const metaByPage = {
