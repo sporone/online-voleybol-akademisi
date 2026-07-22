@@ -1,0 +1,11 @@
+Sheet,Sample row / columns
+Courses,"id,title,slug,description,category,level,position,coachId,duration,lessonCount,imageUrl,isPremium,rating,published,order | c1,Manşet Tekniğinde Ustalaş,manset-teknigi,Platform açısı ve ayak çalışması,Manşet,Başlangıç,Libero,coach1,200,12,https://...,FALSE,4.9,TRUE,1"
+Lessons,"id,courseId,section,title,description,videoUrl,duration,resourceUrl,quizId,order,published | l1,c1,Temeller,Doğru platform,Vücut ve kol pozisyonu,https://...,720,https://...,q1,1,TRUE"
+Coaches,"id,name,title,biography,specialties,experience,imageUrl,socialLinks,published | coach1,Ece Yalın,Başantrenör,Milli takım deneyimli antrenör,Manşet;Savunma,14,https://...,{},TRUE"
+Users,"id,name,email,role,position,level,team,photoUrl,status | demo1,Deniz Kaya,demo@example.invalid,athlete,Libero,Orta,Demo Takımı,https://...,active"
+Progress,"id,userId,courseId,lessonId,completed,progressPercent,watchedSeconds,lastUpdated | p1,demo1,c1,l1,TRUE,100,720,2026-07-20T09:00:00Z"
+TrainingPlans,"id,userId,coachId,title,date,exerciseType,description,duration,difficulty,equipment,completed,coachNote | t1,demo1,coach6,Sıçrama Gücü,2026-07-20,Kuvvet,Pliometrik seri,40,Zor,Kutu;mini bant,FALSE,İniş kontrolünü koru"
+Announcements,"id,title,content,type,startDate,endDate,targetRole,published | a1,Canlı ders,Servis karşılama analizi,live,2026-07-20,2026-07-21,athlete,TRUE"
+Assessments,"id,userId,metric,value,unit,assessmentDate,coachNote | as1,demo1,Servis başarısı,78,percent,2026-07-18,Hedef bölge istikrarı gelişiyor"
+Quizzes,"id,lessonId,question,options,correctAnswer,explanation | q1,l1,Manşette temas noktası neresidir?,Ön kol;Bilek;Dirsek,Ön kol,Platform geniş ve sabit tutulur"
+Reviews,"id,userId,courseId,rating,comment,approved,createdAt | r1,demo1,c1,5,Anlatım net ve uygulanabilir,TRUE,2026-07-19"

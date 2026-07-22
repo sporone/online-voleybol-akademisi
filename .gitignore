@@ -1,0 +1,12 @@
+node_modules/
+dist/
+outputs/
+work/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+Thumbs.db
+*.inspect.ndjson
+
