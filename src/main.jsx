@@ -39,6 +39,7 @@ import "./video-topics.css";
 import "./profile-area.css";
 import "./pricing.css";
 import "./demo.css";
+import "./registered-schools.css";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoFolderUrl, videoTopics } from "./video-library.js";
 const Instagram = Heart,
@@ -199,6 +200,11 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
   const localAthletes = readAthletes();
   const schoolKey = (value) => String(value || "").trim().toLocaleLowerCase("tr");
   const teamLogoBySchool = new Map();
+  schoolRows.forEach((row) => {
+    const logo = registrationValue(row, "Takım Logosu (Manuel)");
+    const schoolName = registrationValue(row, "Okul Adı");
+    if (logo && schoolName) teamLogoBySchool.set(schoolKey(schoolName), logo);
+  });
   athleteRows.forEach((row) => {
     const logo = registrationValue(row, "Takım Logosu (Manuel)");
     const schoolName = registrationValue(row, "Okul Adı");
@@ -221,6 +227,7 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
       createdAt: registrationValue(row, "Kayıt Tarihi"),
       approvedAt: registrationValue(row, "Onay Tarihi"),
       managerNote: registrationValue(row, "Yönetici Notu"),
+      teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || teamLogoBySchool.get(schoolKey(registrationValue(row, "Okul Adı"))) || local.teamLogo || "",
       source: "google-sheets",
     };
   }).filter((school) => school.id && school.schoolName);
@@ -365,7 +372,9 @@ function App() {
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
-          <RegistrationPage onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => [...items.filter((x) => x.id !== athlete.id), athlete]); go("profiles"); }} />
+          <RegistrationPage go={go} onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => [...items.filter((x) => x.id !== athlete.id), athlete]); go("profiles"); }} />
+        ) : page === "registered-schools" ? (
+          <RegisteredSchoolsPage go={go} />
         ) : page === "pricing" ? (
           <PricingPage />
         ) : page === "demo" ? (
@@ -403,6 +412,22 @@ function TeamLogo({ src, name, className="" }) {
   if (!src) return null;
   return <img className={`team-logo ${className}`} src={src} alt={`${name || "Takım"} logosu`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />;
 }
+
+function SearchableSchoolPicker({ value, onChange, options, logoFor, label="Kulüp adı", placeholder="Okul adını yazın veya listeden seçin" }) {
+  const [open, setOpen] = useState(false);
+  const normalized = String(value || "").trim().toLocaleLowerCase("tr");
+  const filtered = options.filter((school) => !normalized || school.toLocaleLowerCase("tr").includes(normalized));
+  return <label className="club-picker-label">{label}<div className={`club-picker searchable ${open ? "open" : ""}`}>
+    <div className="club-picker-input">
+      <span className="club-option-logo">{logoFor(value) ? <TeamLogo src={logoFor(value)} name={value}/> : <School/>}</span>
+      <input name="schoolName" value={value} required autoComplete="off" placeholder={placeholder} aria-expanded={open} aria-controls="school-picker-options" onFocus={()=>setOpen(true)} onChange={(event)=>{onChange(event.target.value);setOpen(true)}}/>
+      <button type="button" aria-label={open ? "Okul listesini kapat" : "Tüm okulları göster"} onClick={()=>setOpen((current)=>!current)}><ChevronDown/></button>
+    </div>
+    {open&&<div id="school-picker-options" className="club-picker-menu" role="listbox" aria-label="Kayıtlı spor okulları">
+      {filtered.length ? filtered.map((school)=><button type="button" role="option" aria-selected={value===school} className={value===school?"selected":""} key={school} onClick={()=>{onChange(school);setOpen(false)}}><span className="club-option-logo">{logoFor(school)?<TeamLogo src={logoFor(school)} name={school}/>:<School/>}</span><span><b>{school}</b><small>{logoFor(school)?"Kulüp logosu mevcut":"Kayıtlı spor okulu"}</small></span>{value===school&&<CheckCircle2/>}</button>) : <div className="club-picker-no-result">Eşleşen okul bulunamadı. Okul adını elle yazmaya devam edebilirsiniz.</div>}
+    </div>}
+  </div></label>;
+}
 async function avatarDataUrl(id) {
   const item=profileById(id), image=new Image();
   image.src=item.image; await image.decode();
@@ -427,11 +452,21 @@ function OnlineTeamStrip({ athletes }) {
   </section>;
 }
 
-function RegistrationPage({ onAthleteOnline }) {
+function RegistrationPage({ go, onAthleteOnline }) {
   const [type, setType] = useState("school");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [avatar, setAvatar] = useState(profileChoices[0].id);
+  const [athleteSchool, setAthleteSchool] = useState("");
+  const approvedSchools = readSchools()
+    .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
+    .sort((a, b) => String(a.schoolName).localeCompare(String(b.schoolName), "tr"));
+  const registrationSchoolLogo = (schoolName) => {
+    const key = String(schoolName || "").trim().toLocaleLowerCase("tr");
+    return readSchools().find((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr") === key && school.teamLogo)?.teamLogo
+      || readAthletes().find((athlete) => String(athlete.schoolName || "").trim().toLocaleLowerCase("tr") === key && athlete.teamLogo)?.teamLogo
+      || "";
+  };
   const submitSchool = async (event) => {
     event.preventDefault(); setBusy(true); setNotice("");
     const form = event.currentTarget;
@@ -454,6 +489,7 @@ function RegistrationPage({ onAthleteOnline }) {
     const data = new FormData(form);
     const selectedProfile=profileById(avatar);
     const athlete = { action:"registerAthlete", id:`SPR-${Date.now()}`, schoolName:String(data.get("schoolName")).trim(), schoolCode:String(data.get("schoolCode")).trim(), name:String(data.get("athleteName")).trim(), avatar, avatarName:selectedProfile.name, avatarDataUrl:await avatarDataUrl(avatar), online:true, lastSeen:new Date().toISOString() };
+    if (!athlete.schoolName) { setNotice("Kayıtlı spor okulunu seçin."); setBusy(false); return; }
     if (!/^\d{6}$/.test(athlete.schoolCode)) { setNotice("Okul kodu 6 haneli olmalıdır."); setBusy(false); return; }
     if (!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(athlete.name)) { setNotice("Sporcu adı @ ile başlamalı; boşluk içermemeli ve en az 2 karakter olmalıdır."); setBusy(false); return; }
     const normalizedName = athlete.name.toLocaleLowerCase("tr");
@@ -461,7 +497,9 @@ function RegistrationPage({ onAthleteOnline }) {
     try {
       const result = await sendRegistration(athlete);
       if (result.ok === false) throw new Error(result.error || "Okul bilgileri doğrulanamadı.");
-      const inheritedTeamLogo = readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === athlete.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo || "";
+      const inheritedTeamLogo = readSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === athlete.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo
+        || readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === athlete.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo
+        || "";
       const savedAthlete = { ...athlete, id: result.id || athlete.id, teamLogo: result.teamLogo || inheritedTeamLogo };
       const athletes = [...readAthletes().filter((item) => item.id !== savedAthlete.id), savedAthlete];
       localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
@@ -471,13 +509,43 @@ function RegistrationPage({ onAthleteOnline }) {
     } catch (error) { setNotice(error.message); } finally { setBusy(false); }
   };
   return <div className="page registration-page">
-    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Önce okul başvurusu yapılır. Yönetici onayından sonra okulun 6 haneli davet kodu WhatsApp ile iletilir; sporcular bu kodla kendi profillerini oluşturur.</p></div>
+    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Önce okul başvurusu yapılır. Yönetici onayından sonra okulun 6 haneli davet kodu WhatsApp ile iletilir; sporcular bu kodla kendi profillerini oluşturur.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
     <section className="registration-card">
       <div className="registration-tabs"><button className={type==="school"?"active":""} onClick={()=>{setType("school");setNotice("")}}><School/> Okul kaydı</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu kaydı</button></div>
       {type === "school" ? <form onSubmit={submitSchool} className="registration-form"><div className="form-heading"><School/><span><b>Okul başvurusu</b><small>Onay yönetici tarafından Google Sheet üzerinden verilir.</small></span></div><label>Okul adı<input name="schoolName" required minLength="3" placeholder="Örn. İzmir Gençlik Voleybol Okulu" /></label><label>WhatsApp telefon numarası<input name="phone" required inputMode="tel" placeholder="05XX XXX XX XX" /></label><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Başvuruyu gönder"}<ArrowRight/></button></form>
-      : <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Okul adı ve onaylanmış 6 haneli kod gereklidir.</small></span></div><div className="form-grid"><label>Okul adı<input name="schoolName" required /></label><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>}
+      : <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Kayıtlı okul ve onaylanmış 6 haneli kod gereklidir.</small></span></div><div className="form-grid athlete-school-grid"><SearchableSchoolPicker value={athleteSchool} onChange={(school)=>{setAthleteSchool(school);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!athleteSchool}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>}
       {notice && <div className="registration-notice" role="status"><CheckCircle2/>{notice}</div>}
     </section>
+  </div>;
+}
+
+function RegisteredSchoolsPage({ go }) {
+  const schools = Array.from(readSchools()
+    .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
+    .reduce((items, school) => {
+      const key = String(school.schoolName || "").trim().toLocaleLowerCase("tr");
+      if (key && !items.has(key)) items.set(key, school);
+      return items;
+    }, new Map()).values())
+    .sort((a, b) => String(a.schoolName).localeCompare(String(b.schoolName), "tr"));
+
+  return <div className="registered-schools-page">
+    <section className="registered-schools-hero">
+      <div>
+        <button className="schools-back" type="button" onClick={()=>go("register")}><ArrowRight/> Kayıt sayfasına dön</button>
+        <span className="eyebrow"><School size={16}/> VOLEYBOL OKULLARI AĞI</span>
+        <h1>Sahada birlikte<br/><em>büyüyen okullar.</em></h1>
+        <p>Online Voleybol Akademisi’ne katılan ve yönetici onayı tamamlanan spor okullarını keşfedin.</p>
+      </div>
+      <div className="schools-count" aria-label={`${schools.length} kayıtlı spor okulu`}><b>{schools.length}</b><span>Kayıtlı<br/>spor okulu</span></div>
+    </section>
+    {schools.length ? <section className="registered-schools-grid" aria-label="Kayıtlı spor okulları">
+      {schools.map((school, index)=><article className="registered-school" key={school.id || school.schoolName}>
+        <span className="registered-school-number">{String(index + 1).padStart(2, "0")}</span>
+        <div className="registered-school-logo">{school.teamLogo ? <TeamLogo src={school.teamLogo} name={school.schoolName}/> : <School/>}</div>
+        <div><small>AKADEMİ ÜYESİ</small><h2>{school.schoolName}</h2><span><CheckCircle2/> Kaydı onaylandı</span></div>
+      </article>)}
+    </section> : <section className="registered-schools-empty"><School/><h2>Kayıtlı okul bulunamadı</h2><p>Onaylanan spor okulları burada logoları ve adlarıyla görüntülenecek.</p><button className="btn" onClick={()=>go("register")}>Okul kaydı oluştur <ArrowRight/></button></section>}
   </div>;
 }
 
@@ -575,7 +643,8 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
     ? nav.filter(([key]) => key !== "profiles" && (!isAthleteAccount || !["demo", "pricing", "register"].includes(key)))
     : nav.filter(([key]) => ["home", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
-    ? readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
+    ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
+      || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
     : "";
   return (
     <header className="header">
@@ -2669,7 +2738,6 @@ function CourseDetail({ course, go }) {
 function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
   const [type, setType] = useState("club");
   const [selectedClub, setSelectedClub] = useState("");
-  const [clubMenuOpen, setClubMenuOpen] = useState(false);
   const [session, setSession] = useState(() => {
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     const athlete = readAthletes().find((item) => item.id === currentId);
@@ -2681,11 +2749,17 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
   });
   const [notice, setNotice] = useState(initialNotice);
   const getSchools = () => { try { return JSON.parse(localStorage.getItem("volleyballSchools") || "[]"); } catch { return []; } };
-  const clubOptions = [...new Set([
-    ...getSchools().map((school) => school.schoolName),
-    ...readAthletes().map((athlete) => athlete.schoolName),
-  ].filter(Boolean))].sort((a,b) => a.localeCompare(b,"tr"));
-  const clubLogo = (club) => readAthletes().find((athlete) => athlete.schoolName === club && athlete.teamLogo)?.teamLogo || "";
+  const clubOptions = [...new Set(getSchools()
+    .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
+    .map((school) => school.schoolName)
+    .filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b,"tr"));
+  const clubLogo = (club) => {
+    const key = String(club || "").trim().toLocaleLowerCase("tr");
+    return getSchools().find((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr") === key && school.teamLogo)?.teamLogo
+      || readAthletes().find((athlete) => String(athlete.schoolName || "").trim().toLocaleLowerCase("tr") === key && athlete.teamLogo)?.teamLogo
+      || "";
+  };
   const submit = (event) => {
     event.preventDefault(); setNotice("");
     const data = new FormData(event.currentTarget);
@@ -2723,14 +2797,14 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
   };
   if (session?.type === "club") {
     const members = readAthletes().filter((athlete) => athlete.schoolName.toLocaleLowerCase("tr") === session.school.schoolName.toLocaleLowerCase("tr") && athlete.schoolCode === String(session.school.code));
-    const teamLogo = members.find((athlete) => athlete.teamLogo)?.teamLogo || "";
+    const teamLogo = session.school.teamLogo || members.find((athlete) => athlete.teamLogo)?.teamLogo || "";
     return <div className="page profile-area"><section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={session.school.schoolName}/> : <School/>}</div><span><small>KULÜP PROFİLİ</small><h1>{session.school.schoolName}</h1><p>Kullanıcı kodu: <b>{session.school.code}</b></p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section><div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><WifiOff/><span><b>{members.filter(isAthleteActive).length}</b><small>Şu anda aktif</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div><section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section></div>;
   }
   if (session?.type === "athlete") {
     const athlete=session.athlete;
     return <div className="page profile-area athlete-profile"><section className="profile-hero-card"><AthleteAvatar id={athlete.avatar} className="profile-large-avatar"/><span><small>SPORCU PROFİLİ</small><h1>{athlete.name}</h1><p>{athlete.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section><div className="athlete-profile-grid"><article><small>KULÜP KODU</small><b>{athlete.schoolCode}</b></article><article><small>AKTİFLİK</small><b className="green-text">Derste</b></article><article><small>PROFİL KİMLİĞİ</small><b>{athlete.id}</b></article></div><div className="profile-info-note"><CheckCircle2/><span><b>Profilin aktif</b><p>Bu sayfa açık kaldığı sürece üst menüde “Derste olanlar” bölümünde görünürsün. Çıkış yaptığında otomatik kaldırılırsın.</p></span></div></div>;
   }
-  return <div className="page profile-login-page"><div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular kendi profillerine girerek derse aktif olarak katılır.</p></div><section className="profile-login-card"><div className="registration-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setNotice("")}}><School/> Kulüp profili</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu profili</button></div><form className="registration-form" onSubmit={submit}><div className="form-heading">{type==="club"?<School/>:<UserPlus/>}<span><b>{type==="club"?"Kulüp girişi":"Sporcu girişi"}</b><small>Kayıtlı kulübü seçip kullanıcı kodunu girin.</small></span></div><label className="club-picker-label">Kulüp adı<input type="hidden" name="schoolName" value={selectedClub}/><div className={`club-picker ${clubMenuOpen ? "open" : ""}`}><button type="button" className="club-picker-trigger" aria-haspopup="listbox" aria-expanded={clubMenuOpen} onClick={()=>setClubMenuOpen((open)=>!open)}>{selectedClub ? <><span className="club-option-logo">{clubLogo(selectedClub)?<TeamLogo src={clubLogo(selectedClub)} name={selectedClub}/>:<School/>}</span><b>{selectedClub}</b></> : <span className="club-picker-placeholder">Kayıtlı kulübü seç</span>}<ChevronDown/></button>{clubMenuOpen&&<div className="club-picker-menu" role="listbox" aria-label="Kayıtlı kulüpler">{clubOptions.map((club)=><button type="button" role="option" aria-selected={selectedClub===club} className={selectedClub===club?"selected":""} key={club} onClick={()=>{setSelectedClub(club);setClubMenuOpen(false);setNotice("")}}><span className="club-option-logo">{clubLogo(club)?<TeamLogo src={clubLogo(club)} name={club}/>:<School/>}</span><span><b>{club}</b><small>{clubLogo(club)?"Kulüp logosu mevcut":"Standart kulüp profili"}</small></span>{selectedClub===club&&<CheckCircle2/>}</button>)}</div>}</div></label>{clubOptions.length===0&&<p className="club-select-empty">Henüz kayıtlı kulüp bulunmuyor. Önce kayıt bölümünden kulüp başvurusu oluşturun.</p>}{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={clubOptions.length===0||!selectedClub}>Profile giriş yap <ArrowRight/></button></form>{notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}</section></div>;
+  return <div className="page profile-login-page"><div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular kendi profillerine girerek derse aktif olarak katılır.</p></div><section className="profile-login-card"><div className="registration-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setNotice("")}}><School/> Kulüp profili</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu profili</button></div><form className="registration-form" onSubmit={submit}><div className="form-heading">{type==="club"?<School/>:<UserPlus/>}<span><b>{type==="club"?"Kulüp girişi":"Sporcu girişi"}</b><small>Okul adını yazın veya kayıtlı takımlardan seçin.</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={clubOptions.length===0||!selectedClub}>Profile giriş yap <ArrowRight/></button></form>{notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}</section></div>;
 }
 
 function TrainingVideosPage() {
