@@ -45,6 +45,7 @@ import "./junior-referee.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
+import { SITE_URL, resolveRoute, routeFor, seoFor } from "./seo.js";
 const Instagram = Heart,
   Youtube = Play,
   Linkedin = Users;
@@ -259,9 +260,14 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
 }
 
 function App() {
-  const [page, setPage] = useState("home");
+  const initialRoute = useMemo(() => {
+    const restored = sessionStorage.getItem("spaPath");
+    if (restored) sessionStorage.removeItem("spaPath");
+    return resolveRoute(restored || window.location.pathname, courses);
+  }, []);
+  const [page, setPage] = useState(initialRoute.page);
   const [menu, setMenu] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]);
+  const [selectedCourse, setSelectedCourse] = useState(initialRoute.course || courses[0]);
   const [onlineAthletes, setOnlineAthletes] = useState(() => {
     return readActiveAthletes();
   });
@@ -275,6 +281,41 @@ function App() {
   });
   const [authNotice, setAuthNotice] = useState("");
   const [, setRegistrationRevision] = useState(0);
+  useEffect(() => {
+    const onPopState = () => {
+      const next = resolveRoute(window.location.pathname, courses);
+      if (next.course) setSelectedCourse(next.course);
+      setPage(next.page);
+      setMenu(false);
+      scrollTo(0, 0);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  useEffect(() => {
+    const seo = seoFor(page, selectedCourse);
+    const setMeta = (selector, attribute, value) => {
+      const element = document.head.querySelector(selector);
+      if (element) element.setAttribute(attribute, value);
+    };
+    document.title = seo.title;
+    setMeta('meta[name="description"]', "content", seo.description);
+    setMeta('meta[name="robots"]', "content", seo.noindex ? "noindex,nofollow" : "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
+    setMeta('meta[property="og:title"]', "content", seo.title);
+    setMeta('meta[property="og:description"]', "content", seo.description);
+    setMeta('meta[property="og:url"]', "content", `${SITE_URL}${seo.path}`);
+    setMeta('meta[name="twitter:title"]', "content", seo.title);
+    setMeta('meta[name="twitter:description"]', "content", seo.description);
+    setMeta('link[rel="canonical"]', "href", `${SITE_URL}${seo.path}`);
+  }, [page, selectedCourse]);
+  useEffect(() => {
+    const protectedPages = ["courses", "course", "lesson", "videos", "exams"];
+    if (protectedPages.includes(page) && !currentAthlete && !currentClub) {
+      setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
+      setPage("profiles");
+      window.history.replaceState({ page: "profiles" }, "", routeFor("profiles"));
+    }
+  }, [page, currentAthlete, currentClub]);
   useEffect(() => {
     if (!registrationApi) return;
     let disposed = false;
@@ -337,6 +378,9 @@ function App() {
       p = "profiles";
     }
     if (course) setSelectedCourse(course);
+    const nextCourse = course || selectedCourse;
+    const nextPath = routeFor(p, nextCourse);
+    if (window.location.pathname !== nextPath) window.history.pushState({ page: p }, "", nextPath);
     setPage(p);
     setMenu(false);
     scrollTo(0, 0);
