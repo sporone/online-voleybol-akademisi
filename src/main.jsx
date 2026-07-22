@@ -31,6 +31,7 @@ import {
   UserRound,
   BadgeTurkishLira,
   MessageCircle,
+  Flag,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
@@ -40,8 +41,10 @@ import "./profile-area.css";
 import "./pricing.css";
 import "./demo.css";
 import "./registered-schools.css";
+import "./junior-referee.css";
+import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
-import { trainingVideos, videoFolderUrl, videoTopics } from "./video-library.js";
+import { trainingVideos, videoTopics } from "./video-library.js";
 const Instagram = Heart,
   Youtube = Play,
   Linkedin = Users;
@@ -163,6 +166,7 @@ const nav = [
   ["courses", "Dersler", BookOpen],
   ["videos", "Eğitim Videoları", Video],
   ["exams", "Sınavlar", CheckCircle2],
+  ["junior-referee", "Junior Hakem", Flag],
   ["demo", "Demo", Play],
   ["pricing", "Ücretler", BadgeTurkishLira],
   ["register", "Kayıt", UserPlus],
@@ -190,9 +194,9 @@ async function fetchRegistrationSheet(sheet) {
     cache: "no-store",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error(`Google Sheets verisi alınamadı (${response.status})`);
+  if (!response.ok) throw new Error(`Kayıt bilgileri alınamadı (${response.status})`);
   const result = await response.json();
-  if (result.ok === false) throw new Error(result.error || "Google Sheets verisi alınamadı.");
+  if (result.ok === false) throw new Error(result.error || "Kayıt bilgileri alınamadı.");
   return Array.isArray(result.data) ? result.data : [];
 }
 function syncRegistrationStorage(schoolRows, athleteRows) {
@@ -292,7 +296,7 @@ function App() {
         setCurrentClub((current) => current ? synced.schools.find((item) => item.id === current.id) || current : current);
         setRegistrationRevision((value) => value + 1);
       } catch (error) {
-        console.warn("Google Sheets kayıtları yenilenemedi:", error);
+        console.warn("Kayıt bilgileri yenilenemedi:", error);
       } finally {
         active = false;
       }
@@ -369,6 +373,8 @@ function App() {
           <LessonPage course={selectedCourse} go={go} />
         ) : page === "exams" ? (
           <ExamPage initialCourse={selectedCourse} />
+        ) : page === "junior-referee" ? (
+          <JuniorRefereePage />
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
@@ -512,7 +518,7 @@ function RegistrationPage({ go, onAthleteOnline }) {
     <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Önce okul başvurusu yapılır. Yönetici onayından sonra okulun 6 haneli davet kodu WhatsApp ile iletilir; sporcular bu kodla kendi profillerini oluşturur.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
     <section className="registration-card">
       <div className="registration-tabs"><button className={type==="school"?"active":""} onClick={()=>{setType("school");setNotice("")}}><School/> Okul kaydı</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu kaydı</button></div>
-      {type === "school" ? <form onSubmit={submitSchool} className="registration-form"><div className="form-heading"><School/><span><b>Okul başvurusu</b><small>Onay yönetici tarafından Google Sheet üzerinden verilir.</small></span></div><label>Okul adı<input name="schoolName" required minLength="3" placeholder="Örn. İzmir Gençlik Voleybol Okulu" /></label><label>WhatsApp telefon numarası<input name="phone" required inputMode="tel" placeholder="05XX XXX XX XX" /></label><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Başvuruyu gönder"}<ArrowRight/></button></form>
+      {type === "school" ? <form onSubmit={submitSchool} className="registration-form"><div className="form-heading"><School/><span><b>Okul başvurusu</b><small>Başvurunuz yönetici onayından sonra etkinleştirilir.</small></span></div><label>Okul adı<input name="schoolName" required minLength="3" placeholder="Örn. İzmir Gençlik Voleybol Okulu" /></label><label>WhatsApp telefon numarası<input name="phone" required inputMode="tel" placeholder="05XX XXX XX XX" /></label><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Başvuruyu gönder"}<ArrowRight/></button></form>
       : <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Kayıtlı okul ve onaylanmış 6 haneli kod gereklidir.</small></span></div><div className="form-grid athlete-school-grid"><SearchableSchoolPicker value={athleteSchool} onChange={(school)=>{setAthleteSchool(school);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!athleteSchool}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>}
       {notice && <div className="registration-notice" role="status"><CheckCircle2/>{notice}</div>}
     </section>
@@ -641,7 +647,7 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
   const isAthleteAccount = Boolean(account?.avatar);
   const visibleNav = isAuthenticated
     ? nav.filter(([key]) => key !== "profiles" && (!isAthleteAccount || !["demo", "pricing", "register"].includes(key)))
-    : nav.filter(([key]) => ["home", "demo", "pricing", "register", "profiles"].includes(key));
+    : nav.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
       || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
@@ -773,7 +779,7 @@ function Title({ eyebrow, title, text }) {
   );
 }
 function CourseCard({ c, go }) {
-  const isPreparing = !Object.prototype.hasOwnProperty.call(lessonCounts, c[1]);
+  const isPreparing = !sheetBackedCourses.has(c[1]);
   return (
     <article className="course-card">
       <div className="cover">
@@ -979,8 +985,7 @@ function Courses({ go }) {
         <span className="eyebrow">26 VOLEYBOL DERSİ</span>
         <h1>Oyunun her yönünü geliştir.</h1>
         <p>
-          Kaynak belgelerden hazırlanan, yalnızca voleybola yönelik ayrıntılı
-          dersler.
+          Yalnızca voleybola yönelik, uygulamalı ve ayrıntılı dersler.
         </p>
       </div>
       <section className="filter-panel" aria-label="Ders filtreleri">
@@ -1556,7 +1561,7 @@ const examBank = {
         "Oyuncu değiştirir",
       ],
       a: 1,
-      e: "Kaynak belgede servis, oyunu başlatan hareket ve ilk hücum olarak tanımlanır.",
+      e: "Servis, oyunu başlatan hareket ve takımın ilk hücumudur.",
     },
     {
       q: "Servis düdükten sonra kaç saniye içinde kullanılmalıdır?",
@@ -1715,7 +1720,7 @@ function questionsFor(title) {
     q: `${title} dersinde ${i + 1}. eğitim adımı hangisidir?`,
     o: [p, "Futbol top sürme", "Basketbol şut tekniği", "Yüzme çıkışı"],
     a: 0,
-    e: `Doğru cevap “${p}”dir; bu adım doğrudan ${title} dersinin kaynak temelli müfredatında yer alır.`,
+    e: `Doğru cevap “${p}”dir; bu adım ${title} dersinin müfredatında yer alır.`,
   }));
 }
 function ExamPage({ initialCourse }) {
@@ -1738,8 +1743,7 @@ function ExamPage({ initialCourse }) {
         <span className="eyebrow">ÖLÇME & DEĞERLENDİRME</span>
         <h1>Voleybol sınavları</h1>
         <p>
-          Her ders için kaynak belgeler ve ders anlatımlarından hazırlanmış
-          çoktan seçmeli sınavlar.
+          Her dersin anlatımına uygun hazırlanmış çoktan seçmeli sınavlar.
         </p>
       </div>
       <label className="exam-select">
@@ -2025,7 +2029,7 @@ function parseSheetResponse(source) {
   const start = source.indexOf("{"),
     end = source.lastIndexOf("}");
   if (start < 0 || end < start)
-    throw new Error("Google Sheet yanıtı okunamadı");
+    throw new Error("Ders bilgileri okunamadı");
   const data = JSON.parse(source.slice(start, end + 1));
   const table = data.table || {};
   let headers = (table.cols || []).map((x) => normalizeSheetText(x.label));
@@ -2464,7 +2468,7 @@ function LessonPage({ course, go }) {
   }, [content.length, step]);
   const active = content[step] || content[0] || {
     title: "Ders içeriği bulunamadı",
-    body: "Bu düzey için Google Sheet'e içerik eklendiğinde burada otomatik olarak gösterilecektir.",
+    body: "Bu düzeyin ders içeriği hazırlanıyor.",
   };
   const activeImage = active.image || course[10];
   return (
@@ -2655,7 +2659,7 @@ function CourseDetail({ course, go }) {
           <section className="detail-block">
             <div className="curriculum-heading">
               <div>
-                <span className="eyebrow">GÜNCEL GOOGLE SHEET VERİSİ</span>
+                <span className="eyebrow">GÜNCEL DERS İÇERİĞİ</span>
                 <h2>Ders müfredatı</h2>
               </div>
               <b>{lessonItems.length} konu</b>
@@ -2686,18 +2690,6 @@ function CourseDetail({ course, go }) {
                   </article>
                 </React.Fragment>
               ))}
-            </div>
-          </section>
-          <section className="detail-block source-note">
-            <BookOpen />
-            <div>
-              <b>İçerik kaynağı</b>
-              <p>
-                Parmak Pas müfredatı bağlı Google Sheet’in Başlangıç, Orta,
-                İleri, teknik analiz ve antrenman programı sütunlarından canlı
-                okunur. Boş veya silinen içerikler kaldırılır; yeni eklenen
-                dersler otomatik olarak gösterilir.
-              </p>
             </div>
           </section>
         </div>
@@ -2822,12 +2814,12 @@ function TrainingVideosPage() {
   };
   return <div className="video-library-page">
     <section className="video-library-hero">
-      <div><span className="eyebrow"><Video size={16}/> DRIVE VİDEO KÜTÜPHANESİ</span><h1>Hareketi izle,<br/><em>sahada uygula.</em></h1><p>Voleybol Eğitim Videoları klasöründeki {trainingVideos.length} teknik çalışma, tek ve mobil uyumlu bir kütüphanede.</p><div className="video-hero-stats"><span><b>{trainingVideos.length}</b> eğitim videosu</span><span><b>Google Drive</b> güncel kaynak</span></div></div>
+      <div><span className="eyebrow"><Video size={16}/> VİDEO KÜTÜPHANESİ</span><h1>Hareketi izle,<br/><em>sahada uygula.</em></h1><p>{trainingVideos.length} teknik çalışma, tek ve mobil uyumlu bir eğitim kütüphanesinde.</p><div className="video-hero-stats"><span><b>{trainingVideos.length}</b> eğitim videosu</span><span><b>Güncel</b> eğitim içeriği</span></div></div>
       <div className="video-hero-mark" aria-hidden="true"><Play/><i/><i/><i/></div>
     </section>
     <section className="video-library-content">
       <div className="video-player-panel">
-        <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span><a href={selected.view} target="_blank" rel="noreferrer">Drive'da aç <ArrowRight/></a></div>
+        <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
         <div className="drive-player"><iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen /></div>
         <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. Tarayıcı otomatik oynatmayı engellerse oynat düğmesine bir kez dokunun.</p>
       </div>
@@ -2835,7 +2827,6 @@ function TrainingVideosPage() {
       <div className="video-library-toolbar"><div><span className="eyebrow">VİDEO ARŞİVİ</span><h2>Tüm eğitim videoları</h2></div><label className="video-search"><Search/><span className="sr-only">Video ara</span><input value={query} onChange={(event)=>{setQuery(event.target.value);setVisible(12)}} placeholder="Video adı veya numarası ara"/></label></div>
       {filtered.length ? <div className="training-video-grid">{filtered.slice(0,visible).map((video)=><article className={selected.id===video.id?"training-video-card active":"training-video-card"} key={video.id}><button className="video-card-preview" onClick={()=>choose(video)} aria-label={`${video.title} videosunu oynat`}><img src={video.thumbnail} alt={`${video.title} video görüntüsü`} loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/><span className="video-number">#{String(video.number).padStart(2,"0")}</span><span className="video-topic-label">{video.topic}</span><span className="video-play"><Play/></span></button><div><small>{video.topic.toLocaleUpperCase("tr")}</small><h3>{video.title}</h3><button onClick={()=>choose(video)}>Videoyu izle <ArrowRight/></button></div></article>)}</div> : <div className="video-empty"><Search/><h2>Video bulunamadı</h2><p>Arama numarasını veya konuyu değiştirin.</p></div>}
       {visible < filtered.length && <button className="btn ghost video-load-more" onClick={()=>setVisible((value)=>value+12)}>Daha fazla video göster <ChevronDown/></button>}
-      <a className="video-folder-link" href={videoFolderUrl} target="_blank" rel="noreferrer"><Video/> Tüm kaynak klasörünü Google Drive'da görüntüle <ArrowRight/></a>
     </section>
   </div>;
 }
@@ -2870,12 +2861,13 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["courses", BookOpen, "Dersler"],
     ["videos", Video, "Videolar"],
     ["exams", CheckCircle2, "Sınavlar"],
+    ["junior-referee", Flag, "Junior Hakem"],
     ["demo", Play, "Demo"],
     ["pricing", BadgeTurkishLira, "Ücretler"],
     ["register", UserPlus, "Kayıt"],
     ["profiles", Users, isAuthenticated ? "Hesabım" : "Giriş Yap"],
   ];
-  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "demo", "pricing", "register", "profiles"].includes(key));
+  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAthlete) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   return (
     <nav className="mobile-nav">
@@ -2892,10 +2884,151 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     </nav>
   );
 }
+const refereeDocumentId = "1ZqSdQGsJ8tXVjq5tgf53tb0drCZ4GdGjWI9IOjcWQtA";
+const refereeDocumentUrl = `https://docs.google.com/document/d/${refereeDocumentId}/edit`;
+const refereeTextUrl = `https://docs.google.com/document/d/${refereeDocumentId}/export?format=txt`;
+const handbookDocumentId = "1fTI6mJB5BqkNCLOs_xpbBy24jYpxd61BOmPjwcAiUeY";
+const handbookTextUrl = `https://docs.google.com/document/d/${handbookDocumentId}/export?format=txt`;
+function parseRefereeDocument(raw) {
+  const lines = String(raw || "").replace(/\r/g, "").split("\n").map((line)=>line.replace(/\s+/g," ").trim()).filter(Boolean);
+  const start = lines.findIndex((line, index)=>index > 20 && /^BÖLÜM 1\s*[–-]\s*KATILIMCILAR$/i.test(line));
+  const content = start >= 0 ? lines.slice(start) : lines;
+  const sections = [];
+  let section = null, topic = null, currentCase = null, inDecision = false;
+  const flushCase = () => {
+    if (currentCase && topic) {
+      currentCase.question = currentCase.questionParts.join(" ").trim();
+      currentCase.decision = currentCase.decisionParts.join(" ").trim();
+      currentCase.title = currentCase.question || "Örnek olay ve hakem kararı";
+      currentCase.rules = currentCase.ruleParts.join(" • ");
+      delete currentCase.questionParts;
+      delete currentCase.decisionParts;
+      delete currentCase.ruleParts;
+      topic.cases.push(currentCase);
+    }
+    currentCase = null;
+    inDecision = false;
+  };
+  for (const line of content) {
+    const sectionMatch = line.match(/^BÖLÜM\s+(\d+)\s*[–-]\s*(.+)$/i);
+    if (sectionMatch) { flushCase(); section={number:sectionMatch[1],title:sectionMatch[2].trim(),topics:[]}; sections.push(section); topic=null; continue; }
+    if (/^EK\b/i.test(line)) { flushCase(); break; }
+    if (!section) continue;
+    const caseMatch = line.match(/^(\d+\.\d+(?:\.\d+)?)\s*(.*)$/);
+    if (caseMatch && !/^Kural/i.test(line)) {
+      flushCase();
+      if (!topic) { topic={title:section.title, cases:[]}; section.topics.push(topic); }
+      const videoLabel=(caseMatch[2].match(/VIDEO(?:\s*\d)?(?:\s*VIDEO\s*\d)?/i)||[])[0]||"";
+      const firstText=caseMatch[2].replace(/VIDEO(?:\s*\d)?(?:\s*VIDEO\s*\d)?/ig,"").trim();
+      const videoUrls=Object.entries(refereeVideoMap).filter(([key])=>key===caseMatch[1]||key.startsWith(`${caseMatch[1]}-`)).map(([,url])=>url);
+      currentCase={id:caseMatch[1],title:"",question:"",decision:"",questionParts:firstText?[firstText]:[],decisionParts:[],ruleParts:[],hasVideo:Boolean(videoLabel)||videoUrls.length>0,videoLabel,videoUrls};
+      continue;
+    }
+    const isTopic = line.length < 72 && line === line.toLocaleUpperCase("tr") && /[A-ZÇĞİÖŞÜ]/.test(line) && !/^(KARAR|VIDEO|KURAL|BÖLÜM|\d+)$/.test(line);
+    if (isTopic) { flushCase(); topic={title:line,cases:[]}; section.topics.push(topic); continue; }
+    if (!currentCase) continue;
+    if (/^Karar$/i.test(line)) { inDecision=true; continue; }
+    if (/^(Kural|Kurallar|D\d|Şekil)\b/i.test(line)) { currentCase.ruleParts.push(line); continue; }
+    if (/^VIDEO(?:\s*\d)?/i.test(line)) {
+      currentCase.hasVideo=true;
+      currentCase.videoLabel=currentCase.videoLabel||line;
+      continue;
+    }
+    if (inDecision) currentCase.decisionParts.push(line);
+    else currentCase.questionParts.push(line);
+  }
+  flushCase();
+  return sections.map((item)=>({...item,topics:item.topics.filter((entry)=>entry.cases.length)})).filter((item)=>item.topics.length);
+}
+function parseHandbookDocument(raw) {
+  const lines=String(raw||"").replace(/\r/g,"").split("\n").map((line)=>line.replace(/[\u00a0\t]+/g," ").replace(/\s+/g," ").trim()).filter(Boolean);
+  const refereeHeadings=["Giriş","1. Hakem Atamaları","2. Atama Sonrası Hazırlık","2.1. Kılık Kıyafet ve İlişkiler","2.2. Hakem Malzemeleri","3. Maç Öncesi Yapılacaklar","3.1. Maç Öncesi Toplantı","3.2. Oyun Alanının Kontrolü","3.3. Takım Listeleri, Sahaya Giriş Belgeleri ve Lisanslar","3.4. Maçın Zamanında Başlaması","3.5. Maç Zaman Çizelgesi","3.6. Resmi Oyun Protokolü","4. Maç Esnasında Hakemler","4.1. Baş Hakem","4.2. Yardımcı Hakem","4.3. Yazı Hakemi","4.4. Skor Hakemi","4.5. Çizgi Hakemi","5. Hatalı Davranış ve Yaptırımları","Kart Gösterme Prosedürü","Notlar","6. Raporlar","6.1. Takımın Lisansları da Oyuncuları da Yok ise","6.2. Takımın Oyuncuları Mevcut, Lisansları Yok ise","6.3. Takımın Lisansları Mevcut, Oyuncuları Yok ise","6.4. Takım Eksik İlan Edilirse","6.6. İstisnai Oyuncu Değişikliğinde","6.7. Müsabakada Meydana Gelen Olaylara İstinaden","6.8. Liberonun Yeniden Belirlenmesi Durumunda","Formlar","1. Maç Anons Talimatı","2. Seyircilerin Centilmenlik Dışı Davranışlarına Karşı Yaptırımlar"];
+  const observerHeadings=["Giriş","1. BÖLÜM - GENEL HÜKÜMLER","Amaç","Kapsam","Dayanak","Tanımlar","2. BÖLÜM - GÖZLEMCİ","Gözlemci Olma Şartları","Gözlemci Klasmanlarının Belirlenmesi","Gözlemci Görev Tanımı","Gözlemciliğin Amaçları","Gözlemci Görev ve Sorumlulukları","Görev Onaylama","Görev Onaylandıktan Sonra Gözlemci","Maçtan Önce Gözlemci","Maç Esnasında Gözlemci","Maç Sonunda Gözlemci","Yapılan Hataların Değerlendirilmesi","Maç Sonrası Toplantı","Hakem Değerlendirme Formunun Doldurulması","Özel Durumlar","3. BÖLÜM - PLAJ VOLEYBOLU GÖZLEMCİSİ","Plaj Voleybolu Gözlemcisi Olma Şartları","Görev Tanımı","Plaj Voleybolu Gözlemcisi Görev ve Sorumlulukları","Görev Onaylandıktan Sonra Gözlemci","Organizasyon Öncesi Hazırlık Aşamasında Gözlemci","Müsabakalardan Önce Gözlemci","Müsabakalar Esnasında Gözlemci","Organizasyon Bittikten Sonra Gözlemci","EK-1: Salon Denetleme ve Değerlendirme Kontrol Formu","EK-2: Müsabaka Güvenlik Tutanağı","EK-3: TVF Müsabaka İdari ve Teknik Değerlendirme Formu","EK-4: Hakem Değerlendirme Formu","EK-5: Görüntü Değerlendirme Sistemi Takip Formu","EK-6: Kort Denetimi Kontrol Listesi","EK-7: Plaj Voleybolu Günlük Hakem Performans Formu"];
+  const normalize=(value)=>value.toLocaleLowerCase("tr").replace(/giriş\s*:?/g,"giriş").replace(/\b(bölüm|ek)\s*[-.:]?\s*/g,"$1 ").replace(/^(\d+(?:\.\d+)*)[.)-]?\s*/,"$1 ").replace(/[^a-zçğıöşü0-9]+/g," ").trim();
+  const ignored=/^(?:MHGK Hakem ve Gözlemci El Kitabı|\d+ MHGK Hakem ve Gözlemci El Kitabı|HAKEM EL KİTABI|GÖZLEMCİ EL KİTABI|İÇİNDEKİLER|TÜRKİYE VOLEYBOL FEDERASYONU)/i;
+  const toBlocks=(entries)=>{
+    const blocks=[];
+    const expandedEntries=entries.flatMap((entry)=>{
+      const parts=entry.split(/(?=(?:^|\s)\d+\.\s*[A-ZÇĞİÖŞÜ])/u).map((part)=>part.trim()).filter(Boolean);
+      return parts.length>1?parts:[entry];
+    });
+    for(const entry of expandedEntries){
+      const text=entry.replace(/^[-•]\s*/,"").trim();
+      const numbered=text.match(/^(\d+)\.\s*(.+)$/u);
+      const isBullet=/^[-•]/.test(entry);
+      const isForm=/^(?:EK-\d+|FORM|SALON ADI|TARİH|SAAT|LİG|TAKIMLAR|BAŞ ?HAKEM|YRD\.? ?HAKEM|GÖZLEMCİ|İMZA|OPERATÖR|DEĞERLENDİRME PUANI|DÜŞÜNCELER VE NOTLAR)/i.test(text)||/[.…]{4,}/.test(text);
+      const isSubheading=!isBullet&&!isForm&&text.length<70&&(/:$/.test(text)||text===text.toLocaleUpperCase("tr"));
+      const type=numbered?"numbered":isBullet?"bullet":isForm?"form":isSubheading?"subheading":"paragraph";
+      const previous=blocks[blocks.length-1];
+      if(type==="paragraph"&&previous?.type==="paragraph")previous.text+=` ${text}`;
+      else blocks.push(numbered?{type,text:numbered[2].trim(),marker:numbered[1]}:{type,text});
+    }
+    return blocks;
+  };
+  const locateOrdered=(headings,startAt,stopAt,category)=>{
+    const found=[];
+    let cursor=startAt;
+    headings.forEach((title,index)=>{
+      const target=normalize(title);
+      const position=lines.findIndex((line,lineIndex)=>lineIndex>=cursor&&lineIndex<stopAt&&!ignored.test(line)&&normalize(line)===target);
+      if(position>=0){found.push({title,position,category,isSection:/BÖLÜM|^Formlar$/i.test(title)});cursor=position+1}
+    });
+    return found.map((item,index)=>{
+      const end=found[index+1]?.position??stopAt;
+      const entries=lines.slice(item.position+1,end).filter((line)=>!ignored.test(line));
+      return {...item,blocks:toBlocks(entries)};
+    });
+  };
+  const tocIndexes=lines.map((line,index)=>line==="İÇİNDEKİLER"?index:-1).filter((index)=>index>=0);
+  const refereeStart=lines.findIndex((line,index)=>index>(tocIndexes[0]??0)&&normalize(line)==="giriş");
+  const observerToc=tocIndexes[1]??lines.length;
+  const observerStart=lines.findIndex((line,index)=>index>observerToc&&normalize(line)==="giriş");
+  const refereeChapters=locateOrdered(refereeHeadings,refereeStart,observerToc,"Hakem El Kitabı");
+  const observerChapters=locateOrdered(observerHeadings,observerStart,lines.length,"Gözlemci El Kitabı");
+  return [...refereeChapters,...observerChapters];
+}
+function JuniorRefereePage() {
+  const [sections, setSections] = useState([]);
+  const [library, setLibrary] = useState("casebook");
+  const [handbookChapters, setHandbookChapters] = useState([]);
+  const [handbookState, setHandbookState] = useState("loading");
+  const [openSection, setOpenSection] = useState("1");
+  const [openCase, setOpenCase] = useState("");
+  const [openHandbook, setOpenHandbook] = useState("");
+  const [sourceState, setSourceState] = useState("loading");
+  useEffect(()=>{ let active=true; fetch(`${refereeTextUrl}&t=${Date.now()}`,{cache:"no-store"}).then((response)=>{if(!response.ok)throw new Error("Belge okunamadı");return response.text()}).then((text)=>{if(active){setSections(parseRefereeDocument(text));setSourceState("ready")}}).catch(()=>{if(active)setSourceState("error")}); return()=>{active=false}; },[]);
+  useEffect(()=>{let active=true;fetch(`${handbookTextUrl}&t=${Date.now()}`,{cache:"no-store"}).then((response)=>{if(!response.ok)throw new Error("El kitabı okunamadı");return response.text()}).then((text)=>{if(active){setHandbookChapters(parseHandbookDocument(text));setHandbookState("ready")}}).catch(()=>{if(active)setHandbookState("error")});return()=>{active=false}},[]);
+  const caseCount = sections.reduce((total,item)=>total+item.topics.reduce((sum,entry)=>sum+entry.cases.length,0),0);
+  const videoCount = sections.reduce((total,item)=>total+item.topics.reduce((sum,entry)=>sum+entry.cases.filter((entryCase)=>entryCase.hasVideo).length,0),0);
+  return <div className="junior-referee-page">
+    <section className="junior-referee-hero">
+      <div className="junior-referee-copy">
+        <span className="eyebrow"><Flag/> JUNIOR HAKEM AKADEMİSİ</span>
+        <h1>Oyunu bil.<br/><em>Kararı güvenle ver.</em></h1>
+        <p>Voleybol hakemliğine ilk adımı atan gençler için sade, uygulamalı ve adım adım ilerleyen bir öğrenme alanı.</p>
+        <div className={`junior-referee-note ${sourceState}`}><ShieldCheck/><span><b>{sourceState==="ready"?"Hakemlik içerikleri güncel":sourceState==="error"?"İçerikler yüklenemedi":"İçerikler güncelleniyor"}</b><small>{sourceState==="ready"?`${sections.length} bölüm • ${caseCount} örnek olay • ${videoCount} video`:sourceState==="error"?"Tekrar denemek için sayfayı yenileyin.":"Güncel hakemlik konuları hazırlanıyor."}</small></span></div>
+      </div>
+      <div className="junior-referee-visual"><img src="./junior-referees.png" alt="Voleybol hakemi kıyafetli bir kız ve bir erkek çocuk"/></div>
+    </section>
+    <section className="junior-referee-content">
+      <div className="referee-library-cards" aria-label="Junior Hakem eğitim bölümleri">
+        <button className={library==="casebook"?"active":""} onClick={()=>setLibrary("casebook")}><span><Play/></span><small>ÖRNEK OLAY ANALİZİ</small><h2>FIVB 2025 Örnek Olaylar Kitabı</h2><p>Saha içindeki gerçek karar örnekleri, kurallar, hakem kararları ve olay videoları.</p><b>{caseCount} örnek olay • {videoCount} video <ArrowRight/></b></button>
+        <button className={library==="handbook"?"active":""} onClick={()=>setLibrary("handbook")}><span><BookOpen/></span><small>GÖREV VE UYGULAMA REHBERİ</small><h2>Hakem ve Gözlemci El Kitabı</h2><p>Atamalar, maç hazırlığı, hakem görevleri, raporlar ve gözlemci değerlendirme esasları.</p><b>{handbookChapters.length||"—"} konu <ArrowRight/></b></button>
+      </div>
+      {library==="casebook"?<>
+      <div className="junior-referee-heading"><span><small>FIVB 2025 ÖRNEK OLAYLAR KİTABI</small><h2>Hakemlik konuları</h2></span><p>Güncel örnek olaylar, karar açıklamaları ve eğitim videoları.</p></div>
+      {sourceState==="loading"?<div className="referee-loading"><span/><span/><span/></div>:sourceState==="error"?<div className="referee-source-error"><WifiOff/><h3>Hakemlik verisi yüklenemedi</h3></div>:<div className="referee-accordion">{sections.map((item)=><section className={openSection===item.number?"open":""} key={item.number}><button className="referee-section-trigger" onClick={()=>setOpenSection(openSection===item.number?"":item.number)}><span>{String(item.number).padStart(2,"0")}</span><div><small>BÖLÜM {item.number}</small><h3>{item.title}</h3><p>{item.topics.length} konu • {item.topics.reduce((sum,entry)=>sum+entry.cases.length,0)} örnek olay</p></div><ChevronDown/></button>{openSection===item.number&&<div className="referee-topic-list">{item.topics.map((entry)=><article key={`${item.number}-${entry.title}`}><h4>{entry.title}</h4><div>{entry.cases.map((entryCase)=>{const key=`${item.number}-${entryCase.id}`;return <section className={`referee-case ${openCase===key?"open":""}`} key={key}><button onClick={()=>setOpenCase(openCase===key?"":key)}><b>{entryCase.id}</b><span>{entryCase.question||entryCase.title}</span>{entryCase.hasVideo&&<em><Play/> {entryCase.videoLabel||"VIDEO"}</em>}<ChevronDown/></button><p className="referee-case-preview">{entryCase.decision||"Bu olayın ayrıntılı açıklaması hazırlanıyor."}</p>{openCase===key&&<div className="referee-case-detail"><small>OLAY AÇIKLAMASI</small><p>{entryCase.question||entryCase.title}</p><small>HAKEM KARARI</small><p>{entryCase.decision||"Karar açıklaması hazırlanıyor."}</p>{entryCase.rules&&<strong>{entryCase.rules}</strong>}{entryCase.videoUrls?.length>0&&<div className="referee-video-player"><div className="referee-video-title"><Play/><span><b>Olay videosu</b><small>FIVB Academy eğitim görüntüsü</small></span></div>{entryCase.videoUrls.map((videoUrl)=><video key={videoUrl} controls playsInline preload="metadata"><source src={videoUrl} type="video/mp4"/>Tarayıcınız video oynatmayı desteklemiyor.</video>)}</div>}</div>}</section>})}</div></article>)}</div>}</section>)}</div>}
+      </>:<>
+        <div className="junior-referee-heading"><span><small>TVF HAKEM VE GÖZLEMCİ EL KİTABI</small><h2>Görev ve uygulama rehberi</h2></span><p>Hakem ve gözlemcilerin müsabaka öncesi, sırası ve sonrasındaki görevleri.</p></div>
+        {handbookState==="loading"?<div className="referee-loading"><span/><span/><span/></div>:handbookState==="error"?<div className="referee-source-error"><WifiOff/><h3>El kitabı yüklenemedi</h3></div>:<div className="handbook-accordion">{handbookChapters.map((chapter,index)=>{const key=`handbook-${index}`;const startsCategory=index===0||handbookChapters[index-1]?.category!==chapter.category;return <React.Fragment key={key}>{startsCategory&&<div className="handbook-category"><BookOpen/><span><small>ANA BÖLÜM</small><h3>{chapter.category}</h3></span></div>}<article className={`${openHandbook===key?"open":""} ${chapter.isSection?"section-heading":""}`}><button onClick={()=>setOpenHandbook(openHandbook===key?"":key)}><span>{String(index+1).padStart(2,"0")}</span><h3>{chapter.title}</h3><ChevronDown/></button>{openHandbook===key&&<div className="handbook-content">{chapter.blocks.length===0?<p className="handbook-empty">Bu ana bölümün konuları aşağıdaki başlıklarda sıralanmıştır.</p>:chapter.blocks.map((block,blockIndex)=>{if(block.type==="numbered")return <div className="handbook-numbered" key={blockIndex}><b>{block.marker}</b><p>{block.text}</p></div>;if(block.type==="bullet")return <p className="handbook-check" key={blockIndex}><CheckCircle2/><span>{block.text}</span></p>;if(block.type==="subheading")return <h4 key={blockIndex}>{block.text}</h4>;if(block.type==="form"){const separator=block.text.indexOf(":");const label=separator>0?block.text.slice(0,separator):block.text;const value=separator>0?block.text.slice(separator+1).replace(/[.…]+/g," ").trim():"Doldurulacak alan";return <div className="handbook-form-row" key={blockIndex}><b>{label}</b><span>{value||"Doldurulacak alan"}</span></div>}return <p key={blockIndex}>{block.text}</p>})}</div>}</article></React.Fragment>})}</div>}
+      </>}
+    </section>
+  </div>;
+}
 function Footer({ go }) {
   return (
     <footer className="footer">
-      <div>
+      <div className="footer-brand-block">
         <div className="brand inverse">
           <img className="ball" src="./brand-logo.png" alt="" aria-hidden="true" />
           <span>
@@ -2908,35 +3041,32 @@ function Footer({ go }) {
           Bilimsel yaklaşım, uzman antrenörler ve sahaya dönük eğitimlerle
           voleybol gelişiminin dijital adresi.
         </p>
-        <div className="social">
-          <Instagram />
-          <Youtube />
-          <Linkedin />
+        <div className="social" aria-label="Sosyal medya">
+          <span aria-label="Instagram"><Instagram /></span>
+          <span aria-label="YouTube"><Youtube /></span>
+          <span aria-label="Topluluk"><Linkedin /></span>
         </div>
       </div>
-      <div>
+      <div className="footer-links">
         <b>Akademi</b>
-        <button onClick={() => go("courses")}>Kurslar</button>
+        <button onClick={() => go("courses")}>Dersler</button>
         <button onClick={() => go("coaches")}>Eğitmenler</button>
         <button onClick={() => go("live")}>Canlı dersler</button>
       </div>
-      <div>
+      <div className="footer-links">
         <b>Destek</b>
         <button onClick={() => go("help")}>Yardım merkezi</button>
         <button onClick={() => go("contact")}>İletişim</button>
         <button onClick={() => go("privacy")}>Gizlilik</button>
       </div>
-      <div>
-        <b>Demo veri durumu</b>
+      <div className="footer-data-card">
+        <b>Veri durumu</b>
         <span className="status">
-          <ShieldCheck /> Google Sheets canlı bağlantı
+          <ShieldCheck /> Canlı bağlantı aktif
         </span>
         <small>Ders verileri 15 saniyede bir otomatik yenilenir.</small>
       </div>
-      <p className="copyright">
-        © 2026 Online Voleybol Akademisi. Demo içerikler gerçek kişilere ait
-        değildir.
-      </p>
+      <div className="footer-bottom"><p className="copyright">© 2026 Online Voleybol Akademisi</p><span>Voleybola özel dijital eğitim platformu</span></div>
     </footer>
   );
 }
