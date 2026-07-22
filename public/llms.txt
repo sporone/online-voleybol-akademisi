@@ -1,0 +1,21 @@
+# Online Voleybol Akademisi
+
+> Türkiye'deki voleybol spor okulları, sporcular ve genç hakemler için Türkçe çevrim içi eğitim platformu.
+
+## Ana bölümler
+
+- [Voleybol dersleri](https://voleybolokullari.com.tr/voleybol-dersleri): Teknik, taktik, pozisyon, kondisyon, mental hazırlık ve plaj voleybolu eğitimleri.
+- [Junior Hakem](https://voleybolokullari.com.tr/junior-hakem): Voleybol kuralları, örnek olaylar ve hakem kararları.
+- [Kayıtlı spor okulları](https://voleybolokullari.com.tr/kayitli-spor-okullari): Platformdaki voleybol spor okulları.
+- [Ücretler](https://voleybolokullari.com.tr/ucretler): Spor okulları için üyelik seçenekleri.
+- [Kayıt](https://voleybolokullari.com.tr/kayit): Spor okulu ve sporcu kayıt alanı.
+
+## Kapsam
+
+Platform yalnızca voleybol branşına odaklanır. Ders başlıkları arasında temel kurallar, parmak pas, manşet, servis, smaç, blok, savunma, hücum organizasyonları, pozisyon eğitimleri, takım rotasyonları, performans, sporcu sağlığı, mental hazırlık ve plaj voleybolu bulunur.
+
+## Dil ve iletişim
+
+- İçerik dili: Türkçe
+- Hizmet bölgesi: Türkiye
+- İletişim: +90 555 792 47 58
