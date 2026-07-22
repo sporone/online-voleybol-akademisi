@@ -301,6 +301,7 @@ function App() {
     document.title = seo.title;
     setMeta('meta[name="description"]', "content", seo.description);
     setMeta('meta[name="robots"]', "content", seo.noindex ? "noindex,nofollow" : "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
+    setMeta('meta[name="googlebot"]', "content", seo.noindex ? "noindex,nofollow" : "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
     setMeta('meta[property="og:title"]', "content", seo.title);
     setMeta('meta[property="og:description"]', "content", seo.description);
     setMeta('meta[property="og:url"]', "content", `${SITE_URL}${seo.path}`);
