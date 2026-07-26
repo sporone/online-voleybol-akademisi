@@ -3,13 +3,13 @@ const ids = `1K0FJ_j4Md0Kqo4fJocdPYWqlK6QwXh7q 1qqnnusqcT3rIUyJ8ehZoGUXkScJYTRxv
 const movementTitles = `Topu havaya atma ve yakalama|Eşli top atma ve kontrollü yakalama|Önden gelen topa hazır pozisyon|Eşli kısa mesafe top kontrolü|Hareketli eşli top aktarımı|Sağa ve sola adımlayarak top kontrolü|Öne hareketle top karşılama|Geriye hareketle top karşılama|Eşli yüksek top aktarımı|Dengeli duruşta top gönderme|Hedefe kontrollü top atışı|Duvar hedefli top kontrolü|Parmak pas için el pozisyonu|Alından parmak pas teması|Kendi attığı topa parmak pas|Eşli sabit parmak pas|Yüksek parmak pas kontrolü|Öne parmak pas|Geriye parmak pas|Sağa yönlendirilmiş parmak pas|Sola yönlendirilmiş parmak pas|Hareket sonrası parmak pas|Çökerek parmak pas|Sıçrayarak parmak pas|Duvara aralıksız parmak pas|Eşli seri parmak pas|Üçgen parmak pas çalışması|Hedefe parmak pas|Manşet platformunun kurulması|Sabit duruşta manşet|Kendi attığı topa manşet|Eşli kısa manşet|Eşli yüksek manşet|Öne adımla manşet|Yana adımla manşet|Geriye hareketle manşet|Sağdan gelen topa manşet|Soldan gelen topa manşet|Alçak top savunması|Çökerek manşet|Hareket sonrası dengeli manşet|Duvara aralıksız manşet|Eşli seri manşet|Hedefe servis karşılama|Alttan servis hazırlığı|Alttan servis top atışı|Alttan servis vuruşu|Hedefe alttan servis|Üstten servis hazırlığı|Üstten servis top atışı|Üstten servis kol hareketi|Sabit üstten servis|Hedef bölgeye üstten servis|Floater servis teması|Serviste ağırlık aktarımı|Servis sonrası sahaya giriş|Servis isabet çalışması|Smaç yaklaşma adımları|İki adımlı smaç yaklaşması|Üç adımlı smaç yaklaşması|Smaçta kol salınımı|Sıçrama ve kol çekişi|Havada topa temas|Kontrollü smaç vuruşu|Eşli smaç hazırlığı|Duvara smaç çalışması|File önünde smaç yaklaşması|Çapraz smaç yönlendirme|Paralel smaç yönlendirme|Smaç sonrası dengeli iniş|Blok için hazır pozisyon|Tekli blok sıçraması|Blokta el ve kol yerleşimi|Yana adımla blok|Çapraz adımla blok|İkili blok zamanlaması|Blok sonrası savunmaya geçiş|Savunmada temel duruş|Savunmada sağa hareket|Savunmada sola hareket|Öne hamleyle top çıkarma|Yana uzanarak savunma|Düşük topa reaksiyon|Kısa topu kurtarma|Savunmadan pasa geçiş|Hücum örtüsü yerleşimi|Top takibi ve saha yerleşimi|Ralli içinde teknik geçiş`.split("|");
 
 export const videoTopics = [
-  { name:"Top kontrolü", start:1, end:12, cover:"./course-covers/course-01.png" },
-  { name:"Parmak pas", start:13, end:28, cover:"./course-covers/course-02.webp" },
-  { name:"Manşet", start:29, end:44, cover:"./course-covers/course-03.png" },
-  { name:"Servis", start:45, end:57, cover:"./course-covers/course-04.png" },
-  { name:"Smaç", start:58, end:70, cover:"./course-covers/course-05.png" },
-  { name:"Blok", start:71, end:77, cover:"./course-covers/course-06.png" },
-  { name:"Savunma", start:78, end:88, cover:"./course-covers/course-07.png" },
+  { name:"Top kontrolü", start:1, end:12, cover:"/course-covers/course-01.png" },
+  { name:"Parmak pas", start:13, end:28, cover:"/course-covers/course-02.webp" },
+  { name:"Manşet", start:29, end:44, cover:"/course-covers/course-03.png" },
+  { name:"Servis", start:45, end:57, cover:"/course-covers/course-04.png" },
+  { name:"Smaç", start:58, end:70, cover:"/course-covers/course-05.png" },
+  { name:"Blok", start:71, end:77, cover:"/course-covers/course-06.png" },
+  { name:"Savunma", start:78, end:88, cover:"/course-covers/course-07.png" },
 ].map((topic) => ({ ...topic, count:topic.end-topic.start+1 }));
 
 export const trainingVideos = ids.map((id, index) => {
@@ -22,7 +22,7 @@ export const trainingVideos = ids.map((id, index) => {
   topic:topic.name,
   fallback:topic.cover,
   preview: `https://drive.google.com/file/d/${id}/preview?autoplay=1&loop=1`,
-  thumbnail: `./video-thumbs/${String(number).padStart(2,"0")}.jpg`,
+  thumbnail: `/video-thumbs/${String(number).padStart(2,"0")}.jpg`,
   view: `https://drive.google.com/file/d/${id}/view`,
   });
 });

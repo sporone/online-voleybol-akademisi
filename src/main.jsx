@@ -88,8 +88,8 @@ const courseCategories = [
 ];
 const courseImages = courseCategories.map((_, i) =>
   i === 1
-    ? "./course-covers/course-02.webp"
-    : `./course-covers/course-${String(i + 1).padStart(2, "0")}.png`,
+    ? "/course-covers/course-02.webp"
+    : `/course-covers/course-${String(i + 1).padStart(2, "0")}.png`,
 );
 const courseDescriptions = {
   "Voleybola giriş ve temel kurallar":
@@ -671,7 +671,7 @@ function DemoPage({ go }) {
     </nav>
     <section className="demo-stage">
       {section === "lesson" && <article className="demo-lesson">
-        <div className="demo-media"><img src="./lesson-images/parmak-pas-01.webp" alt="Parmak pas hazır pozisyonu teknik anlatımı"/><span>ÜCRETSİZ ÖRNEK</span></div>
+        <div className="demo-media"><img src="/lesson-images/parmak-pas-01.webp" alt="Parmak pas hazır pozisyonu teknik anlatımı"/><span>ÜCRETSİZ ÖRNEK</span></div>
         <div className="demo-content"><small>DERS 01 • PARMAK PAS</small><h2>Parmak pasın temel mantığı</h2><p>Parmak pasın amacı topa vurmak değil, topun hızını parmaklarla kontrol ederek onu istenilen hedefe yönlendirmektir.</p><ul><li><CheckCircle2/> Topun geliş yönünü takip et.</li><li><CheckCircle2/> Ayaklarını omuz genişliğinde aç.</li><li><CheckCircle2/> Topla alnının önünde kısa süreli temas kur.</li><li><CheckCircle2/> Hareketi bacaklardan başlayarak tamamla.</li></ul></div>
       </article>}
       {section === "video" && <article className="demo-video">
@@ -704,7 +704,7 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
         onClick={() => go("home")}
         aria-label="Ana sayfa"
       >
-        <img className="ball" src="./brand-logo.png" alt="" aria-hidden="true" />
+        <img className="ball" src="/brand-logo.png" alt="" aria-hidden="true" />
         <span>
           VOLEYBOL
           <br />
@@ -775,7 +775,7 @@ function HomePage({ go, isAuthenticated }) {
         </div>
         <div className="hero-visual">
           <img
-            src="./volleyball-family-hero.webp"
+            src="/volleyball-family-hero.webp"
             alt="Voleybol topu tutan yetişkin erkek, erkek çocuk, yetişkin kadın ve kız çocuk"
           />
         </div>
@@ -2052,7 +2052,7 @@ const fingerPassDetails = [
     .replace(/\s*\(\d+(?:\s+ve\s+\d+)?\.\s*görseller?\)\.?/gi, ".")
     .replace(/\d+\.\s*görseldeki\s+(?:gibi\s+)?/gi, "")
     .replace(/^./, (letter) => letter.toLocaleUpperCase("tr-TR")),
-  image: `./lesson-images/parmak-pas-${String(i + 1).padStart(2, "0")}.webp`,
+  image: `/lesson-images/parmak-pas-${String(i + 1).padStart(2, "0")}.webp`,
 }));
 function makeLessonSteps(course) {
   if (course[1] === "Voleybola giriş ve temel kurallar")
@@ -2217,7 +2217,7 @@ function parseMarkdownLessons(markdown, base, level = "Genel") {
     return {
       ...section,
       level: section.level || level,
-      image: `./lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`,
+      image: `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`,
       corrects: exact?.corrects,
       errors: exact?.errors,
     };
@@ -2332,7 +2332,7 @@ function mergeSheetLessons(base, rows, courseTitle = "Parmak pas", courseImage) 
         ...lesson,
         image:
           courseTitle === "Parmak pas"
-            ? `./lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`
+            ? `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`
             : courseImage,
       }));
     }
@@ -3053,7 +3053,7 @@ function JuniorRefereePage() {
         <p>Voleybol hakemliğine ilk adımı atan gençler için sade, uygulamalı ve adım adım ilerleyen bir öğrenme alanı.</p>
         <div className={`junior-referee-note ${sourceState}`}><ShieldCheck/><span><b>{sourceState==="ready"?"Hakemlik içerikleri güncel":sourceState==="error"?"İçerikler yüklenemedi":"İçerikler güncelleniyor"}</b><small>{sourceState==="ready"?`${sections.length} bölüm • ${caseCount} örnek olay • ${videoCount} video`:sourceState==="error"?"Tekrar denemek için sayfayı yenileyin.":"Güncel hakemlik konuları hazırlanıyor."}</small></span></div>
       </div>
-      <div className="junior-referee-visual"><img src="./junior-referees.png" alt="Voleybol hakemi kıyafetli bir kız ve bir erkek çocuk"/></div>
+      <div className="junior-referee-visual"><img src="/junior-referees.png" alt="Voleybol hakemi kıyafetli bir kız ve bir erkek çocuk"/></div>
     </section>
     <section className="junior-referee-content">
       <div className="referee-library-cards" aria-label="Junior Hakem eğitim bölümleri">
@@ -3075,7 +3075,7 @@ function Footer({ go }) {
     <footer className="footer">
       <div className="footer-brand-block">
         <div className="brand inverse">
-          <img className="ball" src="./brand-logo.png" alt="" aria-hidden="true" />
+          <img className="ball" src="/brand-logo.png" alt="" aria-hidden="true" />
           <span>
             VOLEYBOL
             <br />
