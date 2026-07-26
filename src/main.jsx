@@ -31,6 +31,8 @@ import {
   UserRound,
   BadgeTurkishLira,
   MessageCircle,
+  Copy,
+  Share2,
   Flag,
 } from "lucide-react";
 import "./styles.css";
@@ -689,9 +691,8 @@ function DemoPage({ go }) {
 }
 
 function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout }) {
-  const isAthleteAccount = Boolean(account?.avatar);
   const visibleNav = isAuthenticated
-    ? nav.filter(([key]) => key !== "profiles" && (!isAthleteAccount || !["demo", "pricing", "register"].includes(key)))
+    ? nav.filter(([key]) => !["profiles", "demo", "pricing", "register"].includes(key))
     : nav.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
@@ -721,9 +722,6 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
             <Icon aria-hidden="true" /> <span>{v}</span>
           </button>
         ))}
-        {isAuthenticated && <button onClick={() => go("courses")} className="btn small">
-          Derslere Başla
-        </button>}
         {isAuthenticated && account && <div className="header-account">
           <button className="account-profile" onClick={() => go("profiles")} aria-label="Hesap profilini aç"><span className="account-visual">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span><small>HESABIM</small>{account.name || account.schoolName}</span></button>
           <button className="account-logout" onClick={onLogout} aria-label="Web sitesinden çıkış yap"><LogOut/><span>Çıkış Yap</span></button>
@@ -742,6 +740,7 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
 function HomePage({ go, isAuthenticated }) {
   const schoolCount = new Set(readSchools().map((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr")).filter(Boolean)).size;
   const athleteCount = readAthletes().length;
+  const lessonCount = courses.reduce((total, course) => total + Number(course[7] || 0), 0);
   return (
     <>
       <section className="hero">
@@ -763,14 +762,15 @@ function HomePage({ go, isAuthenticated }) {
             <button className="btn" onClick={() => go(isAuthenticated ? "courses" : "register")}>
               {isAuthenticated ? "Derslere Başla" : "Spor Okulu Kaydı"} <ArrowRight size={18} />
             </button>
-            <button className="btn ghost" onClick={() => go(isAuthenticated ? "videos" : "profiles")}>
-              <UserRound size={18} /> {isAuthenticated ? "Eğitim Videoları" : "Sporcu Girişi"}
-            </button>
+            {!isAuthenticated && <button className="btn ghost" onClick={() => go("profiles")}>
+              <UserRound size={18} /> Sporcu Girişi
+            </button>}
           </div>
           <div className="proof">
-            <span><b>{schoolCount}</b><br/>spor okulu</span>
-            <span><b>{athleteCount}</b><br/>kayıtlı sporcu</span>
-            <span><b>{trainingVideos.length}</b><br/>eğitim videosu</span>
+            <span><School/><i><b>{schoolCount}</b><small>Spor Okulu</small></i></span>
+            <span><Users/><i><b>{athleteCount}</b><small>Kayıtlı Sporcu</small></i></span>
+            <span><Video/><i><b>{trainingVideos.length}</b><small>Eğitim Videosu</small></i></span>
+            <span><BookOpen/><i><b>{lessonCount}</b><small>Voleybol Dersi</small></i></span>
           </div>
         </div>
         <div className="hero-visual">
@@ -2659,12 +2659,6 @@ function CourseDetail({ course, go }) {
               <span>
                 <BookOpen /> {lessonItems.length} ders
               </span>
-              <span>
-                <Clock /> {course[6]}
-              </span>
-              <span>
-                <Star /> {course[9]} puan
-              </span>
             </div>
             <button className="btn">
               <Play /> Eğitime Başla
@@ -2772,9 +2766,36 @@ function CourseDetail({ course, go }) {
     </div>
   );
 }
+function ClubCodeShare({ school }) {
+  const [copied, setCopied] = useState(false);
+  const phone = String(school.phone || "").trim();
+  const message = `${school.schoolName} sporcu girişi\n\nKulüp adı: ${school.schoolName}\nKullanıcı kodu: ${school.code}\n\nOnline Voleybol Akademisi giriş sayfası:\n${SITE_URL}${routeFor("profiles")}`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch { setCopied(false); }
+  };
+  const nativeShare = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: `${school.schoolName} kullanıcı kodu`, text: message }); }
+      catch { /* Kullanıcı paylaşım penceresini kapatabilir. */ }
+    } else window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  };
+  return <section className="club-code-share">
+    <div className="club-code-share-heading"><span className="club-code-share-icon"><MessageCircle/></span><span><small>SPORCU DAVETİ</small><h2>Kullanıcı kodunu paylaş</h2><p>Kodu WhatsApp üzerinden bir kişiye veya kulüp grubuna güvenle gönder.</p></span></div>
+    <div className="club-code-ticket"><div><small>KULÜP</small><b>{school.schoolName}</b></div><div><small>6 HANELİ KOD</small><strong>{school.code}</strong></div><div><small>KAYITLI WHATSAPP NUMARASI</small><b>{phone || "Telefon numarası kayıtlı değil"}</b></div></div>
+    <div className="club-code-share-actions"><a className="btn club-whatsapp-button" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle/> WhatsApp’ta kişi veya grup seç</a><button type="button" className="btn ghost" onClick={nativeShare}><Share2/> Paylaş</button><button type="button" className="btn ghost" onClick={copyMessage}><Copy/> {copied ? "Kopyalandı" : "Mesajı kopyala"}</button></div>
+    <p className="club-code-share-note"><ShieldCheck/> Mesaj yalnızca siz WhatsApp’ta alıcıyı seçip gönderdiğinizde iletilir.</p>
+  </section>;
+}
+
 function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
   const [type, setType] = useState("club");
   const [selectedClub, setSelectedClub] = useState("");
+  const [schools, setSchools] = useState(() => readSchools());
   const [session, setSession] = useState(() => {
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     const athlete = readAthletes().find((item) => item.id === currentId);
@@ -2785,7 +2806,23 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     } catch { return null; }
   });
   const [notice, setNotice] = useState(initialNotice);
-  const getSchools = () => { try { return JSON.parse(localStorage.getItem("volleyballSchools") || "[]"); } catch { return []; } };
+  useEffect(() => {
+    if (!registrationApi) return;
+    let disposed = false;
+    const refreshSchools = async () => {
+      try {
+        const [schoolRows, athleteRows] = await Promise.all([
+          fetchRegistrationSheet("Okul Kayitlari"),
+          fetchRegistrationSheet("Sporcu Kayitlari"),
+        ]);
+        if (!disposed) setSchools(syncRegistrationStorage(schoolRows, athleteRows).schools);
+      } catch (error) { console.warn("Okul listesi yenilenemedi:", error); }
+    };
+    refreshSchools();
+    const timer = window.setInterval(refreshSchools, 10000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+  const getSchools = () => schools;
   const clubOptions = [...new Set(getSchools()
     .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
     .map((school) => school.schoolName)
@@ -2835,7 +2872,12 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
   if (session?.type === "club") {
     const members = readAthletes().filter((athlete) => athlete.schoolName.toLocaleLowerCase("tr") === session.school.schoolName.toLocaleLowerCase("tr") && athlete.schoolCode === String(session.school.code));
     const teamLogo = session.school.teamLogo || members.find((athlete) => athlete.teamLogo)?.teamLogo || "";
-    return <div className="page profile-area"><section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={session.school.schoolName}/> : <School/>}</div><span><small>KULÜP PROFİLİ</small><h1>{session.school.schoolName}</h1><p>Kullanıcı kodu: <b>{session.school.code}</b></p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section><div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><WifiOff/><span><b>{members.filter(isAthleteActive).length}</b><small>Şu anda aktif</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div><section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section></div>;
+    return <div className="page profile-area">
+      <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={session.school.schoolName}/> : <School/>}</div><span><small>KULÜP PROFİLİ</small><h1>{session.school.schoolName}</h1><p>Kullanıcı kodu: <b>{session.school.code}</b></p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
+      <div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><WifiOff/><span><b>{members.filter(isAthleteActive).length}</b><small>Şu anda aktif</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div>
+      <ClubCodeShare school={session.school}/>
+      <section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
+    </div>;
   }
   if (session?.type === "athlete") {
     const athlete=session.athlete;
@@ -2848,6 +2890,7 @@ function TrainingVideosPage() {
   const [query, setQuery] = useState("");
   const [topic, setTopic] = useState("Tümü");
   const [selected, setSelected] = useState(trainingVideos[0]);
+  const [playerStarted, setPlayerStarted] = useState(false);
   const [visible, setVisible] = useState(12);
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("tr");
@@ -2855,6 +2898,7 @@ function TrainingVideosPage() {
   }, [query, topic]);
   const choose = (video) => {
     setSelected(video);
+    setPlayerStarted(false);
     requestAnimationFrame(() => document.querySelector(".video-player-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   return <div className="video-library-page">
@@ -2865,7 +2909,10 @@ function TrainingVideosPage() {
     <section className="video-library-content">
       <div className="video-player-panel">
         <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
-        <div className="drive-player"><iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen /></div>
+        <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
+          {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen />}
+          {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}><img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/><span><Play/> Videoyu başlat</span></button>}
+        </div>
         <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. Tarayıcı otomatik oynatmayı engellerse oynat düğmesine bir kez dokunun.</p>
       </div>
       <div className="video-topic-bar" aria-label="Video konuları"><button className={topic==="Tümü"?"active":""} onClick={()=>{setTopic("Tümü");setVisible(12)}}><span>Tüm videolar</span><b>{trainingVideos.length}</b></button>{videoTopics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>{setTopic(item.name);setVisible(12)}}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
@@ -2913,7 +2960,7 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["profiles", Users, isAuthenticated ? "Hesabım" : "Giriş Yap"],
   ];
   if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
-  if (isAthlete) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
+  if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   return (
     <nav className="mobile-nav">
       {xs.map(([k, I, t]) => (
