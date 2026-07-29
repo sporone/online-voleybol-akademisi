@@ -46,4 +46,4 @@ Detaylı veri alanları `docs/google-sheets-template.csv` dosyasındadır.
 
 Canlı kayıt API adresi `src/config.js` dosyasında tutulur. Apps Script yeniden dağıtılırsa yalnızca bu dosyadaki `registrationApiUrl` değeri güncellenmelidir.
 
-Web uygulaması `Okul Kayitlari` ve `Sporcu Kayitlari` sekmelerini açılışta, pencere yeniden odaklandığında ve her 15 saniyede bir önbelleksiz olarak yeniler. Google Sheets üzerinde değiştirilen okul durumu, ad, kod, sporcu adı, profil kodu ve çevrim içi bilgisi böylece arayüze otomatik yansır.
+Web uygulaması `Okul Kayitlari`, `Sporcu Kayitlari` ve `Antrenor Kayitlari` sekmelerini açılışta, pencere yeniden odaklandığında ve düzenli aralıklarla önbelleksiz olarak yeniler. Antrenör kayıtlarında `Antrenör ID`, `Okul Kayıt ID`, `Okul Adı`, `Okul Kodu`, `Antrenör Adı`, `Görev`, `Takım Logosu (Manuel)`, `Durum` ve `Kayıt Tarihi` başlıkları kullanılır. Yalnızca `AKTİF` durumundaki ve kulüp adı/kodu eşleşen antrenörler giriş yapabilir.

@@ -34,10 +34,16 @@ import {
   Copy,
   Share2,
   Flag,
+  LockKeyhole,
+  Award,
+  ClipboardCheck,
+  RotateCcw,
+  CircleDot,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
 import "./video-library.css";
+import "./video-layout-fix.css";
 import "./video-topics.css";
 import "./profile-area.css";
 import "./pricing.css";
@@ -47,6 +53,7 @@ import "./junior-referee.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
+import { individualTrainingVideos, individualVideoTopics } from "./individual-video-library.js";
 import { SITE_URL, resolveRoute, routeFor, seoFor } from "./seo.js";
 const Instagram = Heart,
   Youtube = Play,
@@ -185,6 +192,10 @@ const readSchools = () => {
   try { return JSON.parse(localStorage.getItem("volleyballSchools") || "[]"); }
   catch { return []; }
 };
+const readTrainers = () => {
+  try { return JSON.parse(localStorage.getItem("volleyballTrainers") || "[]"); }
+  catch { return []; }
+};
 const isAthleteActive = (athlete) => athlete.online === true && Date.now() - new Date(athlete.lastSeen || 0).getTime() < ACTIVE_WINDOW_MS;
 const readActiveAthletes = () => readAthletes().filter(isAthleteActive);
 
@@ -260,6 +271,28 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
   localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
   return { schools, athletes };
 }
+function syncTrainerStorage(trainerRows) {
+  const localTrainers = readTrainers();
+  const trainers = trainerRows.map((row) => {
+    const id = registrationValue(row, "Antrenör ID");
+    const local = localTrainers.find((item) => item.id === id) || {};
+    return {
+      ...local,
+      id,
+      schoolId: registrationValue(row, "Okul Kayıt ID"),
+      schoolName: registrationValue(row, "Okul Adı"),
+      schoolCode: registrationValue(row, "Okul Kodu"),
+      name: registrationValue(row, "Antrenör Adı"),
+      title: registrationValue(row, "Görev") || "Antrenör",
+      teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || local.teamLogo || "",
+      status: registrationValue(row, "Durum") || "AKTİF",
+      createdAt: registrationValue(row, "Kayıt Tarihi"),
+      source: "google-sheets",
+    };
+  }).filter((trainer) => trainer.id && trainer.name && trainer.schoolName);
+  localStorage.setItem("volleyballTrainers", JSON.stringify(trainers));
+  return trainers;
+}
 
 function App() {
   const initialRoute = useMemo(() => {
@@ -280,6 +313,10 @@ function App() {
   const [currentClub, setCurrentClub] = useState(() => {
     try { return JSON.parse(localStorage.getItem("volleyballCurrentClub") || "null"); }
     catch { return null; }
+  });
+  const [currentTrainer, setCurrentTrainer] = useState(() => {
+    const currentId = localStorage.getItem("volleyballCurrentTrainerId");
+    return readTrainers().find((trainer) => trainer.id === currentId) || null;
   });
   const [authNotice, setAuthNotice] = useState("");
   const [, setRegistrationRevision] = useState(0);
@@ -313,12 +350,12 @@ function App() {
   }, [page, selectedCourse]);
   useEffect(() => {
     const protectedPages = ["courses", "course", "lesson", "videos", "exams"];
-    if (protectedPages.includes(page) && !currentAthlete && !currentClub) {
+    if (protectedPages.includes(page) && !currentAthlete && !currentClub && !currentTrainer) {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       setPage("profiles");
       window.history.replaceState({ page: "profiles" }, "", routeFor("profiles"));
     }
-  }, [page, currentAthlete, currentClub]);
+  }, [page, currentAthlete, currentClub, currentTrainer]);
   useEffect(() => {
     if (!registrationApi) return;
     let disposed = false;
@@ -376,7 +413,7 @@ function App() {
   }, []);
   const go = (p, course) => {
     if (["dashboard", "training", "performance"].includes(p)) p = "courses";
-    if (["courses", "course", "lesson", "videos", "exams"].includes(p) && !currentAthlete && !currentClub) {
+    if (["courses", "course", "lesson", "videos", "exams"].includes(p) && !currentAthlete && !currentClub && !currentTrainer) {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       p = "profiles";
     }
@@ -396,7 +433,9 @@ function App() {
     }
     setCurrentAthlete(null);
     setCurrentClub(null);
+    setCurrentTrainer(null);
     localStorage.removeItem("volleyballCurrentClub");
+    localStorage.removeItem("volleyballCurrentTrainerId");
     setOnlineAthletes(readActiveAthletes());
     go("home");
   };
@@ -407,11 +446,11 @@ function App() {
   };
   return (
     <>
-      <Header page={page} go={go} menu={menu} setMenu={setMenu} account={currentAthlete || currentClub} isAuthenticated={Boolean(currentAthlete || currentClub)} onLogout={logoutAthlete} />
+      <Header page={page} go={go} menu={menu} setMenu={setMenu} account={currentAthlete || currentTrainer || currentClub} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} onLogout={logoutAthlete} />
       {onlineAthletes.length > 0 && <OnlineTeamStrip athletes={onlineAthletes} />}
       <main onClick={handleMainClick}>
         {page === "home" ? (
-          <HomePage go={go} isAuthenticated={Boolean(currentAthlete || currentClub)} />
+          <HomePage go={go} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} />
         ) : page === "courses" ? (
           <Courses go={go} />
         ) : page === "course" ? (
@@ -419,7 +458,16 @@ function App() {
         ) : page === "lesson" ? (
           <LessonPage course={selectedCourse} go={go} />
         ) : page === "exams" ? (
-          <ExamPage initialCourse={selectedCourse} />
+          <ExamPage
+            initialCourse={selectedCourse}
+            account={currentAthlete
+              ? { ...currentAthlete, accountType: "athlete" }
+              : currentTrainer
+                ? { ...currentTrainer, accountType: "trainer" }
+                : currentClub
+                  ? { ...currentClub, accountType: "club" }
+                  : null}
+          />
         ) : page === "junior-referee" ? (
           <JuniorRefereePage />
         ) : page === "videos" ? (
@@ -433,12 +481,12 @@ function App() {
         ) : page === "demo" ? (
           <DemoPage go={go} />
         ) : page === "profiles" ? (
-          <ProfilesPage initialNotice={authNotice} onActivityChange={() => setOnlineAthletes(readActiveAthletes())} onSessionChange={(session) => { setAuthNotice(""); if (session?.type === "club") { setCurrentClub(session.school); setCurrentAthlete(null); } else { setCurrentAthlete(session?.athlete || null); setCurrentClub(null); } }} />
+          <ProfilesPage initialNotice={authNotice} onActivityChange={() => setOnlineAthletes(readActiveAthletes())} onSessionChange={(session) => { setAuthNotice(""); if (session?.type === "club") { setCurrentClub(session.school); setCurrentAthlete(null); setCurrentTrainer(null); } else if (session?.type === "trainer") { setCurrentTrainer(session.trainer); setCurrentAthlete(null); setCurrentClub(null); } else { setCurrentAthlete(session?.athlete || null); setCurrentTrainer(null); setCurrentClub(null); } }} />
         ) : (
           <InfoPage title={page} />
         )}
       </main>
-      <MobileNav page={page} go={go} isAuthenticated={Boolean(currentAthlete || currentClub)} isAthlete={Boolean(currentAthlete)} />
+      <MobileNav page={page} go={go} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} isAthlete={Boolean(currentAthlete)} />
       <Footer go={go} />
     </>
   );
@@ -1443,6 +1491,98 @@ const courseCurriculum = {
     "Servis–karşılama eğilimleri",
     "Maç planı ve set arası uyarlama",
   ],
+  "__ortaOyuncuSinavTaslagi": [
+    {
+      q: "Orta oyuncunun ralli içindeki temel görev bütünü hangisidir?",
+      o: ["Yalnızca servis karşılamak", "Merkez bloğu yönetmek, kanatlara yardım etmek ve birinci tempo tehdidi oluşturmak", "Sadece arka alan savunması yapmak", "Her ikinci topu pas olarak kullanmak"],
+      a: 1,
+      e: "Orta oyuncu savunmada file merkezini kontrol edip iki kanada blok yardımı yapar; hücumda pasörün önünde veya arkasında hızlı hücum tehdidi oluşturur.",
+    },
+    {
+      q: "File önünde doğru orta oyuncu hazır pozisyonu nasıldır?",
+      o: ["Fileye yapışık, dizler kilitli ve eller belde", "Ayaklar omuz genişliğinde, dizler bükülü, ağırlık önde ve eller omuzların önünde", "Sırt fileye dönük ve ağırlık topuklarda", "Ayaklar çapraz, kollar gövdenin arkasında"],
+      a: 1,
+      e: "Dengeli ve hareket edebilir duruş hem hızlı orta hücumuna sıçramayı hem de iki kanada gecikmeden hareket etmeyi sağlar.",
+    },
+    {
+      q: "Orta oyuncu kısa ve uzun blok geçişlerinde hangi ayak çalışmasını seçmelidir?",
+      o: ["Her mesafede yalnız koşu adımı", "Kısa düzeltmede yan adım, daha uzun kanat geçişinde çapraz adım", "Kısa mesafede çapraz, uzun mesafede ayakları sabitleme", "Mesafeden bağımsız tek ayak sıçraması"],
+      a: 1,
+      e: "Yan adım yakın ve hızlı düzeltmelerde kullanılır. Uzun geçişte çapraz adım hız kazandırır; son adım fileye paralel kapanıp iki ayaklı dengeli sıçramayı hazırlar.",
+    },
+    {
+      q: "Rakip pasörün pas yönünü daha erken okuyabilmek için orta oyuncu hangi ipuçlarını birlikte değerlendirmelidir?",
+      o: ["Yalnızca top pasörün elinden çıktıktan sonraki yörüngeyi", "İlk temasın fileye uzaklığını, pasörün omuz-el konumunu ve hücumcuların yaklaşmasını", "Seyirci hareketlerini ve skor tabelasını", "Yalnız rakip orta oyuncunun boyunu"],
+      a: 1,
+      e: "Okuma top pasörün elinden çıktıktan sonra başlamaz. İlk temasın kalitesi seçenekleri sınırlar; pasörün vücudu ve hücumcuların zamanlaması yön hakkında erken bilgi verir.",
+    },
+    {
+      q: "Orta oyuncu kanada ulaştığında ikili blokta en önemli kapanış hedefi nedir?",
+      o: ["Kanat blokçusundan olabildiğince uzak sıçramak", "Kanat blokçusunun iç omzuna yaklaşarak aradaki top geçecek boşluğu kapatmak", "Fileden geriye doğru sıçramak", "Ellerini yalnız kendi başının üzerinde tutmak"],
+      a: 1,
+      e: "İkili blok homojen bir yüzey oluşturmalıdır. Son iki adımda gövde fileye paralel hale gelir ve orta oyuncu kanat blokçusunun iç omzuna kontrollü biçimde kapanır.",
+    },
+    {
+      q: "Etkili blokta eller ve gövde nasıl yerleştirilmelidir?",
+      o: ["Eller yalnız yukarı, kalça geride ve parmaklar kapalı", "Eller file üzerinden rakip alana uzanmış, parmaklar açık ve gövde dengeli", "Bir el aşağıda, bir el arkada", "Kollar dirsekten bükülü ve avuçlar kendi sahasına dönük"],
+      a: 1,
+      e: "Ellerin file düzlemini geçerek rakip sahaya uzanması blok alanını ve top kontrolünü artırır. Dış el saha içine yönlendirilir, inişte file teması önlenir.",
+    },
+    {
+      q: "Birinci tempo hücumunda orta oyuncunun doğru zamanlaması hangisidir?",
+      o: ["Pasör topu bıraktıktan sonra yaklaşmaya başlamak", "İlk temas hedefe giderken yaklaşmak ve pasör teması öncesinde ya da temas anında yükselmek", "Top tepe noktasına çıktıktan sonra son iki adımı atmak", "Pasın düşmesini bekleyip tek adımla sıçramak"],
+      a: 1,
+      e: "Birinci tempo, pas çıktıktan sonra başlatılamayacak kadar hızlıdır. Biyomekanik araştırmalar da hızlı orta hücumunda yaklaşmanın pas veya karşılamaya göre zamanlandığını belirtir.",
+    },
+    {
+      q: "Birinci tempo hücumunun rakip blok düzenine temel taktik etkisi nedir?",
+      o: ["Rakip orta blokçuyu merkez tehdidine bağlayarak kanatlarda çoklu blok kurulmasını zorlaştırmak", "Rakibin servis atmasını engellemek", "Arka alan savunmasını tamamen ortadan kaldırmak", "Her hücumun mutlaka merkezden yapılmasını sağlamak"],
+      a: 0,
+      e: "Hızlı merkez tehdidi rakip orta blokçunun merkeze tepki vermesini gerektirir; bu durum kanat hücumcularına karşı zamanında birleşik blok kurulmasını zorlaştırabilir.",
+    },
+    {
+      q: "Pasör önündeki hızlı hücumda doğru uygulama hangisidir?",
+      o: ["Yaklaşma hattını pasörün koşu yoluyla çakıştırmak", "Topu fileye yapıştırıp her durumda sert vurmak", "Pasöre güvenli mesafe bırakıp topu vuruş omzunun önünde karşılamak", "Yönü yalnız sıçramadan önce belli etmek"],
+      a: 2,
+      e: "Orta oyuncu pasöre çok yaklaşmadan ayrı koridor kullanır. Vuruş yönü blok arasına, savunma boşluğuna veya bloğun dış eline göre son anda değiştirilebilir.",
+    },
+    {
+      q: "Pasör arkasındaki hızlı hücumda neden ortak başlangıç noktası ve tempo önceden belirlenmelidir?",
+      o: ["Pasörün görüşü sınırlı olabileceği ve oyuncuların yaklaşma yollarının çakışmaması gerektiği için", "Orta oyuncunun servis kullanabilmesi için", "Rakip liberonun fileye yaklaşması için", "Topun mutlaka yüksek gönderilmesi için"],
+      a: 0,
+      e: "Pasör arkası hücumda yaklaşma ayrı bir koridordan ilerler ve son adım pasör temasından önce tamamlanır. Ortak tempo, çarpışmayı ve vurulamaz pası önler.",
+    },
+    {
+      q: "Orta oyuncu bloktan indikten sonra hücuma geçişte ne yapmalıdır?",
+      o: ["File altında kalıp topu izlemek", "İki ayakla dengeli inip fileden açılarak hücum başlangıç mesafesini kazanmak", "Doğrudan arka çizgiye koşmak", "Bir sonraki düdüğe kadar blok yerinde beklemek"],
+      a: 1,
+      e: "Bloktan sonra hızlı açılma, top ve pasörü görüşte tutarak yeniden birinci tempo tehdidi oluşturmayı sağlar; bozuk topta ise oyuncu koruma görevine geçer.",
+    },
+    {
+      q: "Savunmadan çıkan top fileden çok uzaktaysa orta oyuncunun en doğru geçiş kararı nedir?",
+      o: ["Körü körüne tam birinci tempo koşusu yapmak", "Kanat hücumuna alan açıp hücum korumasına hazırlanmak", "Pasörü fileye doğru itmek", "Rakip sahaya geçmek"],
+      a: 1,
+      e: "Top kalitesi hızlı hücum seçeneğini belirler. Fileden çok uzak top birinci tempoyu güvenilmez kılar; orta oyuncu tehdit veya koruma görevini seçerek takım düzenini korur.",
+    },
+    {
+      q: "Servis kullandıktan sonra orta oyuncunun fileye geçişinde doğru öncelik sırası hangisidir?",
+      o: ["Topu izlemeden doğrudan fileye koşmak", "Savunma sorumluluğunu korumak, geçiş yollarını kesmemek ve rakip hücum seçeneğine göre fileye yerleşmek", "Arka alan oyuncularının önünde durmak", "Yalnızca rakip servis karşılayıcısını izlemek"],
+      a: 1,
+      e: "Servis sonrası geçiş rotasyona bağlıdır. Orta oyuncu savunma görevini erken terk etmez, takım arkadaşlarının görüş ve geçiş yolunu kapatmaz, rakip hızlı hücumu varsa merkezi önceliklendirir.",
+    },
+    {
+      q: "Bilimsel maç yükü verileri orta oyuncu antrenmanında hangi özelliğin özellikle geliştirilmesini destekler?",
+      o: ["Uzun süre hareketsiz beklemeyi", "Tekrarlı blok ve hücum sıçramaları arasında hızlı toparlanma ve yeniden görev almayı", "Yalnızca servis karşılamayı", "Her sıçramayı mutlaka kişisel maksimum yükseklikte yapmayı"],
+      a: 1,
+      e: "Elit maç verilerinde orta oyuncuların sıçramalarının büyük bölümü blok eylemlerinden oluşur. Bu nedenle tekrar sıçrama, iniş dengesi ve blok-hücum geçişi pozisyona özgü önem taşır.",
+    },
+    {
+      q: "Orta oyuncunun blok başarısını en kapsamlı değerlendiren ölçüt hangisidir?",
+      o: ["Yalnız doğrudan blok sayısı", "Sadece sıçrama yüksekliği", "Doğrudan sayılarla birlikte yumuşatılan, saha içine yönlendirilen toplar ve doğru kapanış", "Fileye temas sayısı"],
+      a: 2,
+      e: "Etkili blok her zaman doğrudan sayı olmaz. Hücumu yavaşlatan veya savunulabilir alana yönlendiren temaslar ve blok bütünlüğü takım savunmasına ölçülebilir katkı sağlar.",
+    },
+  ],
   "Taktik ve oyun zekâsı": [
     "Rakip dizilişini okuma",
     "Risk, skor ve hedef seçimi",
@@ -1532,162 +1672,1051 @@ const examBank = {
         "Karch Kiraly",
       ],
       a: 0,
-      e: "Voleybol, William G. Morgan tarafından “mintonette” adıyla geliştirildi.",
+      e: "Voleybol, 1895 yılında William G. Morgan tarafından 'Mintonette' adıyla geliştirildi. Oyunun adı daha sonra topun yere değmeden karşılıklı oynanmasını anlatan 'volley ball' ifadesinden türetildi.",
     },
     {
-      q: "Voleybol ilk kez hangi olimpiyatlarda olimpik branş olarak yer aldı?",
-      o: ["1952 Helsinki", "1960 Roma", "1964 Tokyo", "1972 Münih"],
+      q: "FIVB kurallarına göre standart salon voleybolu sahasının ölçüsü nedir?",
+      o: ["12 × 6 metre", "16 × 8 metre", "18 × 9 metre", "20 × 10 metre"],
       a: 2,
-      e: "Voleybol 1964 Tokyo Olimpiyatları’nda olimpik programa girdi.",
+      e: "Oyun alanı 18 metre uzunluğunda ve 9 metre genişliğindedir. Orta çizgi sahayı 9 × 9 metrelik iki eşit oyun alanına böler.",
     },
     {
-      q: "Bir takım blok teması dışında topa en fazla kaç kez vurabilir?",
+      q: "Hücum çizgisinin arka kenarı, orta çizginin ekseninden kaç metre uzaktadır?",
+      o: ["2 metre", "3 metre", "4 metre", "4,5 metre"],
+      a: 1,
+      e: "Her oyun alanındaki hücum çizgisinin arka kenarı, orta çizginin ekseninden 3 metre uzaktadır ve ön bölgeyi sınırlar.",
+    },
+    {
+      q: "Resmî file yüksekliği kadınlar ve erkekler için sırasıyla hangisidir?",
+      o: ["2,20 m / 2,35 m", "2,24 m / 2,43 m", "2,30 m / 2,45 m", "2,43 m / 2,24 m"],
+      a: 1,
+      e: "FIVB kurallarında file yüksekliği kadınlarda 2,24 metre, erkeklerde 2,43 metredir. Ölçüm oyun alanının merkezinden yapılır.",
+    },
+    {
+      q: "Bir takım oyun sırasında sahada kaç oyuncuyla yer alır?",
+      o: ["5", "6", "7", "8"],
+      a: 1,
+      e: "Sahada her takımın altı oyuncusu bulunur. Başlangıç dizilişi, oyuncuların set boyunca izlemesi gereken rotasyon sırasını belirler.",
+    },
+    {
+      q: "Bir takım blok temasının dışında, topu rakip alana göndermek için en fazla kaç vuruş yapabilir?",
       o: ["2", "3", "4", "5"],
       a: 1,
-      e: "Takım, topu rakip alana göndermeden önce en fazla üç temas kullanabilir.",
+      e: "Takımın topu geri göndermek için en fazla üç vuruş hakkı vardır. Blok teması bu üç takım vuruşundan biri olarak sayılmaz.",
     },
     {
-      q: "Standart salon voleybolu sahasının ölçüsü nedir?",
-      o: ["12 × 6 m", "16 × 8 m", "18 × 9 m", "20 × 10 m"],
+      q: "Bir oyuncu blokta topa temas ettikten sonra takımının kaç vuruş hakkı kalır ve ilk vuruşu kim yapabilir?",
+      o: [
+        "İki vuruş kalır; blokçu dokunamaz",
+        "Üç vuruş kalır; blokçu ilk vuruşu yapabilir",
+        "Üç vuruş kalır; yalnız libero dokunabilir",
+        "Ralli blok temasıyla sona erer",
+      ],
+      a: 1,
+      e: "Blok teması takım vuruşu sayılmaz. Bu nedenle takımın üç vuruş hakkı devam eder ve blok temasını yapan oyuncu bloktan sonraki ilk vuruşu da yapabilir.",
+    },
+    {
+      q: "Servis karşılayan takım ralliyi kazanırsa aşağıdakilerden hangisi gerçekleşir?",
+      o: [
+        "Yalnızca servis hakkı kazanır",
+        "Sayı alır, servis hakkını kazanır ve saat yönünde döner",
+        "Sayı alır fakat aynı dizilişte kalır",
+        "Rakip takım rotasyon yapar",
+      ],
+      a: 1,
+      e: "Ralli sayı sisteminde karşılayan takım ralliyi kazandığında bir sayı ve servis hakkı kazanır. Servise geçmeden önce oyuncuları saat yönünde bir pozisyon döner.",
+    },
+    {
+      q: "Saat yönündeki rotasyonda 2 numaralı pozisyondaki oyuncu hangi pozisyona geçer?",
+      o: ["1 numaralı sağ arka", "3 numaralı orta ön", "5 numaralı sol arka", "6 numaralı orta arka"],
+      a: 0,
+      e: "Servis hakkı kazanıldığında rotasyon sırası 2'den 1'e, 1'den 6'ya, 6'dan 5'e, 5'ten 4'e, 4'ten 3'e ve 3'ten 2'ye doğrudur.",
+    },
+    {
+      q: "Karar seti dışındaki bir setin kazanılması için hangi koşul gereklidir?",
+      o: [
+        "En az iki sayı farkla 21 sayıya ulaşmak",
+        "Rakipten önce 25 sayıya ulaşmak",
+        "En az iki sayı farkla 25 sayıya ulaşmak",
+        "Tam olarak 25-24 kazanmak",
+      ],
       a: 2,
-      e: "Standart saha 18 metre uzunluğunda ve 9 metre genişliğindedir.",
+      e: "İlk dört set 25 sayı üzerinden oynanır ve seti kazanmak için en az iki sayı fark gerekir. Skor 24-24 olursa oyun iki sayılık fark oluşana kadar sürer.",
+    },
+    {
+      q: "Maç 2-2 olduğunda oynanan karar seti hangi sayı ve fark kuralıyla tamamlanır?",
+      o: [
+        "15 sayı ve en az iki sayı fark",
+        "21 sayı ve tek sayı fark",
+        "25 sayı ve en az iki sayı fark",
+        "15 sayı ve tek sayı fark",
+      ],
+      a: 0,
+      e: "Beşinci ve karar seti 15 sayı üzerinden oynanır; ancak diğer setlerde olduğu gibi kazanan takımın en az iki sayı farkı bulunmalıdır.",
+    },
+    {
+      q: "Bir voleybol maçını kazanmak için bir takım kaç set kazanmalıdır?",
+      o: ["2 set", "3 set", "4 set", "5 set"],
+      a: 1,
+      e: "Maçı üç set kazanan takım kazanır. Bu nedenle maçlar 3-0, 3-1 veya 3-2 sonuçlanabilir.",
+    },
+    {
+      q: "Başhakemin servis düdüğünden sonra servis atan oyuncu topa kaç saniye içinde vurmalıdır?",
+      o: ["5 saniye", "6 saniye", "8 saniye", "10 saniye"],
+      a: 2,
+      e: "Servis atan oyuncu, başhakemin servis için çaldığı düdükten sonra sekiz saniye içinde topa vurmalıdır.",
+    },
+    {
+      q: "Servis atan oyuncu topa vurduğu veya sıçrayarak servis için yerden ayrıldığı anda hangisini yaparsa ayak hatası oluşur?",
+      o: [
+        "Vuruştan sonra oyun alanına basarsa",
+        "Topu tek eliyle havaya atarsa",
+        "Bitiş çizgisine ya da servis bölgesi dışındaki zemine basarsa",
+        "Servisten önce topu elinde hareket ettirirse",
+      ],
+      a: 2,
+      e: "Servis vuruşu veya sıçrayışın kalkış anında oyuncu oyun alanına, bitiş çizgisine ya da servis bölgesi dışına basamaz. Vuruştan sonra oyun alanına basmasına veya düşmesine izin verilir.",
+    },
+    {
+      q: "Topun çok küçük bir bölümü bile sınır çizgisine temas ederse hakemin kararı ne olmalıdır?",
+      o: ["Dışarı", "İçeride", "Ralli tekrarı", "Yalnız çizgi hakemi karar verir"],
+      a: 1,
+      e: "Sınır çizgileri oyun alanının içindedir. Topun zemine temas eden herhangi bir bölümü çizgiye değerse top içeride kabul edilir.",
     },
   ],
   "Parmak pas": [
     {
-      q: "Parmak pasta topa temas ağırlıklı olarak nerede gerçekleşir?",
+      q: "Ders anlatımına göre parmak pasın temel işlevi hangisidir?",
       o: [
-        "Avuç içinde",
-        "Parmak uçlarında ve alın önünde",
-        "Ön kolda",
-        "Omuzda",
+        "Topu yalnızca yükseltmek",
+        "Topu eller ve parmaklarla istenilen noktaya yönlendirmek",
+        "Topu avuç içinde tutup hedefi beklemek",
+        "Rakibin hücumunu file üzerinde durdurmak",
       ],
       a: 1,
-      e: "Top alın önünde, parmakların oluşturduğu dengeli yüzeyle kontrol edilir.",
+      e: "Parmak pas, topun hızını ve yönünü eller ile parmakların kontrollü temasıyla düzenleyerek topu hedeflenen noktaya göndermek için kullanılır.",
     },
     {
-      q: "Parmak pasın temel amacı nedir?",
+      q: "Öne parmak pas için doğru hazır duruş hangisidir?",
       o: [
-        "Topu tutmak",
-        "Hücuma kontrollü ikinci temas hazırlamak",
-        "Servisi engellemek",
-        "Blok yapmak",
+        "Ayaklar bitişik, dizler kilitli ve kollar aşağıda",
+        "Bir ayak önde, vücut dengeli, dirsekler bükülü ve eller yüze yakın",
+        "Ağırlık yalnız arka ayakta ve eller bel hizasında",
+        "Gövde geride, dirsekler tamamen kapalı",
       ],
       a: 1,
-      e: "Pasör çoğunlukla ikinci teması kullanarak hücumcuya uygun top hazırlar.",
+      e: "Dengeli duruşta ayaklar arasında açıklık bulunur ve bir ayak öndedir. Kollar dirseklerden bükülür, eller yüze yakın hazırlanır.",
+    },
+    {
+      q: "Öne parmak pasta top hangi bölgede karşılanmalı ve elin hangi kısmı temas etmelidir?",
+      o: [
+        "Göğüs hizasında ve avuç içleriyle",
+        "Başın arkasında ve bileklerle",
+        "Alın hizasında ve parmakların ilk boğumlarıyla",
+        "Bel hizasında ve ön kollarla",
+      ],
+      a: 2,
+      e: "Ders içeriğinde topun alın hizasında karşılanması ve temasın parmakların ilk boğumlarıyla yapılması öğretilir. Top avuç içinde tutulmaz veya taşınmaz.",
+    },
+    {
+      q: "Öne parmak pasta dirsek açıklığı ve ellerin biçimi nasıl olmalıdır?",
+      o: [
+        "Dirsekler bitişik, eller yumruk",
+        "Dirsekler omuz genişliğinde, eller bileklere doğru üçgen oluşturacak biçimde",
+        "Dirsekler tamamen geride, avuçlar aşağı bakacak biçimde",
+        "Kollar çapraz, eller omuzlara temas edecek biçimde",
+      ],
+      a: 1,
+      e: "Dirseklerin omuz genişliğindeki açıklığı ve ellerin oluşturduğu dengeli üçgen, topun iki el arasında simetrik ve kontrollü karşılanmasına yardım eder.",
+    },
+    {
+      q: "Uzak hedefe kontrollü bir parmak pas göndermek için kuvvet üretimi nasıl yapılmalıdır?",
+      o: [
+        "Yalnız parmakları sertçe açarak",
+        "Yalnız omuzları yukarı kaldırarak",
+        "Bacaklardan başlayıp gövde, kollar ve ellerle ileri-yukarı uzanarak",
+        "Topu avuç içinde daha uzun tutarak",
+      ],
+      a: 2,
+      e: "Ders anlatımındaki bütün-vücut hareketi bilimsel biyomekanik bulgularla uyumludur: hedef mesafesi arttıkça alt ekstremite hareketi kuvvete daha fazla katkı sağlar.",
+    },
+    {
+      q: "Hızlı gelen topun hızını düşürüp pas yönünü kontrol etmek için hangisi uygulanmalıdır?",
+      o: [
+        "Eller ve bilekler hafifçe geriye uyumlanmalı, ardından hareket hedefe yöneltilmeli",
+        "Dizler kilitlenip topa avuç içiyle vurulmalı",
+        "Gözler kapatılıp yalnız kollar kullanılmalı",
+        "Top başın arkasında bekletilmeli",
+      ],
+      a: 0,
+      e: "Ellerin bileklerle hafifçe geriye uyumlanması geliş hızını yumuşatır. Sonraki ileri-yukarı hareketin hedef yönünde yapılması topun çıkış yönünü kontrol eder.",
+    },
+    {
+      q: "Geriye parmak pasın hazırlığında doğru ağırlık ve gövde kullanımı hangisidir?",
+      o: [
+        "Ağırlık ön ayağa aktarılır ve gövde öne kapanır",
+        "Ağırlık arka ayağa aktarılır, kalça öne gelir, vücut ve baş geriye uyumlanır",
+        "İki diz kilitlenir ve omuzlar yana çevrilir",
+        "Ağırlık yalnız parmak uçlarına alınır ve gövde sabit tutulur",
+      ],
+      a: 1,
+      e: "Geriye pasta oyuncu topun altına girerken ağırlığını arka ayağa aktarır; kalçanın öne gelmesi ve gövdenin geriye uyumlanması pas yönünü oluşturur.",
+    },
+    {
+      q: "Geriye parmak pasın taktik amacı ders içinde nasıl açıklanmıştır?",
+      o: [
+        "Servis hızını artırmak",
+        "Savunmacıyı ön bölgeye taşımak",
+        "Rakip bloku yanıltıp hücumcuya daha rahat top kullanma olanağı sağlamak",
+        "Topu mümkün olduğunca fileden uzaklaştırmak",
+      ],
+      a: 2,
+      e: "Geriye pas, pas yönünü son ana kadar belirsiz tutarak blokçuların kararını zorlaştırabilir ve hücum organizasyonunda farklı bir seçenek yaratır.",
+    },
+    {
+      q: "Bir hareketin sıçrayarak parmak pas sayılması için top ne zaman elden çıkarılmalıdır?",
+      o: [
+        "Sıçramadan hemen önce",
+        "Ayaklar yerden kesilmişken",
+        "İki ayak yere indikten sonra",
+        "Yalnız en yüksek noktadan sonra",
+      ],
+      a: 1,
+      e: "Ders tanımına göre sıçrayarak pasta top, ayaklar yere değmeden elden çıkarılır. Topun konumuna uygun sıçrama zamanlaması ve havadaki denge belirleyicidir.",
+    },
+    {
+      q: "Sıçrayarak parmak pasta denge açısından özellikle vurgulanan davranış hangisidir?",
+      o: [
+        "Havada yönü sürekli değiştirmek",
+        "Bir an havada dengeli kalıp topu zamanında çıkarmak",
+        "Topu inişe kadar elde bekletmek",
+        "Sıçrarken gözleri hedeften ayırmak",
+      ],
+      a: 1,
+      e: "Havadayken ağırlık merkezinin yönünü değiştirme olanağı sınırlıdır. Bu nedenle zamanlama ve kısa süreli dengeli kalış, doğru temas için önem taşır.",
+    },
+    {
+      q: "Duvarda parmak pas çalışmasının ders içeriğindeki temel uygulama ölçütü hangisidir?",
+      o: [
+        "Duvara 3 metre uzaktan tek tekrar yapmak",
+        "Duvara 10-15 cm yakınlıkta, temel duruşu bozmadan seri pas yapmak",
+        "Topu önce yere sektirerek duvara vurmak",
+        "Yalnız tek elle pas yapmak",
+      ],
+      a: 1,
+      e: "Duvarda çalışma 10-15 cm yakın mesafede seri uygulanır. Amaç tekrar sayısı artarken temel duruş, alın hizası ve el biçimini korumaktır.",
+    },
+    {
+      q: "Karşılıklı parmak pas sırasında öğretmenin yer değiştirme komutu geldiğinde oyuncu ne yapmalıdır?",
+      o: [
+        "Top takibini bırakıp doğrudan yeni yere koşmalı",
+        "Yer değiştirip hedefe yeniden dönerek paslaşmayı sürdürmeli",
+        "Topu tutup çalışmayı durdurmalı",
+        "Yalnızca kollarını hedefe çevirmeli",
+      ],
+      a: 1,
+      e: "Hareketli pas çalışmasında ayaklarla yeni konuma geçildikten sonra denge kurulmalı, hedefe yeniden dönülmeli ve top takibi kesilmemelidir.",
+    },
+    {
+      q: "Kayma adımlı parmak pas çalışmasının temel teknik amacı hangisidir?",
+      o: [
+        "Topa uzanmak için kolları olabildiğince ileri açmak",
+        "Ayakları çaprazlayarak en hızlı biçimde dönmek",
+        "Ayaklarla topun arkasına geçip temas öncesinde dengeli pozisyon kurmak",
+        "Her pası sıçrayarak yapmak",
+      ],
+      a: 2,
+      e: "Kayma adımı oyuncunun gövdesini hedefe dönük tutarak yana hareket etmesine yardım eder. Temas kalitesi için önce topun arkasına geçmek ve dengeyi kurmak gerekir.",
+    },
+    {
+      q: "Üçlü parmak pas çalışmasında ortadaki oyuncunun topu attıktan sonraki görevi nedir?",
+      o: [
+        "Sırtını topa dönüp beklemek",
+        "Her seferinde topun geleceği yöne dönerek hazır beklemek",
+        "Sahanın dışına çıkmak",
+        "Aynı oyuncuya arka arkaya iki top atmak",
+      ],
+      a: 1,
+      e: "Üçlü çalışmada ortadaki oyuncu değişen pas yönünü erken okumalı, topun geleceği yöne dönmeli ve yeni temas için hazır pozisyon almalıdır.",
+    },
+    {
+      q: "File önü parmak pas çalışmasında topun ve oyuncunun doğru hareket yönü hangisidir?",
+      o: [
+        "Top fileye dik, oyuncu geriye doğru hareket eder",
+        "Top fileye paralel gönderilir, pas veren oyuncu sıra düzenine göre yer değiştirir",
+        "Top file üzerinden rakibe atılır, oyuncu yerinde kalır",
+        "Top oyuncunun arkasına bırakılır, oyuncu file altından geçer",
+      ],
+      a: 1,
+      e: "Ders uygulamasında oyuncu file önüne koşar, pası fileye paralel olarak sıradaki oyuncunun ön bölgesine gönderir ve ardından belirtilen sıraya geçer.",
     },
   ],
   Manşet: [
     {
-      q: "Manşette doğru temas yüzeyi hangisidir?",
-      o: ["Birleşik ön kollar", "Avuç içleri", "Dirsekler", "Omuzlar"],
-      a: 0,
-      e: "Kollar birleştirilerek düz ve sabit bir platform oluşturulur.",
-    },
-    {
-      q: "Servis karşılamada açıyı en çok ne belirler?",
+      q: "Ders anlatımına göre manşetin temel amacı hangisidir?",
       o: [
-        "Başın yönü",
-        "Platformun açısı",
-        "Ayakkabının rengi",
-        "File yüksekliği",
+        "Topu yalnızca mümkün olduğunca yükseğe kaldırmak",
+        "Topu ön kollardan oluşan platformla doğru yükseklik ve açıyla hedefe yönlendirmek",
+        "Topu ellerle tutup pasörü beklemek",
+        "Rakibin hücumunu file üzerinde durdurmak",
       ],
       a: 1,
-      e: "Topun hedefe yönü büyük ölçüde ön kol platformunun açısıyla kontrol edilir.",
+      e: "Manşet; servis karşılama, savunma ve oyun kurmada topu ön kollarla kontrol eder. Başarı ölçütü yalnız topun yükselmesi değil, hedefe uygun açı ve yükseklikte gitmesidir.",
+    },
+    {
+      q: "Manşet için doğru hazır bekleme pozisyonu hangisidir?",
+      o: [
+        "Ayaklar bitişik, dizler kilitli ve ağırlık topuklarda",
+        "Ayaklar omuz genişliğinden biraz açık, dizler bükülü, gövde hafif önde ve ağırlık ayakların ön bölümünde",
+        "Kalça önde, gövde geride ve kollar baş üzerinde",
+        "Dizler düz, omuzlar yukarıda ve topuklar havada",
+      ],
+      a: 1,
+      e: "Alçak ve dengeli hazır duruş, sporcunun sağa, sola, öne veya geriye küçük düzeltme adımlarıyla hızla hareket edebilmesini sağlar.",
+    },
+    {
+      q: "Düz ve simetrik bir manşet platformu oluştururken hangisi yapılmamalıdır?",
+      o: [
+        "Başparmakları yan yana ve aynı hizada tutmak",
+        "Bilekleri aşağı bastırmak",
+        "Parmakları birbirine geçirip başparmakları üst üste koymak",
+        "Dirsekleri düzleştirip ön kolları aynı seviyeye getirmek",
+      ],
+      a: 2,
+      e: "Parmakların birbirine geçirilmesi ve başparmakların üst üste gelmesi platformda asimetri oluşturabilir. Ders iki farklı el birleştirme yöntemine izin verir; ortak ölçüt düz ve dengeli platformdur.",
+    },
+    {
+      q: "Topun manşette karşılanması gereken ideal temas bölgesi neresidir?",
+      o: [
+        "Avuç içleri",
+        "Dirseklere yakın üst kol bölgesi",
+        "Bileklerin biraz üzerindeki düz ve etli ön kol bölgesi",
+        "Parmakların ilk boğumları",
+      ],
+      a: 2,
+      e: "Top, iki ön kolun bileklerin biraz üzerinde kalan düz bölgesine temas etmelidir. Eller veya dirseğe yakın düzensiz yüzeyler topun yön kontrolünü azaltır.",
+    },
+    {
+      q: "Manşetten çıkan topun yönünü en doğrudan belirleyen teknik değişken hangisidir?",
+      o: [
+        "Platformun hedefe göre açısı",
+        "Oyuncunun boy uzunluğu",
+        "Topun rengi",
+        "Ellerin ne kadar sıkıldığı",
+      ],
+      a: 0,
+      e: "Top, temas ettiği yüzeyin açısına göre yön değiştirir. Bu nedenle omuzlar ve düz ön kol platformu hedefe göre ayarlanmalı, temas sonrasında kısa süre korunmalıdır.",
+    },
+    {
+      q: "Yavaş gelen bir top ile hızlı gelen bir top karşılanırken kuvvet kullanımı nasıl değişmelidir?",
+      o: [
+        "Her iki topa da kollarla aynı sertlikte vurulmalıdır",
+        "Yavaş topta bacak desteği artırılmalı; hızlı topta platform sabit tutulup gereksiz kuvvet azaltılmalıdır",
+        "Hızlı topta kollar daha büyük açıyla savrulmalıdır",
+        "Yavaş top yalnız tek kolla karşılanmalıdır",
+      ],
+      a: 1,
+      e: "Yavaş top ek yönlendirme kuvveti gerektirebilir ve bu kuvvet kontrollü diz açılmasıyla üretilir. Hızlı top zaten yüksek kinetik enerji taşıdığı için sabit platform ve küçük hareket daha iyi kontrol sağlar.",
+    },
+    {
+      q: "Ders içeriğindeki doğru manşet hareket sırası hangisidir?",
+      o: [
+        "Platformu oluşturma → ayaklarla yerleşme → topu izleme → temas",
+        "Ayaklarla yerleşme → dizleri bükme → platformu oluşturma → temas → dizlerle yükselme → hedefe yönlendirme",
+        "Kolları savurma → topa koşma → dizleri kilitleme → temas",
+        "Topu tutma → hedefi seçme → platformu oluşturma → fırlatma",
+      ],
+      a: 1,
+      e: "Teknik, önce topun arkasına ayaklarla yerleşip dengeli taban kurmayı; sonra platformu oluşturup teması bacak desteğiyle hedefe yönlendirmeyi öğretir.",
+    },
+    {
+      q: "Hareketli bir topa giderken elleri çok erken birleştirmenin temel sakıncası nedir?",
+      o: [
+        "Topun daha yavaş gelmesine neden olur",
+        "Oyuncunun ayak hareketini ve denge düzeltmesini kısıtlar",
+        "Servis atan oyuncunun görüşünü kapatır",
+        "Platformu otomatik olarak fazla açar",
+      ],
+      a: 1,
+      e: "Ders sıralamasında önce ayaklarla topun arkasına geçilir, son küçük düzeltmeler yapılıp denge kurulduktan sonra eller birleştirilir. Erken birleşme hareket serbestliğini azaltabilir.",
+    },
+    {
+      q: "Sağa veya sola gelen top için yeterli zaman varsa öncelikli çözüm hangisidir?",
+      o: [
+        "Yalnız kolları yana uzatmak",
+        "Ayaklarla topun arkasına geçip omuz ve platformu hedefe yöneltmek",
+        "Topu vücudun arkasında karşılamak",
+        "Dizleri düzleştirip gövdeyi ters yöne çevirmek",
+      ],
+      a: 1,
+      e: "En güvenilir kontrol, vücudu topun arkasına taşımaktır. Zaman yetersizse omuz seviyesi ve platform açısı kullanılarak yan top hedefe yönlendirilir.",
+    },
+    {
+      q: "Servis karşılamanın hücum organizasyonu açısından doğru amacı hangisidir?",
+      o: [
+        "Topu herhangi bir şekilde oyunda tutmak",
+        "Topu doğrudan rakip alana göndermek",
+        "Topu pasörün hedef bölgesine göndererek hücum seçeneklerini açık tutmak",
+        "Topu fileye olabildiğince yaklaştırmak",
+      ],
+      a: 2,
+      e: "FIVB eğitim yaklaşımında servis karşılama hücumun ilk adımıdır. Kaliteli karşılama, pasörün topun peşinden koşmadan farklı hücum seçeneklerini kullanabilmesini sağlar.",
+    },
+    {
+      q: "Servis karşılama öncesinde yön tahmini için hangi ipuçları birlikte izlenmelidir?",
+      o: [
+        "Yalnız skor tabelası",
+        "Servisçinin top atışı, omuz açısı, vuruş yönü ve topun uçuş çizgisi",
+        "Rakip takımın forma numaraları",
+        "Sadece pasörün bulunduğu yer",
+      ],
+      a: 1,
+      e: "Topa vurulmadan önce servisçinin başlangıç konumu, top atışı, omuz ve kol hareketi erken bilgi sağlar; vuruştan sonra topun hızı ve uçuşu değerlendirilir.",
+    },
+    {
+      q: "Topa en iyi açıyla ulaşan oyuncunun servis karşılamada yapması gereken doğru iletişim hangisidir?",
+      o: [
+        "Sessiz kalıp son anda topa gitmek",
+        "Yüksek ve net biçimde 'Bende!' diyerek sorumluluk almak",
+        "Top yere yaklaştığında 'Bırak!' demek",
+        "Yalnız el işareti kullanmak",
+      ],
+      a: 1,
+      e: "Erken, yüksek ve net iletişim iki oyuncunun aynı topa yönelmesini veya hiç kimsenin sorumluluk almamasını önler. Ders içeriğinde 'Bende, sende, bırak, kısa, uzun, yardım' komutları kullanılır.",
+    },
+    {
+      q: "Hedefe manşet çalışmasında 10 topun tamamı doğrudan hedef alanına giderse sporcu kaç puan alır?",
+      o: ["10", "20", "25", "30"],
+      a: 3,
+      e: "Doğrudan hedef alanına gelen her top 3 puandır. On başarılı top 10 × 3 = 30 puan eder ve bu çalışmanın maksimum puanıdır.",
+    },
+    {
+      q: "Kısa servis ile uzun servise hareket ederken doğru teknik eşleştirme hangisidir?",
+      o: [
+        "Kısa serviste geriye çapraz; uzun serviste öne uzun adım",
+        "Kısa serviste öne hızlı ve sonlarda küçük adımlar; uzun serviste geriye kontrollü veya çapraz adımlar",
+        "Her ikisinde de kollar önceden birleştirilerek koşu",
+        "Her ikisinde de topun vücudun arkasına düşmesini bekleme",
+      ],
+      a: 1,
+      e: "Kısa topa ilerlerken son adımlar küçültülerek alçak denge kurulur. Uzun top erken okunur, geriye kontrollü hareket edilir ve topun vücudun arkasına geçmesi engellenir.",
+    },
+    {
+      q: "Smaç savunmasında hızlı gelen topu kontrol etmek için en uygun uygulama hangisidir?",
+      o: [
+        "Kolları topa doğru büyük bir hızla savurmak",
+        "Dizleri bükülü tutup sabit platformla topun enerjisini açı üzerinden yönlendirmek",
+        "Platformu son anda tamamen açmak",
+        "Topu gövdeye çok yakın beklemek",
+      ],
+      a: 1,
+      e: "Smaç topu servis karşılamadan daha hızlıdır. Büyük kol salınımı çıkış hızını artırıp kontrolü bozabilir; alçak duruş, kararlı ön kol platformu ve doğru açı top enerjisinin yönetilmesini sağlar.",
     },
   ],
   "Servis teknikleri": [
     {
-      q: "Servis oyundaki hangi işlevi taşır?",
+      q: "Ders anlatımına göre servisin oyundaki temel teknik ve taktik işlevi hangisidir?",
       o: [
-        "Yalnızca oyunu durdurur",
-        "Oyunu başlatan ilk hücumdur",
-        "Sadece savunmadır",
-        "Oyuncu değiştirir",
+        "Yalnızca topu oyuna sokmak",
+        "Oyunu başlatırken rakibin hücum düzenini bozabilen ilk kontrollü hücum eylemi olmak",
+        "Sadece savunma yerleşimini değiştirmek",
+        "Oyuncu değişikliğini başlatmak",
       ],
       a: 1,
-      e: "Servis, oyunu başlatan hareket ve takımın ilk hücumudur.",
+      e: "Servis tamamen sporcunun kontrolünde başlayan bir beceridir. Hedef yalnız topu geçirmek değil; zayıf karşılayıcıyı, boş alanı veya rakibin hücum hazırlığını hedeflemektir.",
     },
     {
-      q: "Servis düdükten sonra kaç saniye içinde kullanılmalıdır?",
-      o: ["5", "6", "8", "12"],
-      a: 2,
-      e: "Servis hakem düdüğünden sonra sekiz saniye içinde atılmalıdır.",
+      q: "Sağ elini kullanan bir sporcunun alttan servis başlangıç pozisyonu nasıl olmalıdır?",
+      o: [
+        "Sağ ayak önde, ağırlık ön ayakta ve top sağ elde",
+        "Sol ayak önde, sağ ayak geride, top sol elde ve başlangıç ağırlığı arka ayakta",
+        "Ayaklar bitişik, dizler kilitli ve top baş üzerinde",
+        "Sol ayak geride, gövde tamamen fileye sırtı dönük",
+      ],
+      a: 1,
+      e: "Sağ elini kullanan sporcu vuruş elinin tersindeki sol ayağı öne alır. Bu düzen, ağırlığın arka ayaktan ön ayağa aktarılmasına ve kolun hedefe doğru salınmasına yardım eder.",
+    },
+    {
+      q: "Alttan serviste top bırakma için doğru uygulama hangisidir?",
+      o: [
+        "Topu baş üstüne yüksek ve dönüşlü atmak",
+        "Topu bel hizasında önde tutup vuruş noktasına kısa mesafede bırakmak",
+        "Topu vücudun arkasına doğru bırakmak",
+        "Topu yere sektirdikten sonra vurmak",
+      ],
+      a: 1,
+      e: "Alttan serviste yüksek bir top atışı gerekmez. Kısa ve tekrarlanabilir bırakış, temas noktasını sabitler ve sporcunun topa koşmak zorunda kalmasını önler.",
+    },
+    {
+      q: "Alttan serviste topun hangi bölümüne, nerede temas edilmelidir?",
+      o: [
+        "Topun üstüne, başın arkasında",
+        "Topun alt-arka bölümüne, bel hizasının önünde",
+        "Topun yanına, gövdenin arkasında",
+        "Topun merkezine, dizlerin arkasında",
+      ],
+      a: 1,
+      e: "Topun alt-arka bölümüne vücudun önünde yapılan kısa ve net temas, topa ileri-yukarı bir çıkış verir. Tam altına vurmak topu gereğinden fazla yükseltebilir.",
+    },
+    {
+      q: "Serviste verimli kuvvet aktarım sırası hangisidir?",
+      o: [
+        "El → kol → omuz → gövde → kalça → ayak",
+        "Arka ayak → ön ayak → kalça → gövde → omuz → kol → el",
+        "Omuz → el → diz → gövde → ön ayak",
+        "Yalnız omuz → kol → el",
+      ],
+      a: 1,
+      e: "Servis bir kinetik zincir hareketidir. Kuvvetin yerden başlayıp alt ekstremite, gövde ve üst ekstremite boyunca sırayla aktarılması yalnız kolla vurmaya göre daha verimli ve tekrarlanabilirdir.",
+    },
+    {
+      q: "Alttan servis hedef çalışmasında doğru gelişim sıralaması hangisidir?",
+      o: [
+        "Dar çizgi hedefi → smaç servis → fileyi geçirme",
+        "Fileyi geçirme → oyun alanına düşürme → arka yarı → sağ/sol bölge → pozisyon hedefi",
+        "Yalnız maksimum hız → yalnız dip çizgi",
+        "Önce sıçrama → sonra top bırakma",
+      ],
+      a: 1,
+      e: "Ders, başarıyı kademeli zorlaştırır: önce servis geçerliliği, ardından derinlik, yön ve numaralı saha bölgesine isabet geliştirilir.",
+    },
+    {
+      q: "Üstten serviste tutarlı top atışının doğru konumu hangisidir?",
+      o: [
+        "Başın arkasında ve olabildiğince yüksek",
+        "Vuruş omzunun biraz önünde, benzer yükseklik ve konumda, mümkün olduğunca dönüşsüz",
+        "Vuruş omzunun uzağında ve yana doğru",
+        "Gövdenin tam arkasında ve alçak",
+      ],
+      a: 1,
+      e: "Tekrarlanabilir top atışı servis doğruluğunun temelidir. Dersin testinde 10 atışın en az 8'inin vuruş omzunun biraz önündeki hedef alana düşmesi beklenir.",
+    },
+    {
+      q: "Üstten servis temasında doğru teknik hangisidir?",
+      o: [
+        "Topa başın arkasında, bükülü dirsekle temas etmek",
+        "Kolu yüksek noktaya uzatıp topun arkasına açık ve sert avuç içiyle temas etmek",
+        "Topa parmak uçlarıyla yumuşak ve uzun temas etmek",
+        "Bileği gevşek bırakıp topun altına vurmak",
+      ],
+      a: 1,
+      e: "Top başın üzerinde ve vuruş omzunun biraz önünde karşılanır. Yüksek temas noktası ve sert el yüzeyi, kuvvetin topa kontrollü aktarılmasını sağlar.",
+    },
+    {
+      q: "Yüzen serviste topun dönüşünü azaltmak için hangi teknik birleşim kullanılmalıdır?",
+      o: [
+        "Topun altına uzun temas ve bileği hızlı kapatma",
+        "Arka merkeze kısa-net temas, sert açık el ve sabit bilek",
+        "Topun yanına parmak uçlarıyla temas",
+        "Elin topu uzun süre takip etmesi",
+      ],
+      a: 1,
+      e: "Arka merkeze kısa temas ve bileğin sabit kalması açısal dönüşü azaltır. Düşük dönüşlü top, hava akımı etkileri nedeniyle alıcı için öngörülmesi güç sapmalar gösterebilir.",
+    },
+    {
+      q: "Yüzen servis topu sürekli dönüyorsa ders verisine göre ilk kontrol edilmesi gereken hata grubu hangisidir?",
+      o: [
+        "Top atışındaki dönüş, hareketli bilek, merkez dışı temas ve uzun takip hareketi",
+        "Dizlerin fazla bükülmesi ve iki ayakla iniş",
+        "Hedef bölgenin geniş seçilmesi",
+        "Servis sonrası savunmaya erken geçilmesi",
+      ],
+      a: 0,
+      e: "Yüzen servis için topun atıştan başlayarak düşük dönüşlü olması gerekir. Merkez dışı temas, bilek kapanması veya elin topa eşlik etmesi topa istenmeyen dönüş kazandırabilir.",
+    },
+    {
+      q: "Servisi çapraz hedefe yönlendirmenin doğru yolu hangisidir?",
+      o: [
+        "Başlangıçta gövdeyi düz tutup yalnız son anda bileği çevirmek",
+        "Ayak, kalça ve omuzları çapraz hedefe göre ayarlayıp kol hareketini hedef yönünde tamamlamak",
+        "Topu yana atıp gözleri kapatmak",
+        "Temas noktasını başın arkasına taşımak",
+      ],
+      a: 1,
+      e: "Yön; ayaklar, kalça, omuzlar, temas noktası ve kol yolu tarafından birlikte oluşturulur. Yalnız bilekle son anda yön vermek tutarlılığı azaltır.",
+    },
+    {
+      q: "Sıçrayarak yüzen servisin ayakta yüzen servise göre sağladığı temel mekanik avantaj hangisidir?",
+      o: [
+        "Topa daha alçak noktada temas etmek",
+        "Daha yüksek temas noktası ve daha düz başlangıç açısı oluşturmak",
+        "Topa mutlaka üst dönüş vermek",
+        "Yaklaşma ritmini ortadan kaldırmak",
+      ],
+      a: 1,
+      e: "Ders içeriği sıçramanın temas yüksekliğini artırdığını öğretir. Biyomekanik araştırmalar da yüksek temasın daha düz çıkış açısı ve daha yüksek başlangıç hızı sağlayabildiğini göstermektedir.",
+    },
+    {
+      q: "Sağ elini kullanan sporcu için derste verilen sıçrayarak servis yaklaşma örneği hangisidir?",
+      o: [
+        "Sağ → sol → sağ → sıçrama",
+        "Sol → sağ → sol → sıçrama → vuruş",
+        "Sol → sol → sağ → tek ayak iniş",
+        "Sağ → sağ → sol → duruş",
+      ],
+      a: 1,
+      e: "Örnek ritim sol-sağ-sol adımlarından sonra sıçrama ve vuruştur. Adım sayısı kişiye göre değişebilse de top atışı ile yaklaşma ritminin uyumu korunmalıdır.",
+    },
+    {
+      q: "Smaç serviste topa üst dönüş kazandırıp topun hızlı uçuş sonrası rakip sahaya düşmesini sağlayan uygulama hangisidir?",
+      o: [
+        "Topun altına vurup bileği sabit tutmak",
+        "Topun üst-arka bölümüne yüksek temas edip eli topun üzerinden geçirerek bileği öne kapatmak",
+        "Topun yanına açık olmayan elle vurmak",
+        "Teması başın arkasında yapmak",
+      ],
+      a: 1,
+      e: "Üst-arka temas ve öne kapanan bilek topa ileri dönüş kazandırır. Magnus etkisiyle ilişkili bu dönüş, hızlı topun uçuşunun ilerleyen bölümünde aşağı yönlü sapmasına yardım eder.",
+    },
+    {
+      q: "Kritik sayıda servis seçimi için dersin risk yönetimi ilkesi hangisidir?",
+      o: [
+        "Her koşulda en yüksek hızlı smaç servisi kullanmak",
+        "Servis güvenliği ile rakibi zorlayacak kaliteyi, sporcunun başarı yüzdesi ve hedef genişliğine göre dengelemek",
+        "Rakibin dizilişini dikkate almadan rastgele hedef seçmek",
+        "Servis sonrası sahaya girmeden sonucu beklemek",
+      ],
+      a: 1,
+      e: "Taktik servis kararı skor, sporcunun başarı yüzdesi ve rakip dizilişine göre verilir. Geniş hedef daha düşük risk; dar çizgi, maksimum hız veya smaç servis daha yüksek risk taşır.",
     },
   ],
   Smaç: [
     {
-      q: "Smaç hareketinin doğru sırası hangisidir?",
+      q: "Ders anlatımına göre başarılı bir smaç tekniğinin temel amacı hangisidir?",
       o: [
-        "Vuruş–yaklaşma–iniş",
-        "Yaklaşma–sıçrama–vuruş–iniş",
-        "İniş–vuruş–sıçrama",
-        "Blok–servis–vuruş",
+        "Her durumda topa mümkün olan en sert şekilde vurmak",
+        "Yaklaşma, sıçrama, kol hareketi ve yüksek teması birleştirerek topu uygun hedefe yönlendirmek",
+        "Yalnızca rakip blok oyuncusuna vurmak",
+        "Topa file seviyesinin altında temas etmek",
       ],
       a: 1,
-      e: "Smaç; yaklaşma, sıçrama, havada açılma, vuruş ve güvenli iniş aşamalarından oluşur.",
+      e: "Smaç yalnız kuvvet üretimi değildir. Zamanlama, temas yüksekliği, yön kontrolü ve rakip blok-savunmaya göre karar verme aynı hareket zincirinin parçalarıdır.",
     },
     {
-      q: "Arka hat oyuncusu hücum için nereden sıçramalıdır?",
+      q: "Smaç yaklaşmasına başlamadan önce doğru hazır pozisyon ve görsel takip hangisidir?",
       o: [
-        "File altından",
-        "3 metre çizgisinin gerisinden",
-        "Orta çizgiden",
-        "Servis bölgesi dışından",
+        "Dik ve hareketsiz durup yalnız topu izlemek",
+        "Dizler hafif bükülü ve ağırlık önde; servis karşılamayı, pasörü ve yaklaşma alanını takip etmek",
+        "Fileye sırtı dönük biçimde pası beklemek",
+        "Kollar baş üzerinde kilitli olarak beklemek",
       ],
       a: 1,
-      e: "Arka hat oyuncusu 3 metre çizgisinin gerisinden sıçramalıdır.",
+      e: "Hücumcu yalnız topu değil oyun akışını okur. Karşılama kalitesi ve pasörün topa yaklaşımı, pasın olası yüksekliği ve yönü hakkında erken bilgi verir.",
+    },
+    {
+      q: "Sağ elini kullanan bir sporcu için üç adımlı smaç yaklaşması hangisidir?",
+      o: ["Sağ → sol → sağ → sıçrama", "Sol → sağ → sol → sıçrama", "Sol → sol → sağ → sıçrama", "Sağ → sağ → sol → sıçrama"],
+      a: 1,
+      e: "Sağ elini kullanan sporcuda üç adımlı sıra sol-sağ-sol şeklindedir. Sol elini kullanan sporcu bunun tersini uygular.",
+    },
+    {
+      q: "Üç adımlı yaklaşmanın doğru hız ritmi hangisidir?",
+      o: ["En hızlı → hızlı → yavaş → sıçrama", "Bütün adımlar aynı hızda", "Yavaş → hızlı → en hızlı → sıçrama", "Yavaş → duruş → yavaş → sıçrama"],
+      a: 2,
+      e: "İlk adım zamanlama ve yönlendirme içindir; son iki adım yaklaşma hızını artırır, frenleme ve sıçrama hazırlığını birleştirir.",
+    },
+    {
+      q: "Yaklaşma sırasında iki kolun geriden öne-yukarı savrulmasının temel işlevi nedir?",
+      o: ["Topun dönüşünü azaltmak", "Sıçrama yüksekliğine katkı sağlamak ve vücut dengesini desteklemek", "Yaklaşma hızını tamamen durdurmak", "Fileye yatay hareketi artırmak"],
+      a: 1,
+      e: "Ders içeriği kol savurmanın sıçramaya yardım ettiğini öğretir. Elit voleybolcularla yapılan biyomekanik çalışmada da kol savurmanın karşı-hareket sıçrama yüksekliğini anlamlı biçimde artırdığı gösterilmiştir.",
+    },
+    {
+      q: "Son iki yaklaşma adımının smaç sıçramasındaki mekanik görevi hangisidir?",
+      o: ["Yatay hızı kontrol ederek yukarı yönlü sıçramaya dönüştürmek", "Sporcuyu doğrudan fileye taşımak", "Diz ve kalçayı tamamen kilitlemek", "Sıçramayı tek ayakla tamamlamak"],
+      a: 0,
+      e: "Hızlı ve birbirine yakın son adımlar ile diz-kalça bükülmesi yaklaşma momentumunun dikey sıçramaya aktarılmasına yardım eder. Sıçrama fileye değil mümkün olduğunca yukarı yönelmelidir.",
+    },
+    {
+      q: "Sıçrama sırasında doğru vuruş kolu hazırlığı hangisidir?",
+      o: ["Dirsek omuz altında, el kapalı ve omuz önde", "Dirsek omuz seviyesinin üzerinde, omuz geriye açık ve el rahat-açık", "İki dirsek gövdeye yapışık ve eller belde", "Vuruş kolu tamamen önde ve bilek kapalı"],
+      a: 1,
+      e: "Yüksek dirsek ve geriye açılan omuz, vuruş kolunun hızlanacağı hareket mesafesini hazırlar. Diğer kol top takibine ve havadaki dengeye yardım eder.",
+    },
+    {
+      q: "Smaçta doğru topa temas noktası ve el hareketi hangisidir?",
+      o: ["Başın arkasında, topun altına sert yumrukla temas", "Mümkün olan yüksek noktada ve vücudun biraz önünde; açık elle üst-arka bölgeye temas ve bileği öne kapatma", "Göğüs hizasında parmak uçlarıyla uzun temas", "Top vücudun tam üzerindeyken bileği sabit bırakma"],
+      a: 1,
+      e: "Yüksek ve öndeki temas kuvvet aktarımını ve saha görüşünü geliştirir. Elin topun üst-arka bölümünden geçmesi ve bileğin kapanması topu ileri-aşağı yönlendirir.",
+    },
+    {
+      q: "Smaç topu sürekli saha dışına gidiyorsa dersin hata analizine göre en olası teknik birleşim hangisidir?",
+      o: ["Üst-arka temas ve bileğin kapanması", "Topun altına veya başın arkasında temas ve bileğin kapanmaması", "Topa yüksek noktada ve önde temas", "Gözlerin temasa kadar topu izlemesi"],
+      a: 1,
+      e: "Topun altına ya da başın arkasında vurmak çıkış açısını yükseltir; bileğin kapanmaması üst dönüşü azaltır. Düzeltme, teması öne-yukarı taşıyıp eli topun üzerinden geçirmektir.",
+    },
+    {
+      q: "Güvenli bir smaç inişinde hangi uygulama doğrudur?",
+      o: ["Tek ayakta ve diz kilitli iniş", "İki ayağın ön bölümüyle temas edip diz-kalçayı kontrollü bükmek ve dizlerin içeri kapanmasını önlemek", "Fileye doğru düşerken ayakları çaprazlamak", "Topukları bitiştirip gövdeyi geriye atmak"],
+      a: 1,
+      e: "İki ayaklı, kontrollü bükülmeli iniş yükün emilmesine ve dengenin korunmasına yardım eder. Araştırmalar smaç iniş mekaniğinin özellikle diz yaralanma riski açısından önemli olduğunu göstermektedir.",
+    },
+    {
+      q: "Yüksek kanat pasında dersin temel zamanlama ilkesi hangisidir?",
+      o: ["Top yükselirken sıçra, düşerken yaklaş", "Top yükselirken yaklaş, düşmeye başlarken sıçra ve yüksek noktada vur", "Pasör topa dokunmadan sıçra ve havada bekle", "Top fileye değdikten sonra yaklaş"],
+      a: 1,
+      e: "Yaklaşma pasın uçuş süresine göre ayarlanır. Yüksek pasta yaklaşma daha geç hızlanabilir; hızlı hücumda ise hücumcu pasörün temasından önce harekete başlar.",
+    },
+    {
+      q: "Bileğin topun üzerinden öne kapanması topun uçuşunu nasıl etkiler?",
+      o: ["Topa üst dönüş vererek hızlı uçuş sonrası aşağı yönlü düşüşü destekler", "Topun tamamen dönüşsüz uçmasını sağlar", "Topu yalnızca yukarı yönlendirir", "Top hızını sıfırlar"],
+      a: 0,
+      e: "Üst-arka temas ve ileri bilek hareketi topa üst dönüş kazandırır. Bu dönüş, topun güçlü ilerlerken rakip saha içine doğru daha erken düşmesine yardım eder.",
+    },
+    {
+      q: "Plase veya kontrollü hücum hangi oyun durumunda tam kuvvetli smaçtan daha uygun olabilir?",
+      o: ["Pas fileden uzakken, blok iyi yerleşmişken veya savunmada boş alan varken", "Her pas kusursuz ve blok yokken zorunlu olarak", "Sporcu dengeli ve geniş çapraz tamamen boşken", "Yalnız maçın ilk sayısında"],
+      a: 0,
+      e: "Plase gelişigüzel yavaş vuruş değildir. Smaç görüntüsü korunarak blok arkası veya savunma boşluğu kısa ve kontrollü temasla hedeflenir.",
+    },
+    {
+      q: "Rakip blok çizgi yönünü kapatıyorsa hücumcunun değerlendirebileceği en mantıklı seçenek hangisidir?",
+      o: ["Aynı kapalı alana gözleri kapalı vurmak", "Çapraz alanı, blok dışını veya uygun savunma boşluğunu hedeflemek", "Topu mutlaka üçlü bloğa tam kuvvet göndermek", "Topu tutup yeni karar vermek"],
+      a: 1,
+      e: "İleri seviye hücumcu blok sayısını, ellerin yönünü ve arka alan savunmasını temas öncesinde okur. Karar, açık kalan bölge ve pas kalitesine göre verilir.",
+    },
+    {
+      q: "Arka alan oyuncusunun kurallara uygun hücum yapması için sıçrama anında hangi koşul sağlanmalıdır?",
+      o: ["Hücum çizgisinin önünde iki ayakla sıçramalıdır", "Hücum çizgisinin gerisinden sıçramalı ve çizgiye basmamalıdır; vuruştan sonra ön bölgeye inebilir", "Yalnız tek ayakla sıçramalıdır", "Top file seviyesinin altında olmalıdır"],
+      a: 1,
+      e: "Ders içeriğine ve FIVB kuralına göre arka hat oyuncusunun kalkış noktası hücum çizgisinin gerisinde olmalıdır. Havada topa vurduktan sonra ön bölgeye inmesi serbesttir.",
     },
   ],
   Blok: [
     {
-      q: "Blok teması takımın üç vuruş hakkından sayılır mı?",
+      q: "Ders anlatımına göre bloğun temel savunma amacı hangisidir?",
       o: [
-        "Her zaman sayılır",
-        "Sayılmaz",
-        "Yalnız tekli blokta sayılır",
-        "Yalnız ikili blokta sayılır",
+        "Yalnız doğrudan sayı kazanmak",
+        "Rakip hücumu durdurmak veya hücum koridorunu daraltarak topu savunmacılara yönlendirmek",
+        "Rakip pasörün fileye yaklaşmasını engellemek",
+        "Servis karşılamayı başlatmak",
       ],
       a: 1,
-      e: "Blok teması takımın izin verilen üç temasından biri olarak sayılmaz.",
+      e: "Blok ilk savunma hattıdır. Başarılı blok yalnız sayı değildir; hücum açısını kapatmak, topun hızını azaltmak veya topu arka alan savunmasının bulunduğu koridora yönlendirmek de etkili sonuçtur.",
     },
     {
-      q: "Etkili blokta eller nasıl kullanılmalıdır?",
+      q: "Doğru blok hazır pozisyonu hangisidir?",
       o: [
-        "Geri çekilerek",
-        "File üzerinden rakip alana yönlendirilerek",
-        "Bel hizasında",
-        "Birbirinden tamamen uzak",
+        "Fileye yaslanmış, dizler düz ve eller belde",
+        "Fileye yaklaşık bir kol mesafesinde, ayaklar omuz genişliğinde, dizler hafif bükülü ve eller file seviyesine yakın",
+        "Fileden üç metre uzakta, ağırlık yalnız tek ayakta",
+        "Ayaklar çapraz, gövde fileye sırtı dönük",
       ],
       a: 1,
-      e: "Eller file üstünde alan kapatmalı ve topu rakip sahaya yönlendirmelidir.",
+      e: "Bir kol mesafesi oyuncuya dikey yükselme ve elleri kontrollü biçimde rakip alana uzatma alanı sağlar. Dengeli ağırlık dağılımı ilk yana hareketi hızlandırır.",
+    },
+    {
+      q: "Blok sıçraması ve inişinin doğru hareket örüntüsü hangisidir?",
+      o: [
+        "Tek ayakla fileye doğru sıçrayıp sert dizlerle inmek",
+        "İki ayakla mümkün olduğunca dikey sıçrayıp iki ayakta yumuşak diz bükümüyle inmek",
+        "İleri savrularak orta çizgiye basmak",
+        "Sıçrama sırasında gövdeyi yana çevirmek",
+      ],
+      a: 1,
+      e: "Dikey çift ayak sıçrama file temasını ve rakip alanına kontrolsüz geçişi azaltır. İki ayakta kontrollü diz bükümü iniş yükünü karşılamaya ve bir sonraki göreve geçmeye yardım eder.",
+    },
+    {
+      q: "Etkili blokta el ve parmak yerleşimi nasıl olmalıdır?",
+      o: [
+        "Eller omuzlardan dar, parmaklar kapalı ve avuçlar oyuncuya dönük",
+        "Eller omuz genişliğinden biraz açık, parmaklar gergin-aralıklı ve avuçlar rakip sahaya dönük",
+        "Bir el yukarıda, diğer el bel hizasında",
+        "Başparmaklar dışarı, parmaklar gevşek",
+      ],
+      a: 1,
+      e: "Simetrik ve güçlü el yüzeyi topun geçebileceği alanı küçültür. Ders ölçütünde 10 sıçramanın en az 8'inde ellerin aynı yükseklikte ve simetrik olması beklenir.",
+    },
+    {
+      q: "FIVB eğitim yaklaşımında 'blok penetrasyonu' olarak açıklanan doğru uygulama hangisidir?",
+      o: [
+        "Ellerin yalnız dikey biçimde yükselmesi",
+        "Fileye değmeden elleri file üzerinden rakip alanın içine ve topun geçiş yoluna uzatmak",
+        "Gövdenin orta çizgiyi geçmesi",
+        "Kolları temas öncesinde geriye çekmek",
+      ],
+      a: 1,
+      e: "Eller yalnız yukarı uzandığında top blokçu ile file arasından veya ellerden aşağı sapabilir. Rakip alana kontrollü uzanma etkili kapatma alanını büyütür; rakibin oyununa müdahale edilmemelidir.",
+    },
+    {
+      q: "Kısa mesafede yan adımla blok hareketinin doğru özelliği hangisidir?",
+      o: [
+        "Ayakları birbirine çarptırarak ilerlemek",
+        "Omuzları fileye paralel tutup son adımda iki ayağı dengeli yerleştirmek",
+        "Fileye sırtı dönerek koşmak",
+        "Hareketi tek ayak sıçramasıyla bitirmek",
+      ],
+      a: 1,
+      e: "Yan adım kısa mesafede gövdenin fileye dönük kalmasını sağlar. Sıçrama öncesindeki dengeli çift ayak tabanı dikey kuvvet üretimi için gereklidir.",
+    },
+    {
+      q: "Daha uzun mesafede çapraz adımla kanada geçiş nasıl tamamlanmalıdır?",
+      o: [
+        "Omuzlar fileden çevrilip tek ayakla sıçranarak",
+        "İlk ayak yön tarafına açılıp diğer ayak çapraz geçerek ve son adım fileye paralel kapanarak",
+        "Ayaklar hiç çaprazlanmadan küçük adımlarla",
+        "Son iki adım hızlandırılmadan doğrudan fileye koşularak",
+      ],
+      a: 1,
+      e: "Çapraz adım uzun mesafeyi daha hızlı kapatır. Ancak sıçramadan önce son basışta omuzlar ve iki ayak yeniden fileye paralel ve dengeli konuma getirilmelidir.",
+    },
+    {
+      q: "Rakip pasörü okurken dersin önerdiği bilgi sırası hangisidir?",
+      o: [
+        "Hücumcu → skor → hakem → top",
+        "Karşılama kalitesi → pasörün geliş yönü → omuz/kalça yönü → topun çıkış açısı → hücumcu yaklaşması",
+        "Yalnız topun en yüksek noktası",
+        "Pasörün forma numarası → file yüksekliği",
+      ],
+      a: 1,
+      e: "Blokçu tek bir ipucuna bağlı kalmaz. Karşılamadan başlayıp pasörün vücut konumu ve top çıkışı üzerinden hücumcunun yaklaşmasına geçen sıra, olası hücum yönünü aşamalı daraltır.",
+    },
+    {
+      q: "Blok sıçrama zamanlaması yüksek ve hızlı hücumlarda nasıl değişmelidir?",
+      o: [
+        "Her iki durumda da top pasördeyken sıçranır",
+        "Yüksek topta hücumcuyla birlikte; hızlı hücumda daha erken tepki verilerek yükselinir",
+        "Yüksek topta çok erken, hızlı hücumda çok geç sıçranır",
+        "Pas yüksekliği zamanlamayı etkilemez",
+      ],
+      a: 1,
+      e: "Blokçu hücumcunun son iki adımını ve top-hücumcu buluşma noktasını okur. Hızlı tempo daha kısa karar süresi yarattığından tepki daha erken başlar.",
+    },
+    {
+      q: "İkili blokta eller arasından top geçmesini önlemek için doğru koordinasyon hangisidir?",
+      o: [
+        "İki blokçunun farklı zamanlarda ve farklı koridorlara uzanması",
+        "Kanat blokçunun yönü belirlemesi, orta blokçunun yaklaşıp omuz-dirsek-el boşluğunu kapatması ve birlikte yükselmeleri",
+        "Orta blokçunun kanat oyuncusundan uzak durması",
+        "İki oyuncunun dış ellerini birbirinden uzaklaştırması",
+      ],
+      a: 1,
+      e: "İkili blokta bireysel el alanlarının tek bir kapalı yüzeye dönüşmesi gerekir. Ders başarı hedefi, 10 ikili bloğun en az 8'inde eller arasında koridor bırakmamaktır.",
+    },
+    {
+      q: "Çizgi bloğunda dış elin temel görevi nedir?",
+      o: [
+        "Anten dışındaki alanı açmak",
+        "Antene yakın çizgi koridorunu kapatıp topu saha içine yönlendirecek açı oluşturmak",
+        "Çapraz savunmacının görüşünü kapatmak",
+        "Fileden geriye çekilmek",
+      ],
+      a: 1,
+      e: "Çizgi görevinde dış el antene yakın alanı kapatır. El rakip alana ve hafifçe saha içine çevrilmezse top bloktan dışarı sapabilir.",
+    },
+    {
+      q: "Hızlı hücuma karşı okuma bloğunun tahmin bloğundan temel farkı nedir?",
+      o: [
+        "Top oynanmadan rastgele bir hücumcuya sıçramak",
+        "Pasörün elleri, karşılamanın kalitesi ve orta hücumcunun yaklaşmasını hızla işleyerek karar vermek",
+        "Yalnız rakip servisçiyi izlemek",
+        "Sıçramadan fileden uzaklaşmak",
+      ],
+      a: 1,
+      e: "Okuma bloğunda amaç erken tahmin etmek değil, kullanılabilir görsel bilgileri kısa sürede birleştirip doğru hücumcuya yetişmektir.",
+    },
+    {
+      q: "Yumuşak blok dokunuşunun savunma açısından yararı hangisidir?",
+      o: [
+        "Topu mutlaka rakip sahaya geri göndermek",
+        "Topun hızını azaltarak arka alan savunmasına oynanabilir bir top kazandırmak",
+        "Blok temasını görünmez yapmak",
+        "Takımın sonraki topa dokunmasını engellemek",
+      ],
+      a: 1,
+      e: "Her blok doğrudan sayı olmaz. Kontrollü temas topun enerjisini azaltıp yönünü okunabilir hâle getirerek savunmanın ralliyi sürdürmesine yardım eder.",
+    },
+    {
+      q: "Üçlü blokta doğru kapanma düzeni hangisidir?",
+      o: [
+        "Her oyuncunun farklı yöne uzanması",
+        "Dış blokçunun anten tarafını belirlemesi, iç oyuncuların boşluğu kapatması ve ellerin aynı hücum koridoruna uzanması",
+        "Oyuncuların birbirinin ayağına basarak yükselmesi",
+        "Orta blokçunun tek başına sıçraması",
+      ],
+      a: 1,
+      e: "Üçlü blok yüksek ve öngörülebilir hücumlarda kurulabilir. Geçiş yolları ve iniş alanları önceden paylaşılmalı, blok yüzeyi tek bir koridoru kapatmalıdır.",
+    },
+    {
+      q: "Blok-savunma koordinasyonunun temel taktik ilkesi hangisidir?",
+      o: [
+        "Blok ve arka alanın aynı koridoru tamamen boş bırakması",
+        "Blok bir hücum koridorunu kapatırken savunmacıların açık kalan alanlara yerleşmesi",
+        "Savunmacıların blok görevinden bağımsız rastgele yerleşmesi",
+        "Blokçuların inişten sonra oyunu izlememesi",
+      ],
+      a: 1,
+      e: "Blok takım savunmasını yönlendiren bir araçtır. Kapalı ve açık koridorlar kısa iletişimle paylaşılır; blokçu inişte topu bulup savunma ya da yeni hücum görevine geçer.",
     },
   ],
   "Savunma teknikleri": [
     {
-      q: "Plonjon hangi durumda kullanılır?",
+      q: "Ders anlatımına göre savunmanın temel amacı hangisidir?",
       o: [
-        "Kolay ve yüksek toplarda",
-        "Ulaşılamayan alçak ve uzak toplarda",
-        "Servis atarken",
-        "Blok yaparken",
+        "Topu yalnızca havaya kaldırmak",
+        "Rakip hücumunun yere temasını önleyip kontrollü karşı hücum fırsatı hazırlamak",
+        "Her topu doğrudan rakip alana göndermek",
+        "Yalnız refleksle ve yerleşim olmadan hareket etmek",
       ],
       a: 1,
-      e: "Plonjon, normal savunma duruşuyla ulaşılamayan zor topları oyunda tutmak için kullanılır.",
+      e: "Savunma yalnız topu kurtarmak değildir. Top vurulmadan önce bilgi toplama, doğru alana yerleşme, kontrollü temas ve ardından hücuma geçiş birlikte değerlendirilir.",
     },
     {
-      q: "Plonjonda güvenlik için hangi aşama önemlidir?",
+      q: "Doğru savunma hazır pozisyonu hangisidir?",
       o: [
-        "Kontrolsüz düşmek",
-        "Temas sonrası güvenli kayma veya yuvarlanma",
-        "Dizleri kilitlemek",
-        "Fileye tutunmak",
+        "Ayaklar bitişik, dizler düz ve ağırlık topuklarda",
+        "Ayaklar omuz genişliğinden biraz açık, kalça alçak, gövde kontrollü önde ve ağırlık ayakların ön bölümünde",
+        "Gövde geride, kollar platform biçiminde kilitli",
+        "Ağırlık tek ayakta ve gözler zeminde",
       ],
       a: 1,
-      e: "Hamle, temas, kayma/yuvarlanma ve ayağa kalkma doğru sırayla uygulanmalıdır.",
+      e: "Alçak ve öne yüklenmiş dengeli duruş, farklı yönlere hızlı ilk adım atmayı sağlar. Kollar top gelmeden kilitlenmez; hareket serbestliği korunur.",
+    },
+    {
+      q: "Savunmada ulaşılabilir bir top için ilk teknik öncelik hangisidir?",
+      o: [
+        "Ayakları kullanmadan kolları topa uzatmak",
+        "Hızlı ilk adımla topun arkasına yerleşip temas noktasında yeniden dengelenmek",
+        "Doğrudan yere atlamak",
+        "Platformu önceden kilitleyerek koşmak",
+      ],
+      a: 1,
+      e: "Dersin temel ilkesi önce ayaklarla topun arkasına girmektir. Yakın toplarda kısa ayarlama, yan toplarda itiş adımı kullanılır ve temas öncesi iki ayak yeniden dengelenir.",
+    },
+    {
+      q: "Savunma manşetinde doğru platform ve temas davranışı hangisidir?",
+      o: [
+        "Dirsekler bükülü, topa ellerle vurulur",
+        "Dirsekler düz, başparmaklar yan yana; top geniş ön kol yüzeyinde karşılanıp enerji hedefe yönlendirilir",
+        "Omuzlar yukarı çekilip platform temas anında döndürülür",
+        "Kollar topa doğru büyük açıyla savrulur",
+      ],
+      a: 1,
+      e: "Sabit ve simetrik ön kol platformu topun geliş enerjisini öngörülebilir biçimde yönlendirir. Temas anındaki ani bilek veya kol dönüşü çıkış açısını bozar.",
+    },
+    {
+      q: "Önden gelen sert topu savunurken doğru kuvvet kullanımı hangisidir?",
+      o: [
+        "Kolları topa doğru sertçe savurmak",
+        "Topu gövdenin önünde, sabit platformla karşılayıp gelen hızdan yararlanmak",
+        "Topu gövdeye değene kadar beklemek",
+        "Dizleri tamamen düzleştirerek yukarı vurmak",
+      ],
+      a: 1,
+      e: "Sert hücum zaten yüksek hız taşır. Büyük kol hareketi topa gereksiz ek hız verir; sabit platform ve uygun açı topu fileden 2-3 metre uzaktaki güvenli pasör bölgesine yönlendirebilir.",
+    },
+    {
+      q: "Kısa topa öne hareketin doğru sırası hangisidir?",
+      o: [
+        "Büyük ilk adım → dik duruş → geç platform",
+        "Topu erken fark et → küçük ve hızlı adımlar → son adımda alçal → platformu topun altına getir → yeniden ayağa kalk",
+        "Platformu kilitle → geriye adım → tek kol temas",
+        "Doğrudan plonjon → yerde bekle",
+      ],
+      a: 1,
+      e: "Kısa topa ilk hareket hızlı fakat kontrollüdür. Küçük adımlar frenleme ve doğru temas noktasına ince ayar sağlar; plonjon ancak ayakla ulaşılamayan durumda düşünülür.",
+    },
+    {
+      q: "Savunmacının hücum öncesi doğru okuma sırası hangisidir?",
+      o: [
+        "Yalnız top → skor → hakem",
+        "Karşılama kalitesi → pasör seçenekleri → hücumcunun yaklaşma açısı → blok yönü → açık alan",
+        "Yalnız hücumcunun forma numarası",
+        "Bloktan sonra pasörün yönü",
+      ],
+      a: 1,
+      e: "Savunma kararı tek bir görsel ipucuna dayanmaz. Pasör, hücumcu ve blok yerleşiminin birlikte okunması olası vuruş koridorunu temas öncesinde daraltır.",
+    },
+    {
+      q: "Blok çizgi hücumunu kapatıyorsa arka alan savunması nasıl yerleşmelidir?",
+      o: [
+        "Bütün savunmacılar çizgiye yığılmalıdır",
+        "Çapraz ve derin açık alanlar paylaşılmalı, aynı koridorda iki oyuncu gereksiz yere kalmamalıdır",
+        "Blok arkasındaki kısa alan tamamen boş bırakılmalıdır",
+        "Savunmacılar blok görevini dikkate almamalıdır",
+      ],
+      a: 1,
+      e: "Blok-savunma sistemi kapalı koridora göre açık alanları paylaşır. Blok çizgiyi kapattığında savunma çapraz, derin ve kısa boşluk sorumluluklarını düzenler.",
+    },
+    {
+      q: "Yana uzanma sonrası güvenli yuvarlanma sırası hangisidir?",
+      o: [
+        "Dirsek → diz → baş",
+        "Kalça → yan gövde → omuz; baş korunur ve çene göğse yaklaşır",
+        "Baş → omuz → diz",
+        "Eller sabitlenir ve bütün ağırlık bileğe verilir",
+      ],
+      a: 1,
+      e: "Kuvvetin geniş vücut yüzeylerine sırayla dağıtılması sert eklem temasını azaltır. Hareket önce minder üzerinde topsuz, sonra kontrollü topla aşamalı öğretilir.",
+    },
+    {
+      q: "Hücumcunun tam kol salınımı yapmaması veya elini topun altına getirmesi hangi savunma kararını destekler?",
+      o: [
+        "Sert çapraz smaç için geriye kaçmayı",
+        "Plase olasılığını okuyup blok arkasındaki kısa alana çıkmayı",
+        "Savunmayı tamamen bırakmayı",
+        "Yalnız çizgi dışına yerleşmeyi",
+      ],
+      a: 1,
+      e: "Kol hızının azalması ve elin topun altına girmesi kontrollü kısa vuruşun önemli ipuçlarıdır. Blok arkası savunmacısı bir adım önde ve kısa topa hazır kalır.",
+    },
+    {
+      q: "Bloktan seken toplara hazırlanırken en doğru denge stratejisi hangisidir?",
+      o: [
+        "Ağırlığı vuruştan önce tamamen tek yöne aktarmak",
+        "Blok ellerini izleyip dengede kalmak ve yön değişince kısa adımlarla topa yaklaşmak",
+        "Top bloktan çıkana kadar gözleri kapatmak",
+        "Platformu tek yönde sabitlemek",
+      ],
+      a: 1,
+      e: "Blok teması topun hız ve yönünü ani biçimde değiştirebilir. Ağırlığı nötr tutmak ve kısa düzeltme adımları, beklenmeyen sekmeye tepki süresini destekler.",
+    },
+    {
+      q: "Sert smaç savunmasında topu oynanabilir alana yönlendiren temel değişken hangisidir?",
+      o: [
+        "Büyük kol salınımı",
+        "Gövdenin önündeki sabit platformun pasör hedef bölgesine göre açısı",
+        "Ellerin temas anında ayrılması",
+        "Topa mümkün olduğunca geç bakmak",
+      ],
+      a: 1,
+      e: "Yüksek hızlı topun momentumu platform tarafından yeniden yönlendirilir. Dersin ileri seviye ölçütü, 20 sert hücumun en az 14'ünü takımın ikinci temas yapabileceği alana taşımaktır.",
+    },
+    {
+      q: "Tek kol savunması hangi durumda tercih edilmelidir?",
+      o: [
+        "İki kollu dengeli platform mümkünken her zaman",
+        "İki kolla ulaşılamayan acil durumda, topu oyunda tutmak için",
+        "Bütün servis karşılamalarda",
+        "Top doğrudan vücudun önüne gelirken",
+      ],
+      a: 1,
+      e: "Tek kol, yumruk veya el sırtı temel platformun yerine geçmez; erişim sınırındaki top için acil çözümdür. Omuz kontrolsüz gerilmemeli ve düşüş alanı güvenli olmalıdır.",
+    },
+    {
+      q: "Öne plonjonun öğretim ve kullanım ilkesi hangisidir?",
+      o: [
+        "Her kısa top için ilk seçenektir",
+        "Normal adım ve uzanmayla ulaşılamayan top için son seçenektir; minder ve antrenör gözetimiyle aşamalı öğrenilir",
+        "Sert zeminde doğrudan oyun hızında başlanır",
+        "Temastan sonra eller yere sabitlenip bütün ağırlık bileklere verilir",
+      ],
+      a: 1,
+      e: "Plonjon yüksek riskli bir acil durum tekniğidir. Topsuz kayma ve diz üstü uzanma basamakları öğrenilmeden oyun hızına geçilmez; uygun zemin ve boş iniş alanı gerekir.",
+    },
+    {
+      q: "Savunmadan hücuma geçişin doğru zinciri hangisidir?",
+      o: [
+        "Savunma teması → yerde kalıp topu izleme",
+        "Savunma teması → topun yönünü takip → pasör dışındakilerin hücum yollarını açması → yaklaşma → vuruş sonrası koruma",
+        "Savunma teması → herkesin aynı noktaya koşması",
+        "Savunma teması → rallinin bittiğini varsayma",
+      ],
+      a: 1,
+      e: "Kaliteli savunma karşı hücumu başlatır. Temas yapan oyuncu ayağa kalkar; diğer oyuncular pasör hedefini, yaklaşma yolunu ve hücum korumasını eş zamanlı kurar.",
     },
   ],
-  "Takım rotasyonları": [
+  "__eskiTakımRotasyonlarıSorusu": [
     {
       q: "Servis hakkı kazanıldığında oyuncular hangi yönde döner?",
       o: ["Saat yönünde", "Saat yönünün tersine", "Çapraz", "Dönüş yapılmaz"],
@@ -1697,60 +2726,1809 @@ const examBank = {
   ],
   "Hücum organizasyonları": [
     {
-      q: "5-1 oyun sisteminde kaç ana pasör bulunur?",
-      o: ["1", "2", "3", "5"],
-      a: 0,
-      e: "5-1 sisteminde bir pasör ve beş hücum oyuncusu bulunur.",
-    },
-    {
-      q: "4-2 sisteminin temel özelliği nedir?",
+      q: "Ders anlatımına göre hücum organizasyonu neyi ifade eder?",
       o: [
-        "Dört libero kullanılması",
-        "Dört smaçör ve iki pasör kullanılması",
-        "Servis kullanılmaması",
-        "Tek oyuncuyla oynanması",
+        "Yalnız son smaç vuruşunu",
+        "İlk temastan başlayarak topun planlı hücum vuruşuna dönüştürülmesini ve hücum sonrası geçişi",
+        "Sadece pasörün topa dokunmasını",
+        "Rakibin servis düzenini",
       ],
       a: 1,
-      e: "4-2 sisteminde dört smaçör ve iki pasör çapraz yerleşir.",
+      e: "Hücum organizasyonu karşılama veya savunma, pas, hücum yaklaşmaları, vuruş kararı, koruma ve savunmaya dönüşten oluşan bağlantılı bir takım sürecidir.",
+    },
+    {
+      q: "İdeal üç temaslı hücum zincirinin doğru sırası ve görevi hangisidir?",
+      o: [
+        "Hücum → pas → karşılama",
+        "İlk temas pasör alanına → ikinci temas hücumcuya uygun pas → üçüncü temas hücum vuruşu",
+        "İlk temas doğrudan rakibe → ikinci temas blok",
+        "Üç oyuncunun da aynı anda topa yaklaşması",
+      ],
+      a: 1,
+      e: "Voleybolun ardışık yapısında sonraki eylemin kalitesi önceki temasa bağlıdır. Araştırmalar da karşılama kalitesinin pas seçeneklerini ve hücum verimini etkilediğini göstermektedir.",
+    },
+    {
+      q: "Pasör hedef alanına gelen kaliteli ilk temas hücuma hangi avantajı sağlar?",
+      o: [
+        "Pasörü fileye kontrolsüz biçimde sürükler",
+        "Pasörün dengeli yerleşip öne-geriye daha fazla hücum seçeneği kullanmasını sağlar",
+        "Bütün hücumcuların aynı koridora girmesini sağlar",
+        "Yalnız yüksek sol kanat pasına izin verir",
+      ],
+      a: 1,
+      e: "Fileye yakın fakat güvenli uzaklıktaki hedef alan, pasörün topun altına dengeli girmesine ve rakip orta blokçuyu farklı bölgeler arasında karar vermeye zorlamasına yardım eder.",
+    },
+    {
+      q: "Hücumcuların hazırlık konumlarında doğru alan paylaşımı hangisidir?",
+      o: [
+        "Bütün hücumcular pasörün önünden aynı çizgide geçer",
+        "Smaçör sol, pasör çaprazı sağ, orta oyuncu merkez yaklaşma yolunu açar ve yollar çakışmaz",
+        "Hücum etmeyen oyuncular hareketsiz kalır",
+        "Oyuncular fileye olabildiğince yakın bekler",
+      ],
+      a: 1,
+      e: "Ayrı başlangıç noktaları ve yaklaşma koridorları çarpışmayı önler. Hücum etmeyen oyuncular da bloktan dönen top için koruma görevine yerleşir.",
+    },
+    {
+      q: "Başlangıç seviyesinde yüksek kanat hücumunun güvenli bir seçenek olmasının nedeni nedir?",
+      o: [
+        "Rakip bloğa hiç zaman vermemesi",
+        "Hücumcuya yaklaşma, topu değerlendirme ve dengeli temas için daha fazla süre tanıması",
+        "Karşılama kalitesinden tamamen bağımsız olması",
+        "Yalnız arka hat oyuncularınca kullanılabilmesi",
+      ],
+      a: 1,
+      e: "Yüksek pas hızlı hücuma göre daha uzun uçuş süresine sahiptir. Bu süre hücumcunun yaklaşma ritmini ve vuruş seçimini düzenlemesini kolaylaştırır; rakip bloğa da yerleşme zamanı verir.",
+    },
+    {
+      q: "Hücum korumasının doğru görevi hangisidir?",
+      o: [
+        "Smaç vurulunca rallinin bittiğini varsaymak",
+        "Bloktan geri dönebilecek top için hücumcunun çevresinde kısa, orta ve derin katmanlar oluşturmak",
+        "Bütün oyuncuları dip çizgiye taşımak",
+        "Pasörü koruma dışında bırakmak",
+      ],
+      a: 1,
+      e: "Pasör kısa korumayı, diğer oyuncular orta ve derin koridorları paylaşabilir. Ders hedefi kontrollü blok dönüşlerinin 10'da en az 7'sini yeniden oyuna kazandırmaktır.",
+    },
+    {
+      q: "Hücum temposu neyi tanımlar?",
+      o: [
+        "Servis ile karşılama arasındaki süreyi",
+        "Pasörün topa teması ile hücumcunun sıçrama-vuruş anı arasındaki zaman ilişkisini",
+        "Sadece topun uçuş hızını",
+        "Ralli sonrasındaki dinlenme süresini",
+      ],
+      a: 1,
+      e: "Tempo ortak zamanlama dilidir. Yüksek tempoda hücumcu pas çıktıktan sonra hazırlanır; orta tempoda yaklaşma pasör temasıyla ilerler; hızlı tempoda hazırlık daha erken başlar.",
+    },
+    {
+      q: "Birinci tempo orta hücumunda doğru zamanlama hangisidir?",
+      o: [
+        "Orta oyuncu pasör topa temas ettikten uzun süre sonra yaklaşır",
+        "Orta oyuncu son adımını pasör temasından önce tamamlar ve kısa pasla buluşur",
+        "Orta oyuncu top düşmeye başladıktan sonra sıçrar",
+        "Hücumcu yalnız yüksek kanat pasını bekler",
+      ],
+      a: 1,
+      e: "Birinci tempoda hücumcu topu beklemez; pasör hedefe gelirken yaklaşmasını tamamlar. Bu hızlı buluşma rakip orta blokçunun zamanını ve yardım mesafesini azaltır.",
+    },
+    {
+      q: "Ön ve arka hızlı hücumun birlikte kullanılmasının taktik amacı hangisidir?",
+      o: [
+        "Rakip orta blokçuyu merkezde tutup kanat yardımını geciktirmek ve pas yönünü belirsizleştirmek",
+        "Bütün hücumcuları aynı noktada toplamak",
+        "Pasörün yalnız öne pas vermesini sağlamak",
+        "Hücum temposunu tamamen yavaşlatmak",
+      ],
+      a: 0,
+      e: "Benzer başlangıçtan pasörün önü veya arkasına giden hızlı hücumlar rakip orta blokçunun yön kararını zorlaştırır ve kanatta daha uygun eşleşme oluşturabilir.",
+    },
+    {
+      q: "Karşılama fileden 2-3 metre uzakta kaldığında derse göre en uygun hücum yaklaşımı hangisidir?",
+      o: [
+        "Her koşulda birinci tempo zorlamak",
+        "Orta veya yüksek kanat ya da uygun arka alan hücumunu seçmek",
+        "Topu fileye kontrolsüz tek elle itmek",
+        "Bütün hücumcuların yaklaşmayı bırakması",
+      ],
+      a: 1,
+      e: "Hedef dışı karşılama pasörün hızlı orta seçeneğini sınırlar. Pas kalitesine uygun daha yüksek ve kontrollü pas, hücumun sürdürülebilirliğini artırır.",
+    },
+    {
+      q: "4-2 hücum sisteminin temel yapısı hangisidir?",
+      o: [
+        "Tek pasör altı rotasyon boyunca oyunu kurar",
+        "İki pasör çapraz yerleşir ve ön hatta bulunan pasör oyunu kurar",
+        "Arka hattaki iki pasör aynı anda topa gider",
+        "Altı oyuncunun tamamı yalnız hücumcu olur",
+      ],
+      a: 1,
+      e: "4-2 temel organizasyon öğretimine uygundur. Ön hat pasörü oyunu kurduğu için takım çoğunlukla iki ana ön hat hücumcusuyla oynar ve hücum çeşitliliği daha sınırlı olabilir.",
+    },
+    {
+      q: "5-1 sisteminde pasörün ön ve arka hat konumu hücumcu sayısını nasıl etkiler?",
+      o: [
+        "Pasör arka hattayken üç, ön hattayken iki ön hat hücumcusu bulunur",
+        "Her iki durumda da yalnız bir hücumcu bulunur",
+        "Pasör ön hattayken dört ön hat hücumcusu bulunur",
+        "Pasörün konumu hücum organizasyonunu etkilemez",
+      ],
+      a: 0,
+      e: "5-1'de tek pasör süreklilik sağlar. Pasör arka sıradayken üç ön hat hücumcusu vardır; ön sıradayken arka alan hücumu ek seçenek olarak dengeyi artırabilir.",
+    },
+    {
+      q: "6-2 sisteminde oyunu hangi pasör kurar ve bu sistemin hücum avantajı nedir?",
+      o: [
+        "Ön hat pasörü kurar; iki hücumcu kalır",
+        "Arka hat pasörü kurar; ön hat pasörü hücumcuya dönüşür ve üç ön hat hücumcusu korunur",
+        "İki pasör aynı topa pas verir",
+        "Pasör kullanılmaz; altı hücumcu doğrudan vurur",
+      ],
+      a: 1,
+      e: "6-2 iki pasörün hücum ve blok becerisi gerektiren, rol değişimi yüksek bir sistemdir. Arka hat pasörü hedefe geçerken ön hat pasörü hücum seçeneklerine katılır.",
+    },
+    {
+      q: "Kombine hücumun asıl taktik amacı hangisidir?",
+      o: [
+        "Hareketi yalnızca karmaşık göstermek",
+        "Farklı bölge ve tempolardaki tehditlerle rakip blokta bire bir eşleşme veya kapanma boşluğu oluşturmak",
+        "Bütün topları orta oyuncuya vermek",
+        "Hücumcuların yaklaşma yollarını çakıştırmak",
+      ],
+      a: 1,
+      e: "Birinci tempo tehdidi, kanat veya arka alan seçeneğiyle eşlendiğinde blokçular bölünür. Etkili kombinasyon için yollar ayrılmalı ve pasör-hücumcu zamanlaması ortak olmalıdır.",
+    },
+    {
+      q: "Kritik sayıda hücum dağılımı yaparken en doğru risk yönetimi hangisidir?",
+      o: [
+        "Karşılama kötü olsa bile en hızlı ve gösterişli oyunu zorlamak",
+        "Karşılama kalitesi, hücumcu ritmi, blok eşleşmesi ve skoru değerlendirip en yüksek yüzdeli hazırlanmış seçeneği kullanmak",
+        "Önceki rallileri ve rakip yerleşimini göz ardı etmek",
+        "Her topu aynı oyuncuya aynı tempoda vermek",
+      ],
+      a: 1,
+      e: "Hücum dağılımı yalnız alışkanlık değildir. Bilimsel oyun analizleri karşılama, pas bölgesi ve tempo değişkenlerinin pas ve hücum verimiyle ilişkili olduğunu göstermektedir.",
+    },
+  ],
+  "Pozisyon bilgisi": [
+    {
+      q: "Ders anlatımına göre pozisyon bilgisi oyuncuya ne öğretir?",
+      o: [
+        "Yalnız servis öncesinde nerede duracağını",
+        "Rotasyon sırasını, ralli başladıktan sonraki uzmanlık geçişini ve her oyun aşamasındaki sorumluluğunu",
+        "Sadece forma numarasını",
+        "Yalnız hücum vuruş tekniğini",
+      ],
+      a: 1,
+      e: "Pozisyon bilgisi sabit bir yer ezberi değildir. Oyuncu servis anındaki yasal dizilişi, top oyuna girdikten sonraki uzmanlık alanını ve hücum-savunma geçiş görevlerini birlikte öğrenir.",
+    },
+    {
+      q: "Altı saha bölgesinin doğru konum eşleştirmesi hangisidir?",
+      o: [
+        "1 sağ arka, 2 sağ ön, 3 orta ön, 4 sol ön, 5 sol arka, 6 orta arka",
+        "1 sol ön, 2 orta ön, 3 sağ ön, 4 sağ arka, 5 orta arka, 6 sol arka",
+        "1 orta arka, 2 sol arka, 3 sağ arka, 4 orta ön, 5 sağ ön, 6 sol ön",
+        "1 sağ ön, 2 sağ arka, 3 orta arka, 4 sol arka, 5 sol ön, 6 orta ön",
+      ],
+      a: 0,
+      e: "Bölge 1 servis bölgesine yakın sağ arka alandır. Ön hat 4-3-2, arka hat ise 5-6-1 sıralamasıyla tanımlanır.",
+    },
+    {
+      q: "Takım servis hakkını kazandığında doğru saat yönü rotasyon sırası hangisidir?",
+      o: [
+        "1 → 2 → 3 → 4 → 5 → 6",
+        "2 → 1 → 6 → 5 → 4 → 3 → 2",
+        "1 → 6 → 3 → 2 → 5 → 4",
+        "4 → 1 → 3 → 6 → 2 → 5",
+      ],
+      a: 1,
+      e: "Servis karşılayan takım ralliyi kazanıp servis hakkını aldığında oyuncular bir pozisyon saat yönünde döner. Bölge 2 oyuncusu 1'e geçerek yeni servisçi olur.",
+    },
+    {
+      q: "Ön ve arka hat oyuncularını doğru ayıran seçenek hangisidir?",
+      o: [
+        "Ön hat 1-6-5, arka hat 2-3-4",
+        "Ön hat 4-3-2, arka hat 5-6-1",
+        "Ön hat 1-2-3, arka hat 4-5-6",
+        "Ön ve arka hat yalnız oyuncu boyuna göre belirlenir",
+      ],
+      a: 1,
+      e: "File önündeki 4, 3 ve 2 ön hat; dip alandaki 5, 6 ve 1 arka hat bölgeleridir. Bu ayrım blok ve hücum yetkilerini etkiler.",
+    },
+    {
+      q: "Arka hat oyuncusunun hücum ve blok sınırlaması hangisidir?",
+      o: [
+        "Ön bölgede blok yapabilir ve her yerden hücum edebilir",
+        "Blok yapamaz; top file üst seviyesindeyken hücumu tamamlayacaksa hücum çizgisinin gerisinden sıçramalıdır",
+        "Arka alanda topa hiç dokunamaz",
+        "Yalnız servis kullanabilir",
+      ],
+      a: 1,
+      e: "Arka hat oyuncusu blok tamamlayamaz. Arka alan hücumunda kalkış hücum çizgisinin gerisinden yapılır; oyuncu vuruştan sonra ön bölgeye inebilir.",
+    },
+    {
+      q: "Rotasyon bölgesi ile uzmanlık pozisyonu arasındaki fark nedir?",
+      o: [
+        "İkisi her zaman aynı sabit konumdur",
+        "Rotasyon bölgesi servis anındaki sırayı, uzmanlık pozisyonu ralli başladıktan sonra teknik rolün uygulandığı alanı gösterir",
+        "Uzmanlık pozisyonu yalnız forma numarasıdır",
+        "Rotasyon bölgesi yalnız libero için geçerlidir",
+      ],
+      a: 1,
+      e: "Örneğin pasör bölge 5'te rotasyona başlayabilir; top oyuna girdikten sonra takım arkadaşlarının yolunu kapatmadan file yakınındaki pasör hedef alanına geçer.",
+    },
+    {
+      q: "Pozisyon geçişinde iletişim için 'çizgi' ve 'çapraz' komutları neyi bildirir?",
+      o: [
+        "Servis sırasını",
+        "Blok ve arka alan savunmasının hangi hücum koridorunu paylaşacağını",
+        "Oyuncu değişikliği isteğini",
+        "Topun dışarı çıktığını",
+      ],
+      a: 1,
+      e: "Kısa ve erken iletişim görev çakışmasını azaltır. Blok bir koridoru kapatırken savunmacılar açık kalan çizgi, çapraz veya kısa alanı paylaşır.",
+    },
+    {
+      q: "Pasörün servis sonrası doğru görev sırası hangisidir?",
+      o: [
+        "Karşılayıcının yolunu kes → topu bekle → yalnız aynı hücumcuya pas ver",
+        "Hedefe güvenli geç → karşılama kalitesini değerlendir → bloğu ve hücumcuları kontrol et → tempo seç → korumaya geç",
+        "Doğrudan blok pozisyonuna geç → ikinci topu bırak",
+        "Servisten sonra arka alanda sabit kal",
+      ],
+      a: 1,
+      e: "Pasör ikinci topu yönetir ancak geçiş yolu takımın ilk temasını bozmamalıdır. Pas sonrası da savunma veya hücum korumasında yeni görev alır.",
+    },
+    {
+      q: "Smaçör ile pasör çaprazının temel rol farkı hangisidir?",
+      o: [
+        "Smaçör çoğunlukla bölge 4/6 ve karşılama; çapraz bölge 2/1 hücumu ve rakip smaçöre blok görevindedir",
+        "İki oyuncu yalnız libero görevi yapar",
+        "Pasör çaprazı her zaman servis karşılamanın merkezindedir",
+        "Smaçör blok ve savunmaya katılmaz",
+      ],
+      a: 0,
+      e: "Smaçör sol kanat hücumuyla birlikte sıkça servis karşılar. Pasör çaprazı sağ kanat ve arka alan skor yükünü taşır, ön hatta rakip smaçöre karşı blok kurar.",
+    },
+    {
+      q: "Orta oyuncunun ralli içindeki doğru görev zinciri hangisidir?",
+      o: [
+        "Dip çizgide bekle → yalnız servis karşıla",
+        "File merkezine geç → pasör ve karşılamayı oku → kanada blok yardımı yap → inişten sonra birinci tempo yaklaşmasına geç",
+        "Her topu arka alandan hücum et",
+        "Bloktan sonra oyundan çık",
+      ],
+      a: 1,
+      e: "Orta oyuncu file boyunca en hızlı blok geçişini yapar ve hücumda pasörle birinci tempo bağlantısı kurar. Görevler arasında hızlı yön değiştirir.",
+    },
+    {
+      q: "Liberonun pozisyon bilgisi açısından doğru tanımı hangisidir?",
+      o: [
+        "Ön hatta blok ve hızlı hücum uzmanıdır",
+        "Farklı formayla oynayan, servis karşılama ve arka alan savunmasında uzmanlaşan oyuncudur",
+        "Her rallide ana pasör olmak zorundadır",
+        "Yalnız servis atan oyuncudur",
+      ],
+      a: 1,
+      e: "Libero arka alan yerleşimini ve iletişimi güçlendirir; sert hücum, plase ve blok arkası kısa toplarda görev alır. Pasör ilk topu oynadığında ikinci top desteği de verebilir.",
+    },
+    {
+      q: "Üç kişilik temel servis karşılama dizilişinde doğru görev paylaşımı hangisidir?",
+      o: [
+        "Pasör, libero ve orta oyuncu bütün alanı paylaşır",
+        "İki smaçör sağ/sol veya orta koridorları, libero en geniş ve zor alanı paylaşır; pasör hedefe geçiş yolunu açık tutar",
+        "Bütün oyuncular aynı topa yönelir",
+        "Hücumcular yaklaşma alanlarını kapatır",
+      ],
+      a: 1,
+      e: "Karşılama düzeni servis yönü ve karşılayıcı gücüne göre ayarlanır. Amaç sorumluluk çakışmasını önlerken pasörün geçişini ve hücumcuların yaklaşmasını açık tutmaktır.",
+    },
+    {
+      q: "4-2, 5-1 ve 6-2 sistemlerini doğru karşılaştıran seçenek hangisidir?",
+      o: [
+        "4-2'de iki ön hat pasörü dönüşümlü; 5-1'de tek pasör; 6-2'de arka hattaki iki pasörden biri oyunu kurar",
+        "Üç sistemde de pasör kullanılmaz",
+        "5-1'de beş pasör bulunur",
+        "6-2'de ön hat pasörü her zaman oyunu kurar",
+      ],
+      a: 0,
+      e: "4-2 temel ve daha sade geçişler sunar. 5-1 tek pasörle tempo sürekliliği sağlar. 6-2'de arka hat pasörü kurar, ön hat pasörü hücumcu olarak üç ön hat hücumcusunu korur.",
+    },
+    {
+      q: "Servis anında üst üste binme hatasını önlemek için oyuncu hangi ilişkileri kontrol etmelidir?",
+      o: [
+        "Yalnız fileye uzaklığını",
+        "Sağ-sol komşusunu ve kendisine karşılık gelen ön-arka oyuncuyla konum ilişkisini",
+        "Yalnız servisçinin ayaklarını",
+        "Rakibin forma dizilişini",
+      ],
+      a: 1,
+      e: "Oyuncu bütün sahayı ezberlemek yerine komşuluk ilişkilerini kontrol eder. Servis vuruşuna kadar sıra korunur; sonrasında uzmanlık geçişi yapılabilir.",
+    },
+    {
+      q: "Ralli içinde takım dengesini koruyan doğru geçiş davranışı hangisidir?",
+      o: [
+        "Oyuncuların önceki görevlerinde sabit kalması",
+        "Pasörün hedefe, hücumcuların ayrı yaklaşma yollarına, hücum etmeyenlerin korumaya ve top rakibe geçince herkesin savunmaya geçmesi",
+        "Bütün oyuncuların yalnız topun bulunduğu noktaya koşması",
+        "Blokçuların inişten sonra oyunu bırakması",
+      ],
+      a: 1,
+      e: "Voleybol sürekli bir geçiş oyunudur. Uzman pozisyonlar ayrı olsa da takım şekli karşılama, hücum, koruma, blok ve savunma aşamalarına göre birlikte değişir.",
     },
   ],
   "Pasör eğitimi": [
     {
-      q: "Pasörün temel görevi nedir?",
-      o: [
-        "Her topa smaç vurmak",
-        "İkinci teması hücumcuya hazırlamak",
-        "Sadece blok yapmak",
-        "Yalnız servis karşılamak",
-      ],
+      q: "Pasör, top karşı sahadayken hangi hazır pozisyonu kullanmalıdır?",
+      o: ["Dizler hafif bükülü, ağırlık ayakların önünde ve baş yukarıda", "Dizler kilitli, ağırlık topuklarda ve eller aşağıda", "Gövde geride, ayaklar bitişik ve bakış yalnızca filede", "Sürekli sıçrayarak ve kolları yukarıda"],
+      a: 0,
+      e: "Dengeli ve alçak hazır pozisyon ilk adımı hızlandırır; pasör aynı anda topu, karşılayıcıyı ve hedef bölgesini izleyebilir.",
+    },
+    {
+      q: "Pasör hedef bölgesine giderken dengeyi koruyan doğru ayak çalışması hangisidir?",
+      o: ["İlk adımları yavaş, son adımı mümkün olduğunca uzun atmak", "Topun yanından geçip geriye doğru dönmek", "İlk adımları hızlı, son iki adımı küçük ve kontrollü yapmak", "Fileye ulaşana kadar tek ayak üzerinde ilerlemek"],
+      a: 2,
+      e: "Pasör ilk temasın açısını erken okuyup hızlı hareket eder; son iki adımı küçülterek topun altında dengelenir ve fileden güvenli mesafe bırakır.",
+    },
+    {
+      q: "Parmak pasla set verirken doğru temas noktası ve el biçimi nasıldır?",
+      o: ["Top avuç içine alınır ve göğüs hizasından itilir", "Top alnın biraz önünde, açık ve simetrik parmaklarla karşılanır", "Top başın arkasına düşürülüp bileklerle savrulur", "Top yalnızca baskın elin parmak uçlarıyla yönlendirilir"],
       a: 1,
-      e: "Pasör ikinci teması yönetir ve hücum seçimini yapar.",
+      e: "Eller topun biçimine uygun açılır, başparmaklar birbirine bakar ve iki el topa alnın biraz önünde eş zamanlı kuvvet uygular.",
+    },
+    {
+      q: "Pasın mesafe ve yüksekliğini tutarlı üretmek için kuvvet hangi sırayla aktarılmalıdır?",
+      o: ["Yalnızca parmaklardan", "Bileklerden omuzlara, sonra dizlere", "Diz ve kalçadan gövdeye, dirseklere ve parmaklara", "Sadece dirsekleri hızla kilitleyerek"],
+      a: 2,
+      e: "Ders içeriğindeki kuvvet zinciri diz ve kalçanın açılmasıyla başlar; gövde, dirsek ve parmakların uyumlu uzanışıyla top hedefe yönelir.",
+    },
+    {
+      q: "Hedeften uzak ve dengesiz bir ilk temasta pasörün önceliği ne olmalıdır?",
+      o: ["Her durumda birinci tempo oynamak", "Topu fileye mümkün olduğunca yaklaştırmak", "Hücum edilebilir, yüksek ve takım dengesini koruyan güvenli bir pas üretmek", "İkinci topu doğrudan rakip bloğa göndermek"],
+      a: 2,
+      e: "Araştırmalar karşılama kalitesinin pas etkinliğini sınırladığını gösterir. Ders de kötü ilk temasta hızlı hücumu zorlamak yerine güvenli kanat veya uygun arka alan seçimini öğretir.",
+    },
+    {
+      q: "Öne ve geriye pasın rakip blok tarafından erken okunmasını azaltan uygulama hangisidir?",
+      o: ["Geriye pasta beli temastan çok önce geriye açmak", "Her iki yönde hazırlık görüntüsünü mümkün olduğunca benzer tutmak", "Öne pasta topu göğüs hizasına indirmek", "Geriye pasta topu başın arkasında bekletmek"],
+      a: 1,
+      e: "Benzer hazırlık duruşu pas yönünü gizler. Geriye pasta temas yine alın hizasında yapılır; top başın arkasına düşürülmez ve bel aşırı çukurlaştırılmaz.",
+    },
+    {
+      q: "Orta oyuncuyla birinci tempo hücumunda doğru zamanlama hangisidir?",
+      o: ["Orta oyuncu pasör topu bıraktıktan sonra yaklaşmaya başlar", "Pasör topu yüksek gönderir, orta oyuncu tepe noktasını bekler", "Orta oyuncu pasör temasından önce sıçrama hazırlığına girer ve top yükselirken ellerden çıkar", "Kötü karşılamada da aynı hızlı pas mutlaka uygulanır"],
+      a: 2,
+      e: "Birinci tempoda orta oyuncunun son adımı ile pasörün teması birlikte okunur; hücumcu yükselirken kısa yörüngeli pas vuruş eline yönelir.",
+    },
+    {
+      q: "Sıçrayarak pas hangi durumda doğru bir seçimdir?",
+      o: ["Pasör topun altına erken gelmiş ve iki ayakla dengeli sıçrayabiliyorsa", "Pasör topa geç kalmış ve fileye temas riski varsa", "Top pasörün çok gerisinde ve denge kurulmamışsa", "Her bozuk topta hücumu hızlandırmak için"],
+      a: 0,
+      e: "Sıçrayarak pas temas noktasını yükseltip tempoyu hızlandırabilir; ancak yalnızca erken yerleşme, temiz temas ve güvenli iniş mümkünse kullanılmalıdır.",
+    },
+    {
+      q: "Pasör rakip bloğu okurken aşağıdaki bilgilerden hangisini özellikle değerlendirmelidir?",
+      o: ["Yalnızca tribündeki seyirci sayısını", "Orta blokçunun başlangıç yeri, omuz-kalça yönü ve ilk hareketini", "Sadece kendi formasının numarasını", "Yalnızca servis atan oyuncunun boyunu"],
+      a: 1,
+      e: "Rakip orta blokçunun başlangıç mesafesi ve ilk hareketi, kanat blokçularının konumu ve savunmada açık kalan alan hücum tercihini belirleyen görsel ipuçlarıdır.",
+    },
+    {
+      q: "Pasör için ‘hücumcuları dengeli kullanmak’ ne anlama gelir?",
+      o: ["Her hücumcuya mutlaka eşit sayıda top vermek", "Topları sırayla ve değişmez düzende dağıtmak", "Karşılama kalitesi, hücumcu ritmi, blok eşleşmesi ve skora göre dağılım yapmak", "Yalnızca en uzun oyuncuya pas vermek"],
+      a: 2,
+      e: "Dengeli dağılım matematiksel eşitlik değildir; amaç seçenekleri canlı tutup rakip bloğu kararsız bırakırken en yüksek başarı olasılığına sahip hücumu seçmektir.",
+    },
+    {
+      q: "İyi bir karşılamada orta oyuncu tehdidini canlı tutmak neden önemlidir?",
+      o: ["Rakip orta blokçuyu merkeze bağlayıp kanatlarda daha elverişli eşleşme oluşturabilir", "Pasörün savunma yapmasını tamamen engeller", "Topun fileye temas etmesini zorunlu kılar", "Her rallinin mutlaka orta hücumla bitmesini sağlar"],
+      a: 0,
+      e: "Birinci tempo seçeneğinin kullanılabilir olması rakip orta blokçunun kararını zorlaştırır; böylece kanat ve arka alan hücumları için blok yapısı ayrıştırılabilir.",
+    },
+    {
+      q: "Bilimsel bulgulara göre genç oyuncularda pas etkinliğini güçlü biçimde öngören değişkenler hangileridir?",
+      o: ["Forma rengi, seyirci sayısı ve mola süresi", "Karşılama etkinliği, pas tekniği ve pas temposu", "Yalnızca pasörün boyu ve yaşı", "Sadece maçın oynandığı salon"],
+      a: 1,
+      e: "Genç erkek ve kadın voleybolcularda yapılan performans analizi, karşılama etkinliği ile pas tekniği ve temposunun pas etkinliğinin temel yordayıcıları olduğunu göstermiştir.",
+    },
+    {
+      q: "Pasörün ikinci top hücumunu seçmesi için en uygun oyun durumu hangisidir?",
+      o: ["Rakip savunmada boş alan varken pasör dengeli ve top güvenli yükseklikteyse", "Top fileye çok yakın ve rakip blok hazırsa", "Pasör dengesizken ve fileye temas riski altındayken", "Kritik sayıda boş alanı görmeden sürpriz yapmak istediğinde"],
+      a: 0,
+      e: "İkinci top hücumu, boş alan görülüp top kontrol altındayken anlamlıdır; pasör sayı olasılığını takımın düzenini bozma ve doğrudan hata riskiyle birlikte değerlendirmelidir.",
+    },
+    {
+      q: "Set sonundaki kritik bir sayıda pasör hangi karar sürecini kullanmalıdır?",
+      o: ["Önceki planı koşullar ne olursa olsun tekrarlamak", "Sadece en son sayı alan oyuncuya pas vermek", "Skor, ilk temas kalitesi, hücumcunun güncel ritmi ve rakip blok eşleşmesini birlikte değerlendirmek", "Hücumculara bakmadan en hızlı pası vermek"],
+      a: 2,
+      e: "Kritik sayıda güvenilir hücum ile uygun eşleşme bir araya getirilir; bozuk ilk temasta risk azaltılır ve karar verildikten sonra pas doğru tempoyla uygulanır.",
+    },
+    {
+      q: "Pasör topu gönderdikten sonra rallideki doğru devam davranışı nedir?",
+      o: ["Pası izleyerek bulunduğu yerde kalmak", "Hemen saha dışına çıkmak", "Hücum korumasına veya belirlenen savunma görevine geçmek", "File dibinde sırtı oyuna dönük beklemek"],
+      a: 2,
+      e: "Pasörün görevi temasla bitmez; pas sonrasında hücum koruması ya da savunma pozisyonuna geçmesi bloktan dönen topların oyunda tutulması için gereklidir.",
     },
   ],
   "Libero eğitimi": [
     {
-      q: "Libero hangi bölgede uzmanlaşır?",
-      o: [
-        "Arka alan savunması ve karşılama",
-        "Ön hat bloğu",
-        "Smaç servisi",
-        "Orta oyuncu hücumu",
-      ],
+      q: "Liberonun takım içindeki temel uzmanlık görevi hangisidir?",
+      o: ["Ön hatta blok ve hızlı hücum yapmak", "Arka alan savunmasını ve servis karşılama düzenini yönetmek", "Yalnızca servis atmak", "Her rallide ikinci hakemle iletişim kurmak"],
+      a: 1,
+      e: "Libero ilk teması pasörün hücum kurabileceği kaliteye taşır, arka alan savunmasını yönlendirir ve topun oyunda kalmasına katkı sağlar.",
+    },
+    {
+      q: "FIVB 2025–2028 kurallarına göre libero için doğru ifade hangisidir?",
+      o: ["Ön hatta blok tamamlayabilir", "Top file üstündeyken her konumdan hücum tamamlayabilir", "Arka hat oyuncusudur; blok yapamaz veya blok girişiminde bulunamaz", "Takım arkadaşlarından farklı forma giymesi gerekmez"],
+      a: 2,
+      e: "Libero arka hat uzmanıdır, ayırt edici forma giyer ve blok yapamaz ya da blok girişiminde bulunamaz. Hücum ve pas davranışlarında da özel sınırlamaları vardır.",
+    },
+    {
+      q: "Libero kendi ön bölgesinden parmak pas verdiğinde takım arkadaşı bu topa nasıl hücum edebilir?",
+      o: ["Top tamamen file üstündeyken hücumu tamamlayamaz", "Topun yüksekliğine bakılmadan serbestçe smaç vurabilir", "Yalnızca arka çizginin gerisinden sıçrarsa vurabilir", "Topa yalnız libero yeniden temas edebilir"],
       a: 0,
-      e: "Libero takımın savunma ve servis karşılama uzmanıdır.",
+      e: "FIVB kuralına göre liberonun ön bölgeden yaptığı parmak pasından gelen top tamamen file üstündeyken hücum vuruşu tamamlanamaz; aynı hareket ön bölge dışından yapılırsa bu sınırlama uygulanmaz.",
+    },
+    {
+      q: "Servis karşılamada doğru libero hazır duruşu hangisidir?",
+      o: ["Ayaklar bitişik, dizler kilitli ve ağırlık topuklarda", "Ayaklar dengeli açık, dizler bükülü, gövde hafif önde ve eller ayrı", "Kollar önceden birleşmiş, gövde dik ve hareketsiz", "Bir ayak havada, eller başın üzerinde"],
+      a: 1,
+      e: "Alçak ve hareket edebilir duruş tepki süresini destekler. Kolları çok erken birleştirmemek, kısa ayırma adımıyla farklı yönlere çıkmayı kolaylaştırır.",
+    },
+    {
+      q: "Manşetle servis karşılamada topun yönünü kontrol eden temel unsur nedir?",
+      o: ["Kolları temas anında sertçe yukarı savurmak", "Topa yalnız bileklerle vurmak", "Sabit ön kol platformunun açısını hedefe yöneltmek", "Dirsekleri bükerek topu avuçlarda taşımak"],
+      a: 2,
+      e: "Topun çıkış yönünü büyük ölçüde platform açısı belirler. Eller sabitlenir, ön kollar dengeli temas yüzeyi oluşturur ve bacaklarla topun arkasına gelinir.",
+    },
+    {
+      q: "Kısa servise hareket ederken doğru uygulama hangisidir?",
+      o: ["Gövdeyi öne atıp ilk anda tek elle uzanmak", "Küçük ve hızlı adımlarla topun arkasına geçip alçak son adımla dengelenmek", "Top yere yaklaşana kadar yerinde beklemek", "Uzun çapraz adımla topun yanından geçmek"],
+      a: 1,
+      e: "Libero kısa topu temas sonrasında okur, küçük adımlarla ilerler ve mümkünse iki kollu platform kullanır. Tek el yalnız yetişilemeyen top için son çözümdür.",
+    },
+    {
+      q: "Derin servise karşı liberonun geriye yaslanmak yerine yapması gereken nedir?",
+      o: ["Geri ve yana adımlarla alan açıp teması vücudun önünde yapmak", "Kolları erken birleştirip yalnız üst gövdeyi geriye kaçırmak", "Platformu doğrudan fileye çevirmek", "Topu omuz hizasında tek elle durdurmak"],
+      a: 0,
+      e: "Geri-yan veya çapraz geri adım topun arkasında alan oluşturur. Böylece gövde devrilmeden, platform pasör hedef alanına dönükken kontrollü temas yapılabilir.",
+    },
+    {
+      q: "Blok çizgi yönünü kapatmıyorsa libero savunmada nereye öncelik vermelidir?",
+      o: ["Blokçunun tam arkasındaki kapalı alana", "Dış omuz hattına yakın çizgi koridoruna", "File dibinde orta oyuncunun yanına", "Sahanın dışına"],
+      a: 1,
+      e: "Savunma konumu ezberlenmiş sabit bir nokta değildir. Libero kendi bloğunun açık bıraktığı koridoru görmeli; çizgi kapanmamışsa çizgi tehdidine göre yerleşmelidir.",
+    },
+    {
+      q: "Blok çizgiyi etkili biçimde kapattığında liberonun sorumluluğu nasıl değişir?",
+      o: ["Çapraz hücum koridoruna yönelik sorumluluğu büyür", "Savunma görevi tamamen sona erer", "Blok yapmak için ön hatta geçer", "Yalnızca kısa servis bekler"],
+      a: 0,
+      e: "Blok-savunma sistemi alan paylaşımına dayanır. Çizgi blokla kapatıldığında libero, blok ellerinin dışından çıkan derin çapraz açıya göre konumlanır.",
+    },
+    {
+      q: "Bir hücumun plase olabileceğini düşündüren erken ipucu hangisidir?",
+      o: ["Hücumcunun son adımlarında hızın azalması ve kolun tam geriye açılmaması", "Hücumcunun yaklaşma hızının sürekli artması ve kolun tam açılması", "Topun servis çizgisinden atılması", "Blokçunun iki ayakla sıçraması"],
+      a: 0,
+      e: "Yaklaşmanın yavaşlaması, dirsek ve avuç yönü ile kolun tam kurulmayışı plaseyi haber verebilir. Libero yine de sert top konumunu çok erken terk etmemelidir.",
+    },
+    {
+      q: "Pasör ilk topu aldığında liberonun doğru ikinci top yönetimi hangisidir?",
+      o: ["Sessiz kalıp başka bir oyuncunun karar vermesini beklemek", "‘Bende’ komutuyla sorumluluk alıp kurala uygun teknikle hücum edilebilir pas üretmek", "Topu her durumda doğrudan karşı alana göndermek", "Pasörün yerine ön hatta blok yapmak"],
+      a: 1,
+      e: "Libero sorumluluğunu erken bildirir, hücum seçeneklerini kontrol eder ve özellikle hedef dışı toplarda güvenli yüksek kanat pasını önceliklendirir.",
+    },
+    {
+      q: "Libero savunma iletişiminin etkili olması için komutlar nasıl verilmelidir?",
+      o: ["Topa temas edildikten sonra uzun cümlelerle", "Erken, kısa ve tek anlamlı biçimde", "Yalnızca mola sırasında", "Sadece el işaretiyle ve sessizce"],
+      a: 1,
+      e: "‘Benim’, ‘bırak’, ‘kısa’, ‘uzun’, ‘çizgi’, ‘çapraz’ ve ‘plase’ gibi komutlar temas öncesinde verilerek sorumluluk karışıklığını azaltır.",
+    },
+    {
+      q: "Zor top sonrasında güvenli yan yuvarlanma sırası hangisidir?",
+      o: ["Dizler üzerine sert düşüp başı geriye bırakmak", "Temastan sonra avuçlar üzerinde durup ralliyi izlemek", "Topa yakın ayakla alçalmak, teması öne-yukarı yapmak ve omuz üzerinden çapraz yuvarlanmak", "Topa uzandıktan sonra sırt üstü hareketsiz kalmak"],
+      a: 2,
+      e: "Yuvarlanma darbeyi kalça yanı ve omuz hattı boyunca dağıtır; baş-boyun korunur ve libero hızla ayağa kalkarak sonraki savunma görevine katılır.",
+    },
+    {
+      q: "Bilimsel maç analizlerinde liberonun en sık yaptığı ve oyun devamlılığına en çok hizmet eden eylemler hangileridir?",
+      o: ["Servis ve blok", "Smaç ve blok", "Servis karşılama ve alan savunması", "Yalnızca ikinci top hücumu"],
+      a: 2,
+      e: "Üst düzey kadın voleybolunda 1.597 libero eylemini inceleyen çalışma, en yüksek katılımın servis karşılama ve savunmada olduğunu; en iyi performansların karşılama ve sette görüldüğünü bildirmiştir.",
+    },
+    {
+      q: "Liberonun performansını yalnızca gösterişli kurtarış sayısıyla değerlendirmek yerine hangi ölçüt daha anlamlıdır?",
+      o: ["Yere düşme sayısı", "Topa temas ederken çıkardığı ses", "Pasör hedef çevresine ulaşan ilk temaslar ve oyunda tutulan savunma topları", "Forma değişikliği sayısı"],
+      a: 2,
+      e: "Dersin başarı yaklaşımı, ilk temasın hücum kurulabilir kaliteye ulaşmasını ve savunma topunun kontrollü biçimde oyunda tutulmasını esas alır.",
+    },
+  ],
+  "Orta oyuncu eğitimi": courseCurriculum.__ortaOyuncuSinavTaslagi,
+  "Smaçör eğitimi": [
+    {
+      q: "Smaçörün takım içindeki çift yönlü rolünü en doğru açıklayan seçenek hangisidir?",
+      o: ["Yalnızca ön hatta hücum etmek", "Servis karşılama ve savunmayı hücum ile blok görevleriyle birleştirmek", "Sadece pasörün yerine ikinci topu kullanmak", "Yalnızca arka alanda oynamak"],
+      a: 1,
+      e: "Smaçör ön hatta sol kanat hücumu ve blok; arka hatta servis karşılama, savunma ve gerektiğinde arka alan hücumu görevlerini üstlenir.",
+    },
+    {
+      q: "Servis karşılama yerleşiminde smaçörün doğru sorumluluk paylaşımı hangisidir?",
+      o: ["Ara topları servis atıldıktan sonra kararlaştırmak", "Pasörün yolunu kapatıp tüm topları almak", "Libero ile ara ve kısa top sorumluluğunu servis öncesinde netleştirmek", "Kolları önceden birleştirip hareketsiz beklemek"],
+      a: 2,
+      e: "Karşılama düzeni servis öncesinde paylaşılır. Smaçör pasörün geçiş yolunu açık bırakır, libero ile ara top sorumluluğunu konuşur ve hareket edebilir duruşunu korur.",
+    },
+    {
+      q: "Bilimsel servis karşılama araştırmalarına göre karşılama etkinliğini en güçlü etkileyen unsurlardan biri hangisidir?",
+      o: ["Seyircinin bulunduğu tribün", "Karşılayıcının başlangıç konumu ve topa giderken yaptığı yer değiştirme", "Formanın kol uzunluğu", "Set arasındaki müzik"],
+      a: 1,
+      e: "Yüksek düzey oyuncularla yapılan üç boyutlu analiz, karşılayıcının başlangıç konumu ve hareketinin kullanılan tekniği ve karşılama etkinliğini güçlü biçimde etkilediğini göstermiştir.",
+    },
+    {
+      q: "Smaçör karşılamayı yaptıktan sonra hücuma nasıl geçmelidir?",
+      o: ["Topu bulunduğu yerde izlemelidir", "File altında pası beklemelidir", "Temastan sonra dışa-geriye açılıp pasör ve topu görüşünde tutmalıdır", "Doğrudan sahanın merkezine koşmalıdır"],
+      a: 2,
+      e: "Karşılamadan hemen sonra hücum başlangıç mesafesi kazanılır. Yüksek pas için ritim bekletilir, hızlı pas için yaklaşma daha erken başlatılır.",
+    },
+    {
+      q: "Sol kanat hücumunda hafif çapraz yaklaşma açısının temel avantajı nedir?",
+      o: ["Smaçörün yalnız çizgi yönünü görmesini sağlar", "Topu, bloğu ve savunma alanını aynı görüş içinde tutarak seçenekleri artırır", "File altına doğru daha hızlı sürükler", "Tek ayakla inişi kolaylaştırır"],
+      a: 1,
+      e: "Fileye düz koşmak vuruş seçeneklerini azaltır. Uygun çapraz açı, top vuruş omzunun önünde kalırken çizgi, çapraz ve blok seçeneklerinin görülmesini sağlar.",
+    },
+    {
+      q: "Smaç yaklaşmasının son iki adımında doğru ritim hangisidir?",
+      o: ["İki eşit ve yavaş adım", "Kısa ilk adım ve çok uzun son adım", "Uzun ve alçaltıcı sondan bir önceki adım, ardından kısa kapatıcı son adım", "Son adımda tek ayak üzerinde durma"],
+      a: 2,
+      e: "Sondan bir önceki adım yatay hızı kontrol ederek kalçayı alçaltır; kısa kapatıcı adım ve kol savuruşu bu hızı iki ayaklı dikey sıçramaya dönüştürür.",
+    },
+    {
+      q: "Güç ve yön kontrolü için ideal smaç temas noktası neresidir?",
+      o: ["Başın arkasında ve alçakta", "Vuruş omzunun önünde, ulaşılabilen yüksek noktada", "Göğüs hizasında ve gövdeye yakın", "File altındayken iki elle"],
+      a: 1,
+      e: "Topa vuruş omzunun önünde ve yüksek noktada temas etmek kol hızının topa aktarılmasını, yön kontrolünü ve güvenli inişi destekler.",
+    },
+    {
+      q: "Rakip ikili blokta dış blokçunun dış eli uygun açıyla duruyorsa smaçör hangi seçeneği değerlendirebilir?",
+      o: ["Topu doğrudan antene vurmayı", "Bloğun dış kenarına kontrollü temasla blok aut üretmeyi", "Topu kendi sahasına bırakmayı", "Her durumda blok arasına vurmayı"],
+      a: 1,
+      e: "Blok autta amaç topu doğrudan dışarı atmak değil, dış elin dış kenarını kontrollü kullanarak topun blok temasından saha dışına yönelmesini sağlamaktır.",
+    },
+    {
+      q: "İkili blok tamamen kapanmışsa smaçörün en uygun karar yaklaşımı hangisidir?",
+      o: ["Aynı kapalı aralığa daha sert vurmak", "Dış el, savunma boşluğu veya kontrollü plase seçeneğine geçmek", "Topu tutup tekrar sıçramak", "Vuruştan tamamen vazgeçip fileye temas etmek"],
+      a: 1,
+      e: "Blok arası yalnız gerçek bir boşluk varsa kullanılır. Blok kapalıysa dış el, kısa/derin plase veya saha içi kontrollü hücum hata riskini azaltır.",
+    },
+    {
+      q: "Plase hangi durumda taktik olarak doğru bir hücum seçeneğidir?",
+      o: ["Savunmanın blok arkası, merkez veya derin köşede boşluk bıraktığı durumda", "Rakip sahanın tamamı doluyken rastgele", "Smaçör topu hiç görmediğinde", "Her iyi pasta sert hücum yerine otomatik olarak"],
+      a: 0,
+      e: "Plase, sert hücum görüntüsü korunarak savunmanın boş bıraktığı alana gönderilir. Seçim blok ve savunma yerleşimine dayanmalı, alışkanlıkla yapılmamalıdır.",
+    },
+    {
+      q: "Fileden 2–3 metre uzakta gelen yüksek topta smaçörün önceliği ne olmalıdır?",
+      o: ["Her koşulda keskin açıya tam güç vurmak", "Pas mesafesi ve blok sayısına göre sayı, blok aut veya kontrollü hücum arasında risk yönetmek", "Topu fileye yaklaştırmak için rakip bloğa doğru itmek", "Yaklaşmayı pasın yüksekliğinden bağımsız başlatmak"],
+      a: 1,
+      e: "Yüksek ve fileden uzak top çoğunlukla iki veya üçlü blokla karşılaşır. Araştırmalar hücum temposu ve blokçu sayısının hücum etkinliğini etkilediğini gösterir; doğrudan hatadan kaçınmak önemlidir.",
+    },
+    {
+      q: "Arka hat smaçörü için kurala uygun hücum hangisidir?",
+      o: ["Üç metre çizgisine basarak sıçrayıp topu file üstünden tamamlamak", "Üç metre çizgisinin gerisinden sıçrayıp hücumu tamamlamak", "Ön bölgede blok yaparak topa vurmak", "File önünde ayakta durarak her topu tamamlamak"],
+      a: 1,
+      e: "Arka hat oyuncusu, top tamamen file üstündeyken hücumu tamamlayacaksa sıçrama anında üç metre çizgisinin gerisinde olmalıdır; iniş ön bölgeye yapılabilir.",
+    },
+    {
+      q: "Ön hatta blok yapan smaçör, bloktan indikten sonra hangi geçişi uygulamalıdır?",
+      o: ["File altında kalıp ralliyi izlemek", "Dengeli inip dışa-geriye açılmak ve top kalitesine göre yaklaşma temposu seçmek", "Arka çizgiye dönüp servis beklemek", "Pasörün koşu yolunu kapatmak"],
+      a: 1,
+      e: "Blok–hücum geçişi kesintisiz olmalıdır. Smaçör iki ayakla inip başlangıç mesafesini kazanır; hücum mümkün değilse koruma veya savunma görevini sürdürür.",
+    },
+    {
+      q: "22-22 gibi kritik bir sayıda smaçör hücum kararını hangi bilgilere dayandırmalıdır?",
+      o: ["Yalnız önceki vuruşun sonucuna", "Pas kalitesi, blok sayısı ve elleri, savunma yerleşimi, skor ve kendi denge durumuna", "Sadece tribünden gelen sese", "Her koşulda en sert vuruşa"],
+      a: 1,
+      e: "Kritik top yönetimi sürprizden önce uygulanabilirliği değerlendirir. İyi pas ve tekli blok güçlü hücumu; uzak pas ve çoklu blok ise düşük riskli hedefi öne çıkarabilir.",
+    },
+    {
+      q: "Smaçörün hücum performansını en doğru değerlendiren yaklaşım hangisidir?",
+      o: ["Yalnız toplam sayı", "Yalnız vuruş hızı", "Sayı, hata, blokta kalan top ve kontrollü devam sonucunu birlikte değerlendirmek", "Sadece sıçrama yüksekliği"],
+      a: 2,
+      e: "Hücum etkinliği yalnız bitirilen toplardan oluşmaz. Doğrudan hata oranı ve zor koşullarda takımın yeniden savunabileceği kontrollü toplar karar kalitesini gösterir.",
+    },
+  ],
+  "Pasör çaprazı eğitimi": [
+    {
+      q: "Pasör çaprazının temel hücum ve blok bölgeleri hangileridir?",
+      o: ["Ön hatta bölge 2, arka hatta bölge 1 hücumu ve rakip smaçöre blok", "Ön hatta yalnız bölge 4 ve arka hatta bölge 5", "Sadece bölge 3 hızlı hücumu", "Yalnız servis karşılama ve libero savunması"],
+      a: 0,
+      e: "Pasör çaprazı ön hatta çoğunlukla bölge 2’den, arka hatta bölge 1’den hücum eder; sağ ön blokta rakibin sol kanat smaçörünü karşılar.",
+    },
+    {
+      q: "Pasör ön hattayken pasör çaprazının takım hücumundaki durumu hangisidir?",
+      o: ["Takımın iki ön hat hücumcusundan biridir", "Arka alan liberoya dönüşür", "Hücum sorumluluğu tamamen sona erer", "Yalnız orta oyuncuya pas verir"],
+      a: 0,
+      e: "Pasör ön hattayken ön hatta iki hücumcu bulunur ve pasör çaprazı ana bitirici sorumluluğunu taşır; pasör arka hattayken üç ön hat hücumcusundan biridir.",
+    },
+    {
+      q: "Sağ kanat yaklaşmasının doğru başlangıç ve hareket ilkesi hangisidir?",
+      o: ["Antene yapışık başlayıp topa düz koşmak", "Anten ve fileden güvenli mesafe bırakıp çizgi ile çaprazı gören açılı yaklaşmak", "File altında bekleyip tek adımla sıçramak", "Sahanın dışından yaklaşarak anten dışına geçmek"],
+      a: 1,
+      e: "Açılı yaklaşma topun vuruş omzu önünde kalmasını ve çizgi/çapraz seçeneklerinin korunmasını sağlar; son adımlar yatay hızı dikey sıçramaya çevirir.",
+    },
+    {
+      q: "Sağ kanatta solak ve sağlak pasör çaprazı için doğru uyarlama hangisidir?",
+      o: ["Her iki oyuncuya tamamen aynı pas konumu zorunludur", "Solak oyuncu doğal vuruş kolunu dıştan daha rahat açabilir; sağlak oyuncu topun arkasına geçecek yaklaşma açısına daha çok ihtiyaç duyar", "Sağlak oyuncu topu daima anten dışından almalıdır", "Solak oyuncu yalnız çapraz vurabilir"],
+      a: 1,
+      e: "Baskın el başlangıç noktasını ve vuruş penceresini etkiler. Her iki durumda da amaç topu vuruş omzu önünde tutmak ve file altına sürüklenmemektir.",
+    },
+    {
+      q: "Yüksek sağ kanat pasında doğru yaklaşma zamanlaması hangisidir?",
+      o: ["Pas çıkar çıkmaz tam hız koşup topun altında beklemek", "Pasın yüksekliğini okuyup başlangıçta sabırlı kalmak, top tepeye yaklaşırken son iki adımı hızlandırmak", "Top düşmeye başladıktan sonra geriye koşmak", "Pasın fileye uzaklığını dikkate almamak"],
+      a: 1,
+      e: "Erken koşu topun altında kalmaya yol açar. Bekle–hızlan ritmi, yüksek pasın tepe noktası ve fileye uzaklığına göre ayarlanır.",
+    },
+    {
+      q: "Çizgi vuruşunda rakip dış blokçu çizgiyi tamamen kapatmışsa en uygun karar nedir?",
+      o: ["Anten dışına daha sert vurmak", "Dış el veya açık çapraz seçeneğine geçmek", "Topu filede tutmak", "Yaklaşmayı durdurup topa temas etmemek"],
+      a: 1,
+      e: "Çizgi vuruşu blok hattına göre seçilir. Çizgi kapanmışsa bloğun dış kenarını kontrollü kullanmak veya açık çapraz hedefe yönelmek doğrudan hata riskini azaltır.",
+    },
+    {
+      q: "Kontrollü çapraz vuruşun yönü nasıl oluşturulmalıdır?",
+      o: ["Yalnız bileği son anda sertçe çevirerek", "Yaklaşma açısı, omuz dönüşü, yüksek temas ve el yönlendirmesini birlikte kullanarak", "Topa başın arkasında temas ederek", "Gözleri kapatıp tam güç vurarak"],
+      a: 1,
+      e: "Çapraz yön yalnız bilekle üretilmez. Benzer yaklaşma görüntüsünden sonra gövde ve el birlikte hedefe yönelir; keskin açı kapalıysa derin çapraz seçilir.",
+    },
+    {
+      q: "Bölge 1 arka alan hücumunda kurala uygun sıçrama hangisidir?",
+      o: ["Son basış üç metre çizgisinin üzerinde", "Sıçrama üç metre çizgisinin gerisinden, iniş ise ön bölgeye yapılabilir", "Sıçrama ön bölgeden, iniş arka bölgeye", "Çizgi kuralı pasör çaprazına uygulanmaz"],
+      a: 1,
+      e: "Arka hat oyuncusu hücumu file üstünde tamamlayacaksa sıçrama anında üç metre çizgisinin gerisinde olmalıdır. Çizginin üzerine basmak ön bölge basışı sayılır.",
+    },
+    {
+      q: "Fileden 2–3 metre uzakta ve üçlü blok karşısındaki bozuk top için en güvenli çözüm hangisidir?",
+      o: ["Her durumda keskin açıya tam güç vurmak", "Yüksek temasla blok üstü, dış el veya savunma boşluğuna kontrollü hücum seçmek", "Topu antene doğru itmek", "Gözünü bloktan ayırıp rastgele vurmak"],
+      a: 1,
+      e: "Pasör çaprazı zor koşullarda sıkça kompakt iki veya üçlü blokla karşılaşır. Pas mesafesi, denge ve blok görüntüsüne göre kontrollü çözüm üretmek etkinliği korur.",
+    },
+    {
+      q: "Bilimsel bölge analizleri pasör çaprazının rolü hakkında hangi sonucu destekler?",
+      o: ["Yalnız ideal karşılamalarda hücum ettiğini", "Bölge 2 ve 1’den, özellikle kötü ilk temas ve karşı hücum sonrasında zor topları yüksek blok karşısında yönetmesi gerektiğini", "Servis karşılamadan sonra hiç hücum etmediğini", "Sadece tekli blokla karşılaştığını"],
+      a: 1,
+      e: "Elit erkek voleybolu analizleri, pasör çaprazlarının ideal olmayan paslardan ve karşı hücumda sıkça kompakt çift/üçlü blok karşısında hücum ettiğini vurgular.",
+    },
+    {
+      q: "Rakip smaçöre blokta pasör çaprazının dış eli nasıl kullanılmalıdır?",
+      o: ["Saha dışına açık bırakılmalıdır", "File üzerinden rakip alana uzatılıp topu kendi sahasının içine yönlendirecek açıya çevrilmelidir", "Gövdenin arkasında tutulmalıdır", "Parmaklar gevşek bırakılmalıdır"],
+      a: 1,
+      e: "Dış elin içe açılan kontrollü konumu rakibin blok aut kullanmasını zorlaştırır ve temas eden topun savunulabilir saha alanına yönelme olasılığını artırır.",
+    },
+    {
+      q: "Pasör çaprazı bloktan indikten sonra hücuma nasıl geçmelidir?",
+      o: ["File altında topu izleyerek kalmalı", "İki ayakla dengeli inip dışa-geriye açılmalı, top kalitesine göre yaklaşma temposunu seçmeli", "Doğrudan servis çizgisine yürümeli", "Pasörün önünde beklemeli"],
+      a: 1,
+      e: "Blok sonrası üç hızlı açılma adımı sağ kanat hücum mesafesini kazandırır. İyi topa daha hızlı, bozuk yüksek topa sabırlı yaklaşılır.",
+    },
+    {
+      q: "Pasör çaprazının servis ve savunma sorumluluğu için doğru ifade hangisidir?",
+      o: ["Karşılama yükü azsa servis ve savunma görevi de yoktur", "Servisle rakip düzenini bozmalı ve ardından rotasyondaki çizgi, çapraz veya blok arkası savunmasına geçmelidir", "Servis sonrası file dışında beklemelidir", "Yalnız kendi hücumunu düşünmelidir"],
+      a: 1,
+      e: "Pasör çaprazının servis karşılama yükü sınırlı olabilir; fakat hedef servis, bölge 1 savunması, bloktan seken top ve geçiş hücumu sorumluluğu sürer.",
+    },
+    {
+      q: "22-22 gibi kritik bir sayıda pasör çaprazı hücum riskini neye göre ayarlamalıdır?",
+      o: ["Yalnız topa daha sert vurarak", "Pas kalitesi, blok sayısı, önceki vuruşlar, savunma boşluğu ve skor bağlamını birlikte değerlendirerek", "Her zaman aynı çizgi vuruşunu tekrarlayarak", "Sadece seyircinin tepkisine göre"],
+      a: 1,
+      e: "Tekli blok güçlü hücumu destekleyebilir; çoklu blok veya fileden uzak pas ise dış el, derin hedef ya da kontrollü hücumu daha yüksek yüzdeli seçenek yapabilir.",
+    },
+    {
+      q: "Pasör çaprazının hücum performansını kapsamlı biçimde değerlendiren ölçüt hangisidir?",
+      o: ["Yalnız toplam sayı", "Sadece vuruş hızı", "Sayı, doğrudan hata ve oyunda kalan kontrollü topların birlikte değerlendirilmesi", "Yalnız sıçrama yüksekliği"],
+      a: 2,
+      e: "Pozisyon özellikle zor topları yönetir. Bu nedenle sayı üretimi kadar doğrudan hatadan kaçınma ve takımın savunabileceği kontrollü top oluşturma da karar kalitesini gösterir.",
+    },
+  ],
+  "Takım rotasyonları": [
+    {
+      q: "Bir takım hangi durumda saat yönünde bir bölge rotasyon yapar?",
+      o: ["Servis atan takım her sayı kazandığında", "Servis karşılayan takım ralliyi kazanıp servis hakkını aldığında", "Her mola sonrasında", "Rakip oyuncu değişikliği yaptığında"],
+      a: 1,
+      e: "Karşılayan takım ralliyi kazanarak servis hakkını aldığında oyuncular saat yönünde bir bölge ilerler. Servis atan takım sayı alırsa aynı diziliş ve servisçi devam eder.",
+    },
+    {
+      q: "Saat yönündeki doğru bölge dönüş sırası hangisidir?",
+      o: ["1 → 2 → 3 → 4 → 5 → 6 → 1", "1 → 6 → 5 → 4 → 3 → 2 → 1", "1 → 5 → 3 → 2 → 4 → 6 → 1", "1 → 3 → 5 → 2 → 6 → 4 → 1"],
+      a: 1,
+      e: "Bölge 2 oyuncusu servis için 1'e, 1'deki 6'ya, 6'daki 5'e, 5'teki 4'e, 4'teki 3'e ve 3'teki 2'ye geçer.",
+    },
+    {
+      q: "Saha bölgeleri ve hatlar için doğru eşleştirme hangisidir?",
+      o: ["1 ön sağ, 2 arka sağ, 3 arka orta", "1 arka sağ; 2 ön sağ; 3 ön orta; 4 ön sol; 5 arka sol; 6 arka orta", "1 arka sol; 2 ön sol; 5 arka sağ", "1 ön orta; 3 arka orta; 6 ön sağ"],
+      a: 1,
+      e: "Bölgeler oyuncunun uzmanlık görevini değil, rotasyondaki başlangıç konumunu belirtir. Ön hat 2-3-4, arka hat 1-6-5 bölgeleridir.",
+    },
+    {
+      q: "‘Başlangıç dizilişi’ ile ‘oyun dizilişi’ arasındaki temel fark nedir?",
+      o: ["İkisi tamamen aynıdır", "Başlangıç dizilişi servis anındaki rotasyon ilişkilerini, oyun dizilişi ise top oyuna girdikten sonraki uzmanlık konumlarını gösterir", "Oyun dizilişi yalnız mola sırasında kullanılır", "Başlangıç dizilişi sadece liberoya aittir"],
+      a: 1,
+      e: "Oyuncular servis anında rotasyon ilişkilerine uyar; top oyuna girdikten sonra pasör, hücumcu, blokçu ve savunmacılar görev alanlarına geçebilir.",
+    },
+    {
+      q: "Servis anında ön ve arka hat oyuncuları arasındaki doğru göreli konum hangisidir?",
+      o: ["Bölge 1 oyuncusu bölge 2 oyuncusundan daha önde olmalıdır", "Bölge 6 oyuncusu bölge 3 oyuncusundan daha geride olmalıdır", "Bölge 5 oyuncusu bölge 4 oyuncusundan daha önde olmalıdır", "Tüm oyuncular aynı yatay çizgide durmalıdır"],
+      a: 1,
+      e: "Eşleşen arka hat oyuncuları, orta çizgiye göre karşılarındaki ön hat oyuncularından daha geride konumlanır: 1-2, 6-3 ve 5-4 ilişkileri korunur.",
+    },
+    {
+      q: "Aynı hattaki sağ-sol ilişkilerinden hangisi doğrudur?",
+      o: ["Bölge 2, bölge 3'ün sağında; bölge 4 ise bölge 3'ün solundadır", "Bölge 2, bölge 3'ün solundadır", "Bölge 1, bölge 6'nın solundadır", "Bölge 5, bölge 6'nın sağındadır"],
+      a: 0,
+      e: "Ön hatta 2 sağda, 3 ortada, 4 soldadır; arka hatta 1 sağda, 6 ortada ve 5 soldadır. Kontrol, ayakların zeminle temas eden konumuna göre yapılır.",
+    },
+    {
+      q: "Servis karşılama dizilişi kurulurken pasör için temel planlama nedir?",
+      o: ["Pasörün hedefe geçiş yolunu karşılayıcılarla kapatmak", "Rotasyon ilişkilerini korurken pasörün ön sağ hedef bölgesine geçiş koridorunu açık bırakmak", "Pasörü mutlaka servis karşılamaya zorlamak", "Hücumcuların yaklaşma yollarını aynı koridorda birleştirmek"],
+      a: 1,
+      e: "Karşılama düzeni güçlü karşılayıcıları topa açarken pasörün yolunu boş bırakır. Hücumcuların yaklaşma koridorları da servis öncesinde ayrılır.",
+    },
+    {
+      q: "4-2 oyun sisteminde pasörlerin temel rotasyon görevi hangisidir?",
+      o: ["İki pasör yan yana ön hatta oynar", "Pasörler çaprazdır ve ön hatta bulunan pasör hücumu yönetir", "Arka hat pasörü her zaman blok yapar", "Her rotasyonda iki libero pas verir"],
+      a: 1,
+      e: "4-2 sisteminde iki pasör çapraz yerleşir. Ön hat pasörü hedef bölgesine geçerek hücumu kurar; arka hat pasörü savunma ve ikinci top desteği verir.",
+    },
+    {
+      q: "5-1 sistemini 4-2 sisteminden ayıran temel özellik nedir?",
+      o: ["Altı rotasyon boyunca aynı uzman pasörün hücumu yönetmesi", "Hiç pasör kullanılmaması", "Her rotasyonda farklı liberonun pas vermesi", "Yalnız iki hücumcunun sahada bulunması"],
+      a: 0,
+      e: "5-1 sisteminde tek pasör altı rotasyon boyunca oyunu yönetir. Bu devamlılık tempo ve karar dilini sabit tutar; pasörün ön/arka hat durumu hücumcu sayısını değiştirir.",
+    },
+    {
+      q: "5-1 sisteminde pasör ön hattayken hücum seçenekleri nasıl değişir?",
+      o: ["Üç ön hat hücumcusu bulunur", "Genellikle iki ön hat hücumcusu kalır; arka alan hücumu üçüncü tehdit sağlayabilir", "Hiç blokçu kalmaz", "Pasör arka hat oyuncusu sayılır"],
+      a: 1,
+      e: "Pasör 2, 3 veya 4'teyken ön hat oyuncusudur. Bu durumda iki ön hat hücumcusu bulunur; arka alan bağlantısı hücum çeşitliliğini artırabilir.",
+    },
+    {
+      q: "5-1 sisteminde pasör arka hattayken doğru hücum düzeni hangisidir?",
+      o: ["Pasör hedefe geçemez", "Ön hatta üç hücumcu bulunur ve iyi karşılamada orta, sol ve sağ kanat birlikte kullanılabilir", "Yalnız tek kanat hücum eder", "Pasör ön hatta blok yapmak zorundadır"],
+      a: 1,
+      e: "Pasör 1, 6 veya 5'teyken arka hattan hedefe geçer. Üç ön hat hücumcusunun koridorları açık tutulursa tüm file genişliği tehdit oluşturur.",
+    },
+    {
+      q: "Libero ile orta oyuncu arasındaki rotasyon takibinde doğru işlem hangisidir?",
+      o: ["Libero istediği herhangi bir oyuncuyla değişebilir", "Libero arka hatta geçen orta oyuncunun yerine girer ve aynı oyuncu ön hatta dönerken doğru eşleşmeyle çıkar", "Libero servis sırasını değiştirebilir", "Değişim normal oyuncu değişikliği sayısını mutlaka azaltır"],
+      a: 1,
+      e: "Libero değişiminde yerine girilen oyuncu takip edilir, değişim belirlenen alandan yapılır ve servis sırası korunur. Orta oyuncu ön hatta dönerken doğru eşleşme tamamlanır.",
+    },
+    {
+      q: "Aşağıdakilerden hangisi üst üste binme veya pozisyon hatası riskidir?",
+      o: ["Arka hat pasörünün izin verilen andan önce eşleştiği ön hat oyuncusundan öne geçmesi", "Oyuncuların top oyuna girdikten sonra uzmanlık konumlarına geçmesi", "Bölge 2 oyuncusunun servis hakkı kazanılınca bölge 1'e dönmesi", "Pasörün geçiş yolunun açık bırakılması"],
+      a: 0,
+      e: "Pozisyon hatası, servis için geçerli anda göreli ön-arka veya sağ-sol sırasının bozulmasıdır. Erken geçiş, özellikle sıkıştırılmış karşılama dizilişlerinde risk oluşturur.",
+    },
+    {
+      q: "Rotasyondan oyun düzenine güvenli geçişin doğru sırası hangisidir?",
+      o: ["Servis temasından önce görev alanına koşmak", "Geçiş için izin verilen anı beklemek, yolları ayırmak, topu görüşte tutmak ve hücum sonrası standart savunmaya dönmek", "Tüm oyuncuların aynı koridordan ilerlemesi", "Başlangıç dizilişinde ralli sonuna kadar kalmak"],
+      a: 1,
+      e: "Geçiş kısa ve çakışmasız olmalıdır. Pasör hedefe, hücumcular koridorlarına, savunmacılar alanlarına gider; ralli sonunda yeni servis sırası tekrar kurulur.",
+    },
+    {
+      q: "Takım rotasyonlarını en güvenilir biçimde kontrol etmek için hangi yöntem kullanılmalıdır?",
+      o: ["Yalnız oyuncuların hafızasına güvenmek", "Her ralli sonunda bölge 1 oyuncusunu, servis sırasını, değişimleri ve rotasyon çizelgesini doğrulamak", "Sadece skor tabelasına bakmak", "Servisçi yanlışsa ralli bitene kadar beklemek"],
+      a: 1,
+      e: "Sistematik kontrol yanlış servisçi ve değişim hatasını azaltır. Rotasyon çizelgesi, oyuncu numaraları ve servis sırası her ralliden sonra kısa biçimde doğrulanır.",
+    },
+  ],
+  "Maç analizi": [
+    {
+      q: "Bilimsel ve uygulanabilir bir maç analizinin ilk adımı hangisidir?",
+      o: ["Maç bittikten sonra dikkat çeken oyuncuyu seçmek", "Tek ve ölçülebilir analiz sorusunu, göstergeleri ve kod tanımlarını önceden belirlemek", "Mümkün olan bütün olayları açıklamasız kaydetmek", "Yalnız kazanılan rallileri incelemek"],
+      a: 1,
+      e: "Analiz, ‘neden kaybettik?’ gibi geniş bir yargı yerine belirli bir soruyla başlar. Kod sözlüğü ve kalite ölçekleri veri toplanmadan önce sabitlenir.",
+    },
+    {
+      q: "Tarafsız gözlem için doğru uygulama hangisidir?",
+      o: ["Aynı hareketi yıldız oyuncuda daha olumlu puanlamak", "Başarılı sonucu her zaman doğru karar saymak", "Önce eylemi ortak kodla kaydetmek, yorumu ayrı yapmak ve belirsizliği videodan kontrol etmek", "Tek ralliden oyuncunun genel eğilimini çıkarmak"],
+      a: 2,
+      e: "Eylem ve yorum ayrılır; aynı tanım bütün oyunculara uygulanır. Sonuç ile karar kalitesi aynı şey değildir ve belirsiz kayıt video üzerinden doğrulanır.",
+    },
+    {
+      q: "İki gözlemcinin aynı 20 ralliyi benzer biçimde kodlaması neden kontrol edilir?",
+      o: ["Maçın skorunu değiştirmek için", "Kod sisteminin gözlemciler arası güvenilirliğini değerlendirmek için", "Daha fazla oyuncu değişikliği yapmak için", "Video süresini kısaltmak için"],
+      a: 1,
+      e: "Açık operasyonel tanımlar yüksek gözlemci uyumu sağlamalıdır. Güvenilirlik araştırmaları, öznel veya çok karmaşık kategori tanımlarının kodlama tutarlılığını düşürebildiğini gösterir.",
+    },
+    {
+      q: "Bir rallinin bitişini ‘HS’ koduyla kaydetmek ders içeriğinde ne anlama gelir?",
+      o: ["Hücum sayısı", "Hücum hatası", "Servis hatası", "Karşılama hatası"],
+      a: 0,
+      e: "Ralli yalnız kazanan takımla değil bitiş nedeniyle kaydedilir. HS hücum sayısını; HH hücum hatasını, SA servis sayısını ve SH servis hatasını ifade eder.",
+    },
+    {
+      q: "Servis analizi için hangi veri grubu birlikte kaydedilmelidir?",
+      o: ["Yalnız servis içeri girdi mi?", "Servisçi, başlangıç bölgesi, servis türü, hedef, karşılama kalitesi ve sonuç", "Yalnız topun hızı", "Sadece servis atan oyuncunun boyu"],
+      a: 1,
+      e: "Servisin taktik etkisi hedef ve sonraki karşılama/hücum kalitesiyle anlaşılır. Yalnız ‘oyunda’ bilgisi rakibin sistem dışına çıkıp çıkmadığını göstermez.",
+    },
+    {
+      q: "Dört düzeyli karşılama ölçeğinde ‘3 — Mükemmel’ neyi ifade eder?",
+      o: ["Topun doğrudan sayı kaybına yol açmasını", "Hücumun yalnız yüksek kanattan kurulabilmesini", "Pasörün hızlı ve kanat dahil tüm hücum seçeneklerini kullanabilmesini", "Topun rakip sahaya geri gönderilmesini"],
+      a: 2,
+      e: "Mükemmel karşılamada pasör bütün hücum seçeneklerine sahiptir. Pozitif karşılama oranında ders tanımına göre 3 ve 2 değerli karşılamalar birlikte kullanılır.",
+    },
+    {
+      q: "Bir takım 50 karşılamanın 32'sinde 2 veya 3 kalite değerine ulaştıysa pozitif karşılama oranı kaçtır?",
+      o: ["%32", "%50", "%64", "%82"],
+      a: 2,
+      e: "Pozitif karşılama oranı 32 ÷ 50 = 0,64, yani %64'tür. Pay ve paydanın raporda açıkça gösterilmesi yorumun denetlenmesini sağlar.",
+    },
+    {
+      q: "Bir oyuncu 40 hücumda 18 sayı ve 6 doğrudan hata yaptıysa hücum verimliliği kaçtır?",
+      o: ["%30", "%45", "%60", "%75"],
+      a: 0,
+      e: "Hücum verimliliği (sayı − hata) ÷ toplam hücum formülüyle hesaplanır: (18 − 6) ÷ 40 = 0,30, yani %30.",
+    },
+    {
+      q: "Hücum kararının neden başarılı veya başarısız olduğunu anlamak için hangi alanlar birlikte kodlanmalıdır?",
+      o: ["Yalnız sayı ve hata", "Hücum bölgesi, tempo, pas kalitesi, blok sayısı, vuruş yönü ve sonuç", "Sadece hücumcunun adı", "Yalnız topun düştüğü nokta"],
+      a: 1,
+      e: "Sonuç bağlamdan ayrı yorumlanamaz. Aynı vuruş; kötü pas, üçlü blok veya farklı tempo altında tamamen farklı bir karar kalitesine sahip olabilir.",
+    },
+    {
+      q: "Bir top savunulamadığında blok-savunma analizinde doğru yaklaşım hangisidir?",
+      o: ["Her durumda yalnız liberoyu sorumlu tutmak", "Blok yönü ve kapanışı, savunmacının başlangıç yeri, okuma zamanı ve temas kalitesini birlikte incelemek", "Sadece topun hızını kaydetmek", "Ralliyi analiz dışı bırakmak"],
+      a: 1,
+      e: "Blok ve arka alan savunması tek sistemdir. Doğrudan blok, dokunuş, yumuşatılmış top ve kontrollü/kontrolsüz savunma ayrı kodlanarak sorunun kaynağı belirlenir.",
+    },
+    {
+      q: "Side-out oranı hangi formülle hesaplanır?",
+      o: ["Servis atarken kazanılan ralliler ÷ toplam servis rallisi", "Servis karşıladıktan sonra kazanılan ralliler ÷ toplam servis karşılama rallisi", "Hücum sayıları ÷ toplam blok", "Pozitif karşılama ÷ servis hatası"],
+      a: 1,
+      e: "Side-out, servis karşılayan takımın ralliyi kazanma başarısını ölçer. Servis atan takımın kazandığı rallilerin oranı ise break-point göstergesidir.",
+    },
+    {
+      q: "Takımın toplam side-out yüzdesi iyi görünürken neden R1–R6 ayrı incelenmelidir?",
+      o: ["Toplam oran hesaplanamadığı için", "Toplam değer belirli bir rotasyondaki düşük karşılama, kötü eşleşme veya kayıp serisini gizleyebileceği için", "Her rotasyonda kurallar değiştiği için", "Oyuncu isimlerini gizlemek için"],
+      a: 1,
+      e: "Rotasyon bazlı karşılaştırma pasör konumu, hücum seçenekleri ve karşılama düzeninin etkisini görünür kılar. Bilimsel çalışmalar bazı rotasyonların side-out olasılığında ayrışabildiğini göstermiştir.",
+    },
+    {
+      q: "Bir oyuncu için ‘kötü pasta daima çapraz vuruyor’ eğilimini güvenilir biçimde raporlamak için ne gerekir?",
+      o: ["Tek bir başarılı klip", "Farklı bağlamlarda yeterli sayıda eylem, sayısal kayıt, birkaç destekleyici klip ve mümkünse karşı örnek", "Oyuncunun kendi görüşü", "Yalnız maçın son rallisi"],
+      a: 1,
+      e: "Eğilim tekrarlanan örüntüdür. Ders en az 20 ilgili eylemi ve her çıkarım için en az üç video örneğini önerir; az veri ‘ön bulgu’ olarak işaretlenmelidir.",
+    },
+    {
+      q: "Set içindeki üç veya daha fazla sayılık seri nasıl analiz edilmelidir?",
+      o: ["Doğrudan şans veya momentum olarak etiketlenmelidir", "Başlangıç rotasyonu, servisçi, ralli bitiş nedenleri ve mola/değişiklik öncesi-sonrası bağlamıyla incelenmelidir", "Yalnız skor farkı yazılmalıdır", "Sadece son sayının videosu izlenmelidir"],
+      a: 1,
+      e: "Skor serisi gözlenebilir nedenlerle açıklanır: servis baskısı, karşılama düşüşü, blok eşleşmesi veya karar kalitesi gibi etkenler zaman çizelgesinde doğrulanır.",
+    },
+    {
+      q: "İyi bir set arası raporun yapısı nasıl olmalıdır?",
+      o: ["Bütün istatistiklerin uzun bir listesi", "İki doğrulanmış bulgu, nedenleri, en fazla üç uygulanabilir eylem ve bu eylemlerin ölçüm yöntemi", "Yalnız oyuncu hatalarının isim listesi", "Video olmadan genel motivasyon konuşması"],
+      a: 1,
+      e: "Analizin amacı sahada uygulanabilir karar üretmektir. Rapor ‘ne oluyor, neden oluyor, ne yapacağız ve nasıl ölçeceğiz?’ sorularına kısa cevap verir.",
     },
   ],
   "Taktik ve oyun zekâsı": [
     {
-      q: "Taktik karar öncesinde ilk olarak ne okunmalıdır?",
-      o: [
-        "Seyirci sayısı",
-        "Rakibin yerleşimi ve eğilimleri",
-        "Forma rengi",
-        "Salon ışıkları",
-      ],
+      q: "Voleybolda oyun zekâsını en doğru tanımlayan ifade hangisidir?",
+      o: ["Yalnızca topa sert vurabilmek", "Topa temas etmeden önce ilgili saha bilgisini toplayıp uygun seçeneği zamanında ve teknik kontrolle uygulamak", "Her rallide aynı planı değiştirmeden kullanmak", "Sadece antrenörün saha dışından verdiği komutu beklemek"],
       a: 1,
-      e: "Etkili karar, rakibin blok-savunma düzenini ve zayıf alanlarını okumaya dayanır.",
+      e: "Oyun zekâsı algı–karar–uygulama zinciridir. Oyuncu çevreyi tarar, olası seçenekleri hazırlar, son ipucuna göre seçer ve sonucu sonraki ralli için günceller.",
+    },
+    {
+      q: "Saha taraması hangi zamanlarda tekrarlanmalıdır?",
+      o: ["Yalnız mola sırasında", "Servis öncesinde, top karşı sahadayken ve takımın ilk teması sırasında", "Sadece top oyuncunun ellerine geldikten sonra", "Yalnız sayı kazanıldıktan sonra"],
+      a: 1,
+      e: "Kısa ve tekrarlanan bakışlar; rotasyon, pasör, kullanılabilir hücumcular, rakip blok, savunma derinliği ve boş alanlar hakkında erken bilgi sağlar.",
+    },
+    {
+      q: "Bilimsel görsel arama araştırmalarında uzman voleybolcuların acemilere göre temel avantajı nedir?",
+      o: ["Her bölgeye daha uzun süre rastgele bakmaları", "Göreve özgü önemli ipuçlarını daha verimli kodlayıp pas yönünü daha hızlı ve doğru öngörmeleri", "Yalnız topun rengine odaklanmaları", "Karar vermeyi top temasından sonraya bırakmaları"],
+      a: 1,
+      e: "Gerçekçi pasör videolarıyla yapılan göz izleme çalışmasında uzmanlar daha hızlı ve doğru tahmin üretmiş; kritik bilgiyi daha verimli görsel arama stratejisiyle işlemiştir.",
+    },
+    {
+      q: "Top gelmeden önce ana ve yedek seçenek hazırlamanın amacı nedir?",
+      o: ["Oyuncuyu tek bir karara kilitlemek", "Son uyaran değiştiğinde temas anında düşünmeye başlamadan uygun çözüme geçebilmek", "Teknik uygulamayı yavaşlatmak", "Rakip yerleşimini görmezden gelmek"],
+      a: 1,
+      e: "Örneğin pasör iyi karşılamada orta hücumu, zayıf karşılamada yüksek kanadı hazırlar. Böylece değişen top kalitesine tereddütsüz tepki verebilir.",
+    },
+    {
+      q: "Rakip sahadaki ‘boş alan’ için doğru ifade hangisidir?",
+      o: ["Maç boyunca değişmeyen sabit bir bölgedir", "Rakip oyuncunun bulunmadığı veya ulaşmakta zorlanacağı, ralli içinde değişebilen bölgedir", "Yalnız saha dışıdır", "Her zaman bölge 6'dır"],
+      a: 1,
+      e: "Boşluk servis karşılama, blok ve savunma hareketiyle değişir. Oyuncu iki karşılayıcı arası, blok arkası, kısa alan veya derin köşeyi sürekli yeniden değerlendirmelidir.",
+    },
+    {
+      q: "Fileden uzak ve dengesiz bir hücum topunda doğru risk yönetimi hangisidir?",
+      o: ["Skor ne olursa olsun keskin açıya tam güç vurmak", "Top kalitesi, denge, blok ve skor bağlamına göre kontrollü derin top veya blok kullanma seçmek", "Topu antene doğru zorlamak", "Rakip savunmaya bakmadan rastgele plase yapmak"],
+      a: 1,
+      e: "En iyi karar en gösterişli hareket değildir. Düşük kaliteli top ve dengesiz durumda doğrudan hata olasılığını azaltan çözüm daha yüksek başarı yüzdesi sağlayabilir.",
+    },
+    {
+      q: "Rakip ikili bloğu okurken hangi bilgi yalnız blok sayısından daha değerlidir?",
+      o: ["Blokçuların forma numarası", "İki el grubu arasındaki boşluk, kapanma hızı ve dış elin açısı", "Blokçuların servis sırası", "Seyirciye baktıkları yön"],
+      a: 1,
+      e: "Blok arası açıksa sert ara; dış el saha dışına dönükse blok aut; blok kapalıysa plase veya savunma boşluğu değerlendirilebilir.",
+    },
+    {
+      q: "Arka orta savunmacı çok derinde, blok arkası ise boşsa hücumcu hangi seçeneği değerlendirmelidir?",
+      o: ["Her durumda derin sert top", "Kısa ve kontrollü plase", "Topu kendi sahasına yönlendirme", "Anten dışına vuruş"],
+      a: 1,
+      e: "Savunmanın derinliği vuruş hedefini etkiler. Sert hücum görüntüsünden kısa plase, derindeki savunmacının öne yetişmekte zorlanacağı alanı kullanabilir.",
+    },
+    {
+      q: "Taktik servis hedefi seçerken en doğru yaklaşım hangisidir?",
+      o: ["Yalnız en zayıf oyuncuya her rotasyonda aynı servisi atmak", "Rakip rotasyonu, ara boşluk, pasörün yolu, hücumcunun geçişi ve skor riskini birlikte değerlendirmek", "Amaçsız biçimde yalnız en güçlü servisi kullanmak", "Servis hedefini vuruş anında rastgele belirlemek"],
+      a: 1,
+      e: "Servis planı rakibin hücum düzenini sınırlamayı amaçlar. Zayıf karşılayıcı kadar iki oyuncu arası, kısa-derin değişimi ve belirli rotasyondaki side-out sorunu da hedef olabilir.",
+    },
+    {
+      q: "Hücumda vuruş çeşitliliği ne anlama gelir?",
+      o: ["Her topta rastgele farklı teknik denemek", "Aynı hazırlık görüntüsünden top, blok, savunma ve dengeye uygun çizgi, çapraz, dış el veya plase seçmek", "Yalnız bilekle yön değiştirmek", "Sadece sert ve yumuşak vuruşu sırayla kullanmak"],
+      a: 1,
+      e: "Çeşitlilik rastlantı değildir. Hazırlığın benzer kalması rakibin erken okumasını zorlaştırırken seçim mevcut boşluk ve top kalitesiyle uyumlu olmalıdır.",
+    },
+    {
+      q: "Savunmadan hücuma geçişte top pasör hedefinden çok uzaktaysa hangi öncelik doğrudur?",
+      o: ["Her durumda hızlı orta hücumu zorlamak", "Hücumcu yetişmiyorsa güvenli yüksek top veya rakibi zorlayacak kontrollü top seçmek", "Pasörün ilk topu almasını yok saymak", "Bütün oyuncuların aynı anda fileye koşması"],
+      a: 1,
+      e: "Geçiş temposu savunma topunun kalitesi ve pasörün konumuna göre seçilir. İyi top hızlı seçenekleri, kötü top ise güvenli ve dengeli çözümü öne çıkarır.",
+    },
+    {
+      q: "23-24 gibi kritik bir sayıda doğru karar süreci hangisidir?",
+      o: ["Baskı nedeniyle takım planını terk edip en zor hareketi denemek", "Rotasyonun güvenilir seçeneğini, eşleşmeyi, ilk temas kalitesini, önceki rallileri ve hata olasılığını birlikte değerlendirmek", "Skoru tamamen görmezden gelmek", "Her durumda aynı oyuncuya aynı tempoda oynamak"],
+      a: 1,
+      e: "Kritik sayı kararında skor bilgisi önemlidir ancak tek belirleyici değildir. Oyuncu takım planını, mevcut topu ve kazanç-risk dengesini birlikte ele alır.",
+    },
+    {
+      q: "Rakibin tekrar eden bir eğilimini güvenilir saymak için ne gerekir?",
+      o: ["Tek bir dikkat çekici ralli", "Rotasyon, pas kalitesi ve skor bağlamında tekrarlanan yeterli sayıda olay ve karşı örnek kontrolü", "Oyuncunun geçmiş ünü", "Yalnız maçın son sayısı"],
+      a: 1,
+      e: "Eğilim rastlantısal olay değildir. Ders, en az 30 ilgili olay içinde örüntü aramayı ve her bulguyu en az üç olayla desteklemeyi öğretir.",
+    },
+    {
+      q: "Bilimsel derlemelere göre voleybolda karar verme becerisini geliştiren yöntemlerden biri hangisidir?",
+      o: ["Yalnız kondisyon koşusu", "Video geri bildirimi, sorgulama, görsel arama ve oyun benzetimi içeren algısal-bilişsel çalışmalar", "Oyuncuyu karar vermeden yalnız komut izlemeye zorlamak", "Sadece maç sonucunu söylemek"],
+      a: 1,
+      e: "Kontrollü çalışmaların meta-analizi, video, soru-cevap, görsel arama ve benzetim temelli karar antrenmanlarının normal antrenmana göre anlamlı gelişim sağlayabildiğini göstermiştir.",
+    },
+    {
+      q: "Takım içi taktik iletişimin doğru özelliği hangisidir?",
+      o: ["Ralli sırasında uzun ve ayrıntılı açıklama", "Kısa, erken, tek anlamlı ve ortak komut sözlüğüne dayalı iletişim", "Topa temas edildikten sonra çelişkili komutlar", "Yalnız kaptanın konuşması"],
+      a: 1,
+      e: "‘Kısa’, ‘uzun’, ‘çizgi’, ‘çapraz’, ‘plase’, ‘tekli’, ‘ikili’, ‘bende’ gibi ortak komutlar görev bilgisini eylemden önce aktarır.",
+    },
+  ],
+  "Kondisyon ve kuvvet": [
+    {
+      q: "Voleybola özgü kondisyonu en doğru açıklayan ifade hangisidir?",
+      o: ["Uzun süre hiç durmadan düşük hızda koşabilmek", "Yalnızca bir kez en yükseğe sıçrayabilmek", "Kısa ve yüksek şiddetli hareketleri tekrarlarken ralliler arasında toparlanıp teknik kaliteyi koruyabilmek", "Sadece ağır yük kaldırabilmek"],
+      a: 2,
+      e: "Voleybolda kondisyon, kesintili oyun yapısına uygun olarak kısa ve yüksek şiddetli eylemleri tekrar edebilme, aralarda toparlanma ve maç boyunca teknik kaliteyi sürdürebilme becerisidir.",
+    },
+    {
+      q: "Başlangıç hareket taramasında ağrı ortaya çıkarsa en doğru uygulama hangisidir?",
+      o: ["Testi daha ağır yükle tekrarlamak", "Ağrıyı normal yorgunluk kabul edip devam etmek", "Testi durdurmak, hareketi zorlamamak ve gerektiğinde sağlık uzmanına yönlendirmek", "Sadece hareket hızını artırmak"],
+      a: 2,
+      e: "Hareket taraması tanı koymaz; güvenli başlangıç düzeyini belirlemeye yardım eder. Ağrı varsa test zorlanmaz ve uygun uzman değerlendirmesi istenir.",
+    },
+    {
+      q: "Gövde stabilitesinin smaç performansındaki temel görevi nedir?",
+      o: ["Yalnız karın kaslarının görünümünü geliştirmek", "Alt vücutta üretilen kuvvetin kontrollü biçimde üst vücuda ve vuruş koluna aktarılmasına yardım etmek", "Vuruş sırasında nefesi tamamen tutmak", "Bel boşluğunu mümkün olduğunca artırmak"],
+      a: 1,
+      e: "Gövde stabilitesi; kaburga, pelvis ve omurganın kontrolüdür. Bu kontrol, bacaklardan üretilen kuvvetin smaç koluna aktarılmasını ve iniş ile savunmada dengenin korunmasını destekler.",
+    },
+    {
+      q: "Güvenli bir inişte kalça–diz–ayak bileği hizası nasıl olmalıdır?",
+      o: ["Dizler içe çökerken topuklar kalkmalıdır", "Dizler ayakların yönünü izlemeli, ayak tabanı üç noktadan desteklenmeli ve iniş yumuşak olmalıdır", "Bacaklar tamamen düz ve kilitli tutulmalıdır", "Gövde geriye atılarak yalnız ayak ucuna inilmelidir"],
+      a: 1,
+      e: "Kontrollü inişte dizler ayak yönünü izler; topuk, başparmak kökü ve küçük parmak kökü destek oluşturur. Kalça ve diz bükülmesi kuvvetin güvenli biçimde emilmesine yardım eder.",
+    },
+    {
+      q: "Voleybolcularda üst vücut itme ve çekme hareketlerinin dengeli programlanmasının önemli bir nedeni nedir?",
+      o: ["Servis ve smaçtaki tekrarlı baş üstü yüklenmelere karşı kürek kemiği ve omuz çevresi kontrolünü desteklemek", "Çekiş hareketleri sıçrama tekniğinin yerini aldığı için", "Yalnız kol çevresini büyütmek için", "Omuz hareket açıklığını tamamen azaltmak için"],
+      a: 0,
+      e: "Tekrarlı servis ve smaçlar omuz kuşağını yükler. Yatay çekiş, yüz çekişi, dış rotasyon ve serratus çalışmaları kürek kemiği ile omuz çevresinin dengeli kontrolünü destekler.",
+    },
+    {
+      q: "Squat ile kalça menteşesi arasındaki temel teknik fark hangisidir?",
+      o: ["Squatta yalnız bel, menteşede yalnız diz hareket eder", "Squatta diz ve kalça birlikte bükülür; menteşede hareket kalçanın geriye gitmesiyle başlar ve kaval kemiği daha dik kalır", "İki hareket arasında teknik fark yoktur", "Menteşede sırt yuvarlanmalı, squatta topuklar kalkmalıdır"],
+      a: 1,
+      e: "Squat diz ve kalça eklemlerinin birlikte büküldüğü bir modeldir. Kalça menteşesinde kalça geriye gider, omurga nötr kalır ve hareket kalçanın öne gelmesiyle tamamlanır.",
+    },
+    {
+      q: "Tek bacak kuvvet çalışmalarının voleybolcuya en uygun katkısı hangisidir?",
+      o: ["Sağ–sol kontrolünü, dengeyi ve kalça stabilitesini geliştirmek", "İki bacaklı tüm hareketleri yasaklamak", "Yalnız baldır kasını çalıştırmak", "Dizleri içe yönlendirmeyi öğretmek"],
+      a: 0,
+      e: "Yaklaşma, iniş ve yön değiştirmede bacaklar eşit yüklenmeyebilir. Split squat, geri hamle ve tek bacak menteşesi gibi çalışmalar sağ–sol kontrolü ile dengeyi geliştirir.",
+    },
+    {
+      q: "Voleybola özgü kondisyon devresinde teknik bozulmaya başladığında ne yapılmalıdır?",
+      o: ["Tur tükenişe kadar sürdürülmelidir", "Direnç hemen iki katına çıkarılmalıdır", "Teknik kalite öncelikli tutularak tur sonlandırılmalı veya yük azaltılmalıdır", "Dinlenme tamamen kaldırılmalıdır"],
+      a: 2,
+      e: "Devrenin amacı yalnız yorgunluk oluşturmak değil, yorulurken hareket kalitesini korumaktır. Teknik bozulduğunda turu sürdürmek hedefe hizmet etmez ve gereksiz yük oluşturur.",
+    },
+    {
+      q: "Patlayıcı kuvvet çalışmasının set ve tekrar yapısı neden az, kaliteli tekrar ve tam dinlenmeye dayanır?",
+      o: ["Kas dayanıklılığını tamamen ortadan kaldırmak için", "Kuvveti kısa sürede yüksek hızla üretme niteliğini ve güvenli inişi yorgunluk bozmadan korumak için", "Antrenman süresini rastgele kısaltmak için", "Sporcuyu her sette tükenişe götürmek için"],
+      a: 1,
+      e: "Patlayıcı çalışmada hedef tekrar sayısı değil, yüksek nitelikli kuvvet üretimidir. Bilimsel derlemeler pliometrik çalışmaların sıçramayı geliştirebildiğini gösterirken, ders güvenli ilerleme ve bireyselleştirmeyi vurgular.",
+    },
+    {
+      q: "Tekrarlı sıçrama serisinin sonlandırılması için derste verilen en uygun işaret hangisidir?",
+      o: ["Sporcu konuşabildiğinde", "Sıçrama performansı başlangıca göre yaklaşık %10'dan fazla düştüğünde veya iniş tekniği belirgin bozulduğunda", "İlk başarılı sıçramadan hemen sonra", "Nabız hiç değişmediğinde"],
+      a: 1,
+      e: "Sıçrama yüksekliğindeki belirgin düşüş ve iniş kalitesinin bozulması nöromüsküler yorgunluğu gösterir. Ders, performans yaklaşık %10'dan fazla düşmeden kalite sınırında kalmayı hedefler.",
+    },
+    {
+      q: "60 dakikalık ve algılanan zorluğu 7/10 olan bir seansın basit seans yükü kaçtır?",
+      o: ["67 birim", "420 birim", "8,6 birim", "600 birim"],
+      a: 1,
+      e: "Dersteki basit yöntem seans süresi × algılanan zorluk puanıdır. Bu nedenle 60 × 7 = 420 keyfî yük birimi olarak kaydedilir.",
+    },
+    {
+      q: "Antrenman yükünü yalnız seans süresiyle değerlendirmek neden yetersizdir?",
+      o: ["Süre hiçbir zaman ölçülemediği için", "Aynı süredeki iki seansın şiddeti ve sporcunun uyku, ağrı, stres ve yorgunluk durumu farklı olabileceği için", "Yalnız sıçrama sayısı önemli olduğu için", "Uzun seanslar her zaman kolay olduğu için"],
+      a: 1,
+      e: "Yük izleme; süre ve algılanan zorluğu, sıçrama sayısını ve iyi oluş göstergelerini birlikte ele alır. Voleybol araştırmaları da iç yükün seans-RPE, dış yükün ise sıçrama ölçümleriyle izlenmesini destekler.",
+    },
+    {
+      q: "Başlangıç düzeyindeki çocuk ve genç sporcu için direnç artışı hangi koşulda yapılmalıdır?",
+      o: ["İlk antrenmanda mümkün olan en ağır yük seçilerek", "Temel hareket tekniği tutarlı hale geldikten sonra, nitelikli gözetim altında ve küçük adımlarla", "Yaş ve antrenman geçmişi dikkate alınmadan", "Yüksek hacimli sıçramayla aynı anda büyük artış yapılarak"],
+      a: 1,
+      e: "Yaşa uygun direnç antrenmanı, doğru teknik ve nitelikli gözetimle güvenli ve etkili olabilir. Dersin ilerleme sırası önce vücut ağırlığıyla öğrenme, sonra küçük tekrar veya direnç artışıdır.",
+    },
+    {
+      q: "Bir performans testinin 4–6 hafta sonraki sonuçla anlamlı karşılaştırılması için hangi uygulama doğrudur?",
+      o: ["Her testte farklı ısınma ve farklı hareket kullanmak", "Aynı protokolü, benzer saat ve benzer yorgunluk koşullarını kullanıp sonucu teknik kalite ve iyi oluşla birlikte yorumlamak", "Yalnız en iyi sonucu kaydetmek", "Testten önce sporcuyu tükenişe götürmek"],
+      a: 1,
+      e: "Standartlaştırma, değişimin programdan mı yoksa test koşullarından mı kaynaklandığını ayırt etmeye yardım eder. Sonuç; teknik kalite, sağ–sol farkı ve sporcunun iyi oluşuyla birlikte değerlendirilir.",
+    },
+    {
+      q: "Aşağıdakilerden hangisi Kondisyon ve Kuvvet dersindeki doğru antrenman sırasıdır?",
+      o: ["Ana kuvvet → soğuma → ısınma → patlayıcı çalışma", "Kısa kondisyon → ağır kuvvet → hareket becerisi → ısınma", "Isınma → hareket becerisi → patlayıcı çalışma → ana kuvvet → yardımcı gövde/omuz → kısa kondisyon → soğuma ve kayıt", "Statik dinlenme → tükeniş devresi → teknik çalışma"],
+      a: 2,
+      e: "Patlayıcı ve teknik açıdan hassas çalışmalar yorgunluk birikmeden uygulanır; ana kuvvet ve yardımcı çalışmaların ardından kısa kondisyon, soğuma ve kayıt gelir.",
+    },
+  ],
+  "Sıçrama geliştirme": [
+    {
+      q: "Güvenli bir voleybol inişinde yer tepki kuvveti nasıl karşılanmalıdır?",
+      o: ["Dizler kilitlenip yalnız ayak ucuna inilerek", "Ayak bileği, diz ve kalça birlikte bükülerek yük dengeli emilip pozisyon kontrol edilerek", "Gövde geriye atılıp topuklar yerden kaldırılarak", "Bir sonraki sıçramaya geçmek için denge beklenmeden"],
+      a: 1,
+      e: "Ders, iniş kuvvetinin ayak bileği, diz ve kalça arasında paylaşılmasını öğretir. Yumuşak, sessiz temas ve iki saniyelik denge; kuvvet emme ile vücut kontrolünün görülebilir göstergeleridir.",
+    },
+    {
+      q: "İnişte dizlerin içe çökmesini azaltan doğru alt ekstremite hizası hangisidir?",
+      o: ["Dizlerin ayakların baktığı yönü izlemesi ve ayak tabanında üç nokta desteğinin korunması", "Dizlerin birbirine yaklaşması ve ağırlığın ayakların dışına verilmesi", "Kalçanın hiç bükülmemesi", "Her iki dizin farklı yönlere çevrilmesi"],
+      a: 0,
+      e: "Topuk, başparmak kökü ve küçük parmak kökü zeminde destek oluşturur; dizler ayak yönünü izler. Teknik eğitim ve dinamik kuvvetlendirme, inişle ilişkili biyomekanik risk göstergelerini iyileştirebilir.",
+    },
+    {
+      q: "Kol salınımının sıçrama yüksekliğine katkısı en doğru nasıl açıklanır?",
+      o: ["Kollar yalnız havada denge sağlar, kalkışa katkı yapmaz", "Bacakların açılmasıyla zamanlanan kol salınımı alt ekstremitenin yaptığı işi ve yukarı yönlü itişi destekler", "Kollar ne kadar erken kalkarsa sıçrama her zaman o kadar yükselir", "Kol salınımı yalnız blokta kullanılmalıdır"],
+      a: 1,
+      e: "Elit voleybolcular üzerindeki biyomekanik çalışmalar, kol salınımının dikey sıçrama performansını desteklediğini gösterir. Derste kolların öne-yukarı hareketi kalça, diz ve ayak bileği açılmasıyla eşleştirilir.",
+    },
+    {
+      q: "Çift ayak dikey sıçramada fileye doğru savrulmayı azaltmak için hangi hedef kullanılmalıdır?",
+      o: ["Mümkün olduğunca ileri sıçrayıp tek ayakla inmek", "Yukarı doğru kuvvet üretip başlangıç alanına yakın, iki ayakla dengeli inmek", "Gövdeyi kalkışta öne düşürmek", "Son anda ayakları birbirine çaprazlamak"],
+      a: 1,
+      e: "Dikey sıçramada kuvvet yukarı yönlendirilir. Başlangıç alanına yakın iniş, yatay savrulmanın kontrol edildiğini gösterir ve fileye ya da başka oyuncuya yaklaşma riskini azaltır.",
+    },
+    {
+      q: "Squat jump ile countermovement jump arasındaki temel fark hangisidir?",
+      o: ["Squat jump yalnız tek ayakla yapılır", "Squat jump sabit çömelme pozisyonundan ek yaylanma olmadan başlar; countermovement jump hızlı alçalmayı beklemeden yukarı itişe çevirir", "Countermovement jump sırasında dizler hiç bükülmez", "İki test tamamen aynı başlangıç protokolüne sahiptir"],
+      a: 1,
+      e: "Squat jump başlangıç kuvvetini daha belirgin sınarken countermovement jump gerilme-kısalma döngüsünü ve koordineli yön değiştirmeyi kullanır. Bu nedenle test türleri birbirinin yerine rastgele kullanılamaz.",
+    },
+    {
+      q: "Smaç yaklaşmasının son iki adımında yatay hızın dikey sıçramaya çevrilmesini sağlayan doğru sıra hangisidir?",
+      o: ["İki eşit ve yavaş adım", "Kısa ilk adım ve fileye doğru uzun son adım", "Daha uzun ve alçaltıcı sondan bir önceki adımın ardından hızlı kapatıcı son adım", "Son iki adımda tamamen durmak"],
+      a: 2,
+      e: "Sondan bir önceki uzun adım ağırlık merkezini alçaltır; son adım hızlı kapanır. Kol salınımı ve çift ayak itişiyle yatay yaklaşma hızı dikey yükselişe dönüştürülür.",
+    },
+    {
+      q: "Yaklaşmalı smaç sıçramasında zamanlama hangi bilgiye göre ayarlanmalıdır?",
+      o: ["Yalnız antrenörün sesine göre", "Pasın yüksekliği ve topun uçuşuna göre; ilk adımlar okumaya izin verip son iki adım hızlanmalıdır", "Her pasta değişmeyen sabit koşu hızıyla", "Top vuruş omzunun arkasına geçtikten sonra"],
+      a: 1,
+      e: "Sporcu topu havada kovalamak yerine vuruş penceresi oluşturur. Pas yüksekliğini okuyup yaklaşma ritmini ayarlar ve topu vuruş omzunun önünde karşılar.",
+    },
+    {
+      q: "Tekrarlı blok sıçramalarında her tekrar arasındaki öncelik nedir?",
+      o: ["Dizleri kilitleyip mümkün olan en hızlı biçimde tekrar sıçramak", "İki ayakla dengeli inip hazır duruşu yeniden kurarken temas süresini teknik bozulmadan kısa tutmak", "Her inişte fileye doğru ilerlemek", "Eller aşağıdayken ikinci sıçramayı başlatmak"],
+      a: 1,
+      e: "Tekrarlı blokta kısa temas tek başına yeterli değildir. İniş hizası, dengeli hazır duruş, el hazırlığı ve fileden güvenli uzaklık korunmalıdır.",
+    },
+    {
+      q: "Reaktif sıçrama çalışmalarına geçmeden önce hangi koşullar sağlanmalıdır?",
+      o: ["Yalnız yüksek motivasyon", "Yeterli temel kuvvet, ayak bileği kontrolü ve güvenli iniş yeterliği", "En az yüz kesintisiz sıçrama yapabilmek", "Her antrenmanda kas ağrısı yaşamak"],
+      a: 1,
+      e: "Reaktif sıçrama kısa yer temasıyla yeniden kuvvet üretir ve yüksek şiddetlidir. Temel kuvvet ile iniş kontrolü oluşmadan yüksek şiddetli pliometrik yük eklenmez.",
+    },
+    {
+      q: "Reaktif sıçrama serisi sırasında hangi durumda çalışma sonlandırılmalıdır?",
+      o: ["Sporcu kısa temas ve güvenli inişi koruduğunda", "Temas süresi uzadığında, dizler içe kaçtığında, yükseklik belirgin düştüğünde veya ağrı oluştuğunda", "İlk üç tekrar başarılı olduğunda", "Sporcu terlemeye başladığında"],
+      a: 1,
+      e: "Uzayan temas, kontrolsüz topuk çökmesi, diz hizasının bozulması, yükseklik kaybı ve ağrı kalite sınırının aşıldığını gösterir. Pliometrik çalışmada hacim değil nitelik önceliklidir.",
+    },
+    {
+      q: "Tek ayak denge çalışmalarında sağ–sol kontrolü nasıl değerlendirilmelidir?",
+      o: ["Yalnız güçlü taraf test edilerek", "İki tarafta aynı hareket aralığı kullanılıp iniş hizası ve iki saniyelik denge karşılaştırılarak", "Zayıf tarafa hemen daha ağır yük verilerek", "Yalnız tekrar sayısı sayılarak"],
+      a: 1,
+      e: "Tek ayak duruş, mini squat ve yana sıçrama-tutuş iki tarafta aynı koşullarda uygulanır. Pelvis, diz hizası, hareket aralığı ve denge süresi birlikte izlenir.",
+    },
+    {
+      q: "Sıçrama yüksekliği testinin 4–6 hafta sonraki ölçümle güvenilir biçimde karşılaştırılması için ne yapılmalıdır?",
+      o: ["Farklı yüzey ve farklı sıçrama türü kullanılmalıdır", "Aynı ısınma, sıçrama türü, başlangıç pozisyonu, ölçüm aracı ve benzer yorgunluk koşulları korunmalıdır", "İlk test kollu, ikinci test kolsuz yapılmalıdır", "Dinlenmeden mümkün olduğunca çok deneme yapılmalıdır"],
+      a: 1,
+      e: "Protokol değişirse sonuçtaki fark antrenman gelişimi yerine ölçüm koşullarından kaynaklanabilir. En iyi değerle birlikte ortalama ve iniş kalitesinin kaydı daha bütünlüklü yorum sağlar.",
+    },
+    {
+      q: "Bilimsel derlemelerin voleybolcularda pliometrik sıçrama antrenmanı için desteklediği sonuç hangisidir?",
+      o: ["Sıçrama yüksekliğini geliştirebilir; ancak program hacmi ve sıklığı oyuncunun düzeyi ve pozisyonuna göre bireyselleştirilmelidir", "Yalnız profesyonel erkek oyuncularda işe yarar", "Her sporcuda en yüksek hacim zorunludur", "Teknik ve iniş kontrolünden bağımsız uygulanmalıdır"],
+      a: 0,
+      e: "Randomize çalışmaların meta-analizi pliometrik sıçrama antrenmanının voleybolcularda dikey sıçramayı geliştirebildiğini göstermiştir. Araştırmacılar yaş, cinsiyet, pozisyon ve yük toleransına göre bireyselleştirmeyi önerir.",
+    },
+    {
+      q: "Yorgunluk altında iniş kalitesini izleyen çalışmada iki tekrar üst üste teknik düşüş görülürse ne yapılmalıdır?",
+      o: ["Seri sayısı artırılmalıdır", "Çalışma sonlandırılmalı ve yük ile toparlanma yeniden değerlendirilmelidir", "İniş göz ardı edilip yalnız yüksekliğe bakılmalıdır", "Dinlenme süresi kaldırılmalıdır"],
+      a: 1,
+      e: "Dersin amacı yorgunken sınırsız tekrar yapmak değil, teknik bozulma sınırını tanımaktır. İki ardışık kötü iniş, güvenli kalite sınırının aşıldığını gösterir.",
+    },
+    {
+      q: "Haftalık sıçrama hacmi planlanırken hangi yükler birlikte değerlendirilmelidir?",
+      o: ["Yalnız ayrı pliometrik antrenmandaki sıçramalar", "Saha antrenmanı, maç, blok-hücum tekrarları, pliometrik çalışma ve kuvvet antrenmanındaki toplam alt vücut yükü", "Yalnız maçta sayı olan sıçramalar", "Sadece sporcunun boyu ve kilosu"],
+      a: 1,
+      e: "Voleybolcunun toplam sıçrama yükü yalnız ayrı bir sıçrama seansından oluşmaz. Saha, maç ve kuvvet yükleri birlikte planlanır; performans düşüşü, iniş kalitesi, ağrı ve toparlanma belirtileri izlenir.",
+    },
+  ],
+  "Hız ve çeviklik": [
+    {
+      q: "Voleybolda çevikliği yalnız yön değiştirme hızından ayıran temel özellik hangisidir?",
+      o: ["Hareket rotasının önceden ezberlenmesi", "Oyunla ilgili bir uyaranı algılayıp doğru hareketi seçerek kontrollü uygulamak", "Yalnız düz çizgide en yüksek hıza ulaşmak", "Mümkün olduğunca uzun süre koşmak"],
+      a: 1,
+      e: "Çeviklik, algılama ve karar vermeyi fiziksel yön değiştirmeyle birleştirir. Reaktif parkurda oyuncu top, el işareti veya rakip hareketine göre uygun ayak çalışmasını seçer.",
+    },
+    {
+      q: "Atletik hazır pozisyonun hızlı ilk harekete izin veren doğru özelliği hangisidir?",
+      o: ["Dizler düz, ağırlık topuklarda ve gövde geride", "Ayaklar uygun genişlikte, dizler hafif bükülü, kalça alçak ve ağırlık ayakların ön bölümünde", "Ayaklar çapraz ve bakış zeminde", "Topuklar yere kilitli ve eller arkada"],
+      a: 1,
+      e: "Alçak ve dengeli hazır pozisyon ağırlık merkezinin her yöne taşınmasını kolaylaştırır. Topuklara kilitlenmek veya dik beklemek ilk adıma geç kalmaya neden olur.",
+    },
+    {
+      q: "Sağa doğru ilk adımı hızla başlatmak isteyen oyuncu hangi mekaniği kullanmalıdır?",
+      o: ["Önce yukarı kalkıp sonra sağa dönmek", "Sağ ayağa hareket alanı açarken sol ayakla zemini itip ağırlık merkezini hedef yönüne taşımak", "İlk adımı olabildiğince uzun atıp gövdeyi geride bırakmak", "Önce sola ters adım atmak"],
+      a: 1,
+      e: "İlk adımda amaç yalnız ayağı taşımak değil, ağırlık merkezini seçilen yöne hızlandırmaktır. Sporcu zemini ters yönde iter; gereksiz dikleşme ve ters adım hız kaybettirir.",
+    },
+    {
+      q: "Görsel reaksiyon çalışmasında erken tahmin yerine doğru karar vermeyi geliştiren uygulama hangisidir?",
+      o: ["Her tekrarda yönü önceden söylemek", "Topun çıkış açısı veya hücumcunun omuz hareketi gibi gerçek uyaranı gördükten sonra hareket etmek", "Yalnız sesli düdük kullanmak", "Uyaran verilmeden rastgele koşmak"],
+      a: 1,
+      e: "Ders tek uyaran–tek yön aşamasından yanıltıcı hazırlık sonrası gerçek uyarana ilerler. Amaç en erken hareket etmek değil, oyunla ilgili bilgiyi doğru yorumlamaktır.",
+    },
+    {
+      q: "3–6 metrelik öne hızlanmada ilk iki adım nasıl olmalıdır?",
+      o: ["Uzun, yavaş ve gövde dik", "Kısa ve güçlü; gövde hafif önde, kollar karşılıklı çalışır", "Ayaklar çapraz ve baş sürekli yana sallanır", "İlk adımda tamamen doğrulup sonra alçalmak"],
+      a: 1,
+      e: "Kısa mesafede ilk adımların kuvvetli olması hızlanmayı destekler. Hedefe yaklaşınca adımlar küçültülür ve top tekniği için yeniden dengeli, alçak duruş kurulur.",
+    },
+    {
+      q: "Kısa yanal mesafede shuffle hareketinin doğru uygulanışı hangisidir?",
+      o: ["Ayakları sürekli çaprazlayarak koşmak", "Yakın ayakla yönü açıp diğer ayakla zemini itmek; ayakları birleştirmeden ve çaprazlamadan ilerlemek", "Her adımda kalçayı tamamen fileden çevirmek", "Dizleri kilitleyerek sıçramak"],
+      a: 1,
+      e: "Shuffle, oyuncunun gövdesini oyuna dönük tutarak kısa mesafeyi kapatmasını sağlar. Ayakların birleşmesi veya çaprazlanması hareket ritmini ve dengeyi bozar.",
+    },
+    {
+      q: "Shuffle yerine çapraz adım hangi durumda daha uygun bir seçimdir?",
+      o: ["Çok kısa bir düzeltme adımında", "Blokta kanada kapanma gibi daha uzun yanal mesafeyi hızla aşmak gerektiğinde", "Topa temas anında tamamen dururken", "Yalnız geriye hareket ederken"],
+      a: 1,
+      e: "Hareket türü mesafeye ve göreve göre seçilir. Kısa mesafede shuffle dengeyi korurken daha uzun yanal geçişte açılma ve çapraz adım daha hızlı alan kapatabilir.",
+    },
+    {
+      q: "Hızlanma sonrasında güvenli ve etkili frenleme için hangi sıra doğrudur?",
+      o: ["Son anda tek uzun adımla dizleri kilitlemek", "Adımları kısaltıp ağırlık merkezini alçaltmak, kalça ve dizleri bükerek kuvveti emmek", "Gövdeyi geriye atıp topuklar üzerinde kaymak", "Hızı azaltmadan doğrudan yön değiştirmek"],
+      a: 1,
+      e: "Frenleme de hız üretimi kadar önemlidir. Birkaç kontrollü kısa adım, alçalan ağırlık merkezi ve ayak yönünü izleyen dizler oyuncuyu top temasına veya yeni hızlanmaya hazırlar.",
+    },
+    {
+      q: "180 derece yön değiştirmede dönüş ayağı neden gövdeden çok uzağa yerleştirilmemelidir?",
+      o: ["Adım sayısını artırdığı için", "Kuvvet emme ve yeniden itiş konumunu bozarak yeni yöndeki çıkışı yavaşlatabileceği için", "Kolların hareketini tamamen durdurduğu için", "Oyuncuyu her zaman fileye yaklaştırdığı için"],
+      a: 1,
+      e: "Dış ayak gövdeye göre yönetilebilir bir konuma basar; diz ve kalça bükülerek hız emilir. Aşırı uzanmış dönüş ayağı frenleme süresini ve yeni yönde kuvvet üretimini olumsuz etkiler.",
+    },
+    {
+      q: "Savunma alanı kapatırken oyuncunun koşacağı koridoru belirleyen en uygun bilgiler hangileridir?",
+      o: ["Yalnız topun rengi", "Pasın gittiği kanat, bloğun kapattığı yön ve hücumcunun yaklaşma ile omuz-kol ipuçları", "Sadece skor tabelası", "Yalnız kendi başlangıç pozisyonu"],
+      a: 1,
+      e: "Savunmacı en kısa yolu körlemesine koşmaz. Blok çizgiyi mi çaprazı mı kapatıyor, pas nereye gidiyor ve hücumcu hangi vuruşu hazırlıyor sorularını okuyarak açık koridora geçer.",
+    },
+    {
+      q: "Savunmacının rakip vuruş anındaki ideal hareket durumu hangisidir?",
+      o: ["Hâlâ yüksek hızla koşuyor olmak", "Frenlemeyi tamamlayıp alçak ve dengeli savunma pozisyonunda bulunmak", "Sırtı hücumcuya dönük olmak", "Ayakları çapraz biçimde sabitlemek"],
+      a: 1,
+      e: "Top kontrolü için oyuncu vuruştan hemen önce dengelenmelidir. Temas anında koşmaya devam etmek platform açısını ve yön kontrolünü bozar.",
+    },
+    {
+      q: "Kısa topa çıkışta hız ile top kontrolünü birleştiren doğru davranış hangisidir?",
+      o: ["Gövdeyi öne atıp mümkün olan en uzaktan tek elle vurmak", "İpucunu erken okuyup ilk adımı alçak atmak, son adımları küçültüp mümkün olduğunda topun arkasına geçmek", "Top düşene kadar dik beklemek", "Hız kesmeden topun üzerinden koşmak"],
+      a: 1,
+      e: "Kısa top savunmasında erken görsel bilgi ve doğru ayak çalışması, topun altında dengeli bir platform oluşturmayı sağlar. Temas sonrası sporcu hızla ayağa kalkıp ralliyi sürdürür.",
+    },
+    {
+      q: "Bloktan savunmaya geçişte ilk yapılması gereken nedir?",
+      o: ["File altında beklemek", "İki ayak üzerine dengeli inip topun kaldığı tarafı görmek", "Hemen sırtı sahaya dönmek", "Rakip yeniden vurmadan fileye yaklaşmak"],
+      a: 1,
+      e: "Dengeli iniş ikinci hareketin başlangıcıdır. Oyuncu topu gördükten sonra güvenli açılma adımıyla fileden uzaklaşır ve mesafeye göre shuffle veya çapraz adım seçer.",
+    },
+    {
+      q: "Bilimsel bir çalışmada genç kadın voleybolcularda yön değiştirme performansını kontrol grubundan daha fazla geliştiren uygulama hangisidir?",
+      o: ["Yalnız uzun mesafe koşusu", "Çeviklik merdiveninin çok yönlü hız çalışmalarıyla birleştirilmesi", "Sadece esneme", "Yön değiştirmeden düz yürüyüş"],
+      a: 1,
+      e: "Altı haftalık randomize çalışmada hem pliometrik hem çok yönlü hız bileşimleri gelişim sağladı; kontrol grubuna üstünlük özellikle çeviklik merdiveni ile çok yönlü hız grubunda görüldü. Bu bulgu dersin çok yönlü, görev odaklı yapısını destekler.",
+    },
+    {
+      q: "Reaktif saha parkurunda hız niteliğini korumak için doğru uygulama hangisidir?",
+      o: ["Her tekrarı uzun bir kondisyon yarışına çevirmek", "3–8 saniyelik oyunla ilişkili tekrarlar yapmak, 30–60 saniye dinlenmek ve karar doğruluğuyla teknik kaliteyi ayrı izlemek", "Rota ve uyaranı her zaman önceden açıklamak", "Teknik bozulsa da süre dolana kadar devam etmek"],
+      a: 1,
+      e: "Hız çalışmasında kısa ve nitelikli tekrarlarla yeterli dinlenme gerekir. Yanlış karar ile yavaş fiziksel uygulama ayrı kaydedilir; ilk ve son tekrar arasında belirgin süre ya da teknik düşüş varsa seri durdurulur.",
+    },
+  ],
+  "Esneklik ve mobilite": [
+    {
+      q: "Esneklik ile mobilite arasındaki temel fark hangisidir?",
+      o: ["Esneklik yalnız kuvvet, mobilite yalnız denge demektir", "Esneklik pasif hareket açıklığını; mobilite ise bu açıklığı kuvvet, denge ve sinir sistemi kontrolüyle aktif kullanabilmeyi içerir", "İki kavram tamamen aynıdır", "Mobilite yalnız antrenör yardımıyla yapılan pasif harekettir"],
+      a: 1,
+      e: "Bir sporcu bacağını yardımla yükseğe kaldırabilir fakat aynı açıyı kendi kontrolüyle kullanamayabilir. Mobilite, mevcut açıklığın voleybol hareketinde aktif ve dengeli yönetilmesidir.",
+    },
+    {
+      q: "Mobilite çalışması sırasında nefesin doğru kullanımı hangisidir?",
+      o: ["Tüm set boyunca nefesi tutmak", "Sakin nefes alıp verirken kaburga ve gövde kontrolünü korumak, boyun ve belde gereksiz gerginlik oluşturmamak", "Daha fazla açıklık için her nefeste beli zorla bastırmak", "Yalnız ağızdan hızlı nefes almak"],
+      a: 1,
+      e: "Kontrollü solunum kaburga ve gövde pozisyonunun yönetilmesine yardım eder. Amaç derin nefes uğruna pozisyonu bozmak değil, hareket boyunca rahat ve düzenli nefes almaktır.",
+    },
+    {
+      q: "Ayak bileği dorsifleksiyonu voleybolda hangi hareketleri doğrudan destekler?",
+      o: ["Yalnız parmak pas", "Squat, savunma duruşu, frenleme ve inişte dizin topuk kalkmadan öne ilerlemesini", "Yalnız kol salınımını", "Serviste top atışını"],
+      a: 1,
+      e: "Dorsifleksiyon, dizin ayak ucunun önüne kontrollü ilerlemesidir. Sistematik derlemeler sınırlı dorsifleksiyonun iniş mekaniğini değiştirebildiğini gösterir; bu nedenle açıklık ve hareket kalitesi birlikte değerlendirilir.",
+    },
+    {
+      q: "Diz-duvar dorsifleksiyon testinin geçerli uygulanışı hangisidir?",
+      o: ["Topuğu kaldırıp dizi içe yöneltmek", "Topuğu yerde tutup dizi ikinci–üçüncü ayak parmağı yönünde ilerletmek ve iki tarafı aynı koşulda karşılaştırmak", "Ayağı her ölçümde farklı açıya çevirmek", "Ağrıya rağmen duvara ulaşmaya zorlamak"],
+      a: 1,
+      e: "Topuğun kalkması veya dizin içe kaçması gerçek ayak bileği açıklığını gizler. Aynı protokol sağ–sol farkını izlemeyi ve egzersiz sonrasında yeniden test yapmayı sağlar.",
+    },
+    {
+      q: "Kalça rotasyonu çalışmasında gerçek kalça hareketini koruyan uygulama hangisidir?",
+      o: ["Pelvisi kontrol edip hareketi belden veya dizden zorlamamak", "Daha fazla açı için dizi içe bastırmak", "Bel omurlarını son noktaya kadar çevirmek", "Her iki tarafın farklı teknikle çalışmasına izin vermek"],
+      a: 0,
+      e: "90/90 geçişi ve destekli iç rotasyon gibi çalışmalarda pelvis kontrol edilir. Bel veya diz telafisi görünürde açıklığı artırsa da gerçek kalça mobilitesini göstermez.",
+    },
+    {
+      q: "Arka bacak esnekliği çalışmasında amaç neden yalnız parmaklara ulaşmak değildir?",
+      o: ["Parmaklara ulaşmak yalnız omuz kuvvetini ölçtüğü için", "Belden yuvarlanma hareket mesafesini artırabilir; hedef pelvis ve omurga kontrolüyle hareketi kalçadan üretmektir", "Hamstring hiçbir voleybol hareketinde kullanılmadığı için", "Dizlerin her zaman tamamen bükülmesi gerektiği için"],
+      a: 1,
+      e: "Aktif bacak kaldırma, hamstring süpürme ve kalça menteşesi sırasında belin telafi etmesi sınırlandırılır. Böylece açıklığın kalça ve arka bacak dokularından gelip gelmediği anlaşılır.",
+    },
+    {
+      q: "Göğüs kafesi rotasyonunda doğru kontrol noktası hangisidir?",
+      o: ["Pelvisi sabit tutup dönüşü göğüs omurgası çevresinde ağrısız gerçekleştirmek", "Belden mümkün olan en büyük açıda dönmek", "Dönüş sırasında nefesi tutmak", "Kalçayı omuzdan önce son sınıra çevirmek"],
+      a: 0,
+      e: "Göğüs kafesi rotasyonu smaç ve serviste kuvvet aktarımına katkı sağlar. Pelvisin kontrolü, hareketin belden aşırı dönerek oluşturulmasını engeller.",
+    },
+    {
+      q: "Kol baş üstüne kaldırılırken belin aşırı çukurlaşması ve kaburgaların öne çıkması neyi düşündürür?",
+      o: ["Omuz fleksiyonunun kusursuz olduğunu", "Gerçek omuz açıklığı yerine gövde telafisi kullanıldığını", "Kalça rotasyonunun arttığını", "Ayak bileği mobilitesinin yeterli olduğunu"],
+      a: 1,
+      e: "Omuz fleksiyonu değerlendirilirken kaburgalar pelvis üzerinde, bel kontrollü ve boyun rahat tutulur. Gövde telafisi kısıtlı omuz açıklığını gizleyebilir.",
+    },
+    {
+      q: "Kol yukarı çıkarken kürek kemiğinin doğru davranışı hangisidir?",
+      o: ["Göğüs kafesine zorla sabitlenmesi", "Kolla uyumlu biçimde yukarı dönüp göğüs kafesi üzerinde kontrollü hareket etmesi", "Omuzdan bağımsız olarak aşağı çekilmesi", "Belirgin biçimde kanatlaşması"],
+      a: 1,
+      e: "Kürek kemiği sabit bir platform değildir; kol hareketiyle koordineli yukarı dönüş ve dışa açılma yapar. Zorla sabitlemek omuz ritmini bozabilir.",
+    },
+    {
+      q: "Smaçta omuza gelen yükü bütün vücuda dağıtan doğru hareket zinciri hangisidir?",
+      o: ["Yalnız omuz ve dirseğin hızlanması", "Yaklaşma ve bacak kuvveti → pelvis-gövde rotasyonu → göğüs kafesi açılması → kürek kemiği yukarı dönüşü → omuz-dirsek hızlanması", "Belin aşırı yaylanması → kolun geride kalması", "Sadece el bileğinin hızlanması"],
+      a: 1,
+      e: "Smaç yalnız omuz hareketi değildir. Alt vücuttan başlayan kuvvet, gövde ve kürek kemiği üzerinden kola aktarılır; temas sonrasında kol kontrollü yavaşlar ve gövde inişi dengeler.",
+    },
+    {
+      q: "Blokta file üzerinden erişim sırasında doğru uygulama hangisidir?",
+      o: ["Daha uzağa erişmek için beli aşırı geriye yaymak", "Kaburga ve beli kontrol edip kürek kemiği ile omuz fleksiyonunu kullanırken gövdeyi fileye sürüklememek", "Omuzları kulaklara sıkıştırmak", "Tek ayak üzerine sert inmek"],
+      a: 1,
+      e: "Blok erişimi omuz açıklığı, kürek kemiği yukarı dönüşü, göğüs kafesi kontrolü ve dengeli sıçramanın birleşimidir. Sahte açıklık için belden kaçmak kontrolü azaltır.",
+    },
+    {
+      q: "Kişisel mobilite taramasında ağrı veya instabilite görülürse ne yapılmalıdır?",
+      o: ["Son noktaya kadar zorlayıp ölçüm tamamlanmalıdır", "Test durdurulmalı; taramanın tıbbi tanı olmadığı bilinerek gerektiğinde uzman değerlendirmesi istenmelidir", "Yalnız karşı taraf daha sert çalıştırılmalıdır", "Ağrı kayıt formuna yazılmamalıdır"],
+      a: 1,
+      e: "Tarama, hazırlık ihtiyacını belirler; tanı koymaz. Ağrı, sıkışma, denge kaybı ve telafiler kaydedilir, ağrılı hareket zorlanmaz.",
+    },
+    {
+      q: "Patlayıcı voleybol çalışması öncesinde esneme seçimi için en uygun yaklaşım hangisidir?",
+      o: ["Uzun ve zorlayıcı statik esnemeyi tek hazırlık olarak kullanmak", "Dinamik mobiliteyi ve giderek hızlanan voleybola özgü hareketleri öne almak; gerekiyorsa kısa ve ağrısız statik esnemeyi dinamik etkinlikle tamamlamak", "Isınmadan doğrudan maksimum sıçramaya geçmek", "Yalnız pasif esneme yapıp kas aktivasyonunu atlamak"],
+      a: 1,
+      e: "Sistematik derlemeler dinamik esnemenin güç ve dinamik performans hazırlığında uygun olduğunu; kısa statik esnemenin ise sonrasında dinamik etkinlik bulunduğunda etkisinin sınırlı kalabildiğini gösterir. Ders uzun ve zorlayıcı statik esnemeyi patlayıcı çalışma öncesine koymaz.",
+    },
+    {
+      q: "Antrenmana özel mobilite akışı nasıl seçilmelidir?",
+      o: ["Her gün vücudun tüm bölgelerine aynı uzun program uygulanarak", "Antrenmanın ana görevine ve kişisel kısıtlara göre; sıçrama gününde ayak bileği-kalça, servis-smaç gününde göğüs kafesi-omuz-kürek kemiği öncelenerek", "Yalnız sporcunun en esnek bölgesi çalıştırılarak", "Saha çalışmasından tamamen bağımsız hazırlanarak"],
+      a: 1,
+      e: "Mobilite akışı amaç odaklı ve kısa olmalıdır. Kazanılan açıklık aktif squat, hamle, erişim veya düşük şiddetli voleybol hareketiyle gerçek göreve aktarılır.",
+    },
+    {
+      q: "Bir mobilite egzersizinin sporcu için yararlı olduğuna dair en güçlü ders içi gösterge hangisidir?",
+      o: ["Sporcunun mümkün olan en büyük pasif açıya ulaşması", "Yeniden testte hedef voleybol hareketinin ağrısız ve daha kontrollü yapılması", "Egzersiz sırasında şiddetli gerilme ve ağrı oluşması", "Sağ–sol farkının kaydedilmemesi"],
+      a: 1,
+      e: "Mobilitenin amacı yalnız daha uzağa gitmek değildir. Aynı protokolle yapılan yeniden testte hareket kalitesinin ve aktif kontrolün iyileşmesi, seçilen egzersizin göreve aktarımını gösterir.",
+    },
+  ],
+  "Isınma ve soğuma": [
+    {
+      q: "İyi planlanmış bir voleybol ısınmasının temel sonucu ne olmalıdır?",
+      o: ["Sporcuyu ana çalışma başlamadan tükenişe götürmek", "Sporcuyu daha hareketli, odaklanmış ve teknik çalışmaya hazır hâle getirirken gereksiz yorgunluk oluşturmamak", "Yalnız terlemeyi sağlamak", "Antrenmandaki bütün sıçramaları önceden tamamlamak"],
+      a: 1,
+      e: "Isınma kasları, eklemleri, dolaşım sistemini ve dikkati ana göreve hazırlar. Isınma sonunda sporcu yorgun değil; canlı, kontrollü ve oyun hareketlerine hazır olmalıdır.",
+    },
+    {
+      q: "Ders içeriğine göre ısınmanın doğru genel sırası hangisidir?",
+      o: ["Tam güç sıçrama → statik dinlenme → hafif koşu", "Genel hazırlık → hareketlilik → aktivasyon → hız/sıçrama hazırlığı → topla voleybola özgü hazırlık", "Topla tam güç smaç → aktivasyon → genel hazırlık", "Soğuma → hız → eklem hareketleri"],
+      a: 1,
+      e: "Isınma basitten karmaşığa ve düşük şiddetten oyun hızına ilerler. Genel vücut ısısı yükseltildikten sonra hareketlilik, aktivasyon ve giderek daha özgül voleybol görevleri uygulanır.",
+    },
+    {
+      q: "Isınmanın ilk 3–5 dakikasında nabız nasıl yükseltilmelidir?",
+      o: ["İlk saniyeden maksimum sprintle", "Konuşmayı tamamen engellemeyen rahat tempodan orta şiddete kademeli geçerek", "Hareketsiz statik esnemeyle", "Yüksek hacimli blok sıçramalarıyla"],
+      a: 1,
+      e: "Yürüyüş, hafif koşu, yan adım ve düşük şiddetli skipping ile şiddet her dakika biraz artırılır. Ani tam hız koşu veya yüksek sıçramayla başlanmaz.",
+    },
+    {
+      q: "Baş dönmesi, göğüs ağrısı veya olağan dışı nefes darlığı ısınma sırasında ortaya çıkarsa ne yapılmalıdır?",
+      o: ["Şiddet artırılarak belirtilerin geçmesi beklenmelidir", "Çalışma durdurulmalı ve uygun sağlık prosedürü uygulanmalıdır", "Yalnız su içip maksimum koşuya devam edilmelidir", "Belirti antrenörle paylaşılmamalıdır"],
+      a: 1,
+      e: "Bu belirtiler normal ısınma hissi olarak kabul edilmez. Sporcu durur, durum değerlendirilir ve gerektiğinde sağlık desteği alınır.",
+    },
+    {
+      q: "Dinamik eklem hareketlerinin doğru uygulanışı hangisidir?",
+      o: ["Eklemleri ağrılı son noktaya savurmak", "Kontrollü tekrarlarla, giderek büyüyen rahat hareket aralığında ve telafisiz uygulamak", "Her pozisyonda birkaç dakika hareketsiz kalmak", "Yalnız omuzları hazırlamak"],
+      a: 1,
+      e: "Dinamik hareketlilik, eklemleri antrenmanda kullanılacak açıklığa hazırlar. Ayak bileği, kalça, göğüs kafesi ve omuz hareketleri ağrısız ve kontrollü gerçekleştirilir.",
+    },
+    {
+      q: "Kalça ve gövde aktivasyonu neden tükenişe kadar yapılmamalıdır?",
+      o: ["Bu kaslar voleybolda kullanılmadığı için", "Amaç kasları savunma, frenleme, sıçrama ve kuvvet aktarımına hazırlamak; ana çalışma öncesinde yormamak olduğu için", "Aktivasyon yalnız soğumada yapıldığı için", "Tükeniş hareket açıklığını her zaman artırdığı için"],
+      a: 1,
+      e: "Köprü, mini bant yana adım, dead bug ve yan plank gibi hareketler düşük-orta hacimde uygulanır. Hedef kas hissi ve gövde kontrolü aranır, belirgin yorgunluk değil.",
+    },
+    {
+      q: "Ayak bileği ve diz hazırlığında düşük sıçrama–tutuş çalışmasının temel amacı nedir?",
+      o: ["Mümkün olan en yüksek sıçramayı test etmek", "Ayak tabanı desteği, diz-kalça hizası ve kontrollü inişi düşük şiddette etkinleştirmek", "Sporcuyu maç öncesi yormak", "Dizleri kilitleyerek yere sert inmeyi öğretmek"],
+      a: 1,
+      e: "Düşük sıçrama-tutuş, ayak bileği hareketini ve iniş zincirini güvenli hızda hazırlar. Topuk, diz ve pelvis kontrolü bozulmadan tamamlanmalıdır.",
+    },
+    {
+      q: "Servis ve smaç öncesi omuz hazırlığı neden yalnız kol çevirmekten oluşmamalıdır?",
+      o: ["Kol çevirmek her zaman ağrı oluşturduğu için", "Baş üstü hareket kürek kemiği, rotator manşet, sırt ve gövdenin koordineli çalışmasını gerektirdiği için", "Omuz servis sırasında hareket etmediği için", "Yalnız boyun kasları önemli olduğu için"],
+      a: 1,
+      e: "Duvar kaydırma, lastikle dış rotasyon, yüz çekişi ve serratus erişimi omuz kuşağını bütüncül hazırlar. Voleybolcularda uygulanan özgül omuz ısınma programlarının yaralanma sıklığı ve şiddeti üzerinde olumlu sonuçları bildirilmiştir.",
+    },
+    {
+      q: "Isınmanın kısa hızlanma bölümünde doğru yüklenme hangisidir?",
+      o: ["Aralıksız uzun mesafe koşmak", "İlk tekrarları orta hızda, son tekrarları oyun hızına yakın yapmak ve kaliteyi koruyacak dinlenme vermek", "İlk tekrarı maksimum yapıp diğerlerini yorgun tamamlamak", "Frenleme çalışmasını tamamen atlamak"],
+      a: 1,
+      e: "Voleybola özgü 2–5 metrelik çıkışlar, shuffle, çapraz adım ve frenleme kullanılır. Kısa tekrarlar arasındaki dinlenme hız niteliğini ve diz hizasını korur.",
+    },
+    {
+      q: "Topla teknik ısınmada doğru ilerleme hangisidir?",
+      o: ["İlk topta tam güç sıçrama servisi", "Yakın mesafe pas ve manşetten hareketli hedeflere, kontrollü servis-hücuma ve kısa oyun rallisine ilerlemek", "Topla bölümü yalnız serbest vuruşa ayırmak", "Teknik kontrolü değerlendirmeden hızı sabit tutmak"],
+      a: 1,
+      e: "Topla bölüm hareket hissini ve iletişimi kurar. Teknik basitten oyun hızına taşınır; ilk dakikada tam güç servis veya smaçla kontrolsüz yük oluşturulmaz.",
+    },
+    {
+      q: "Maç öncesi sıçrama hazırlığında en uygun uygulama hangisidir?",
+      o: ["Bacaklar yorulana kadar kesintisiz maksimum sıçrama", "Düşük genlikten başlayıp orta şiddete ve birkaç yüksek kaliteli oyun hızı tekrarına ilerlemek", "Isınmadan doğrudan maksimum yaklaşmalı sıçrama", "Her sıçramada sert inişi teşvik etmek"],
+      a: 1,
+      e: "Sıçrama hazırlığı sinir-kas sistemini uyarır fakat yüksek hacimle yorgunluk yaratmaz. Her türde az sayıda kaliteli tekrar ve yeterli dinlenme kullanılır.",
+    },
+    {
+      q: "Bilimsel çalışmaların voleybola özgü yapılandırılmış ısınma programları için desteklediği sonuç hangisidir?",
+      o: ["Isınmanın yaralanmalarla hiçbir ilişkisi olamaz", "Aerobik, dinamik, denge-kuvvet ve spora özgü öğeler içeren programlar bazı gruplarda özellikle akut ve üst ekstremite yaralanma yükünü azaltabilir", "Yalnız statik esneme bütün yaralanmaları önler", "Her sporcu için aynı program yüzde yüz koruma sağlar"],
+      a: 1,
+      e: "Genç voleybolculardaki VolleyVeilig araştırmasında müdahale gruplarında akut ve üst ekstremite yaralanmaları ile yaralanma yükünde azalma bildirilmiştir. Sonuçlar program uyumu ve bireysel gereksinimlerle birlikte yorumlanmalıdır.",
+    },
+    {
+      q: "Yoğun antrenmandan sonra doğru aktif soğuma yaklaşımı hangisidir?",
+      o: ["Aniden yere oturmak", "3–5 dakika rahat yürüyüş ve çok hafif hareketle şiddeti kademeli azaltmak", "Ekstra yüksek şiddetli kondisyon yapmak", "Nefesi mümkün olduğunca uzun tutmak"],
+      a: 1,
+      e: "Soğuma yeni bir kondisyon yükü değildir. Rahat hareketle nabız ve nefesin doğal biçimde sakinleşmesine izin verilir; olağan dışı belirti varsa sağlık prosedürü uygulanır.",
+    },
+    {
+      q: "Soğuma sırasında nefes ve gevşeme çalışmasının güvenli uygulanışı hangisidir?",
+      o: ["Zorla çok derin ve uzun nefes almak", "Boyun ve omuzları gevşetip 4–6 rahat, ritmik soluk kullanmak; baş dönmesinde normal nefese dönmek", "Tüm uygulama boyunca nefesi tutmak", "Hızlı soluklarla baş dönmesini artırmak"],
+      a: 1,
+      e: "Amaç bedensel uyarılmayı zorlamadan azaltmaktır. Sporcu rahat pozisyonda nefes alır; baş dönmesi veya rahatsızlıkta uygulamayı bırakır.",
+    },
+    {
+      q: "Antrenman sonrası kişisel kontrol kaydında hangi bilgiler birlikte değerlendirilmelidir?",
+      o: ["Yalnız kazanılan sayı", "Seans zorluğu, genel yorgunluk, kas veya eklem ağrısı, sıvı-beslenme ihtiyacı, uyku planı ve olağan dışı belirtiler", "Sadece antrenman süresi", "Yalnız ertesi günün maç saati"],
+      a: 1,
+      e: "Tek bir puan tanı koymaz; birkaç günlük eğilimler önemlidir. Keskin ağrı, baş dönmesi veya olağan dışı nefes darlığı gecikmeden bildirilir ve sonraki yük buna göre planlanır.",
+    },
+  ],
+  "Sakatlık önleme": [
+    {
+      q: "Voleybolda sakatlık önleme yaklaşımının en doğru amacı hangisidir?",
+      o: ["Bütün sakatlıkların kesinlikle oluşmayacağını garanti etmek", "Değiştirilebilir riskleri azaltmak, erken belirtileri tanımak ve güvenli yüklenme alışkanlıkları geliştirmek", "Sporcuyu zor hareketlerden tamamen uzak tutmak", "Ağrı ortaya çıkana kadar yükü sürekli artırmak"],
+      a: 1,
+      e: "Hiçbir program bütün olayları önleyemez. Dersin amacı kontrol edilebilir riskleri azaltmak, belirtileri erken bildirmek ve teknik, yük, toparlanma ile çevreyi birlikte yönetmektir.",
+    },
+    {
+      q: "Hangisi normal antrenman yorgunluğundan farklı olarak çalışmayı durdurup bildirmeyi gerektiren bir belirtidir?",
+      o: ["İki tarafta hafif ve geçici kas yorgunluğu", "Tek noktada keskin, giderek artan ve hareket biçimini değiştiren ağrı", "Isınma sırasında hafif terleme", "Yoğun setten sonra kısa süreli normal nefes artışı"],
+      a: 1,
+      e: "Keskin veya artan ağrı, şişlik, şekil bozukluğu, üzerine basamama, eklemde boşalma, uyuşma veya güç kaybı uyarı işaretidir. Ağrıyı gizleyerek devam etmek sorunu büyütebilir.",
+    },
+    {
+      q: "75 dakika süren ve algılanan zorluğu 6/10 olan bir antrenmanın basit seans yükü kaçtır?",
+      o: ["81 birim", "450 birim", "12,5 birim", "750 birim"],
+      a: 1,
+      e: "Derste seans yükü, süre × algılanan zorluk olarak hesaplanır. 75 × 6 = 450 keyfî yük birimidir; sıçrama, servis-smaç hacmi ve iyi oluş göstergeleri ayrıca izlenir.",
+    },
+    {
+      q: "Sakatlık riskini izlerken neden yalnız antrenman süresine bakmak yetersizdir?",
+      o: ["Süre ölçülemediği için", "Aynı sürede şiddet, sıçrama ve baş üstü vuruş hacmi ile sporcunun uyku, ağrı ve stres durumu farklı olabileceği için", "Yalnız maç sonucu önemli olduğu için", "Uzun antrenman her zaman düşük şiddetli olduğu için"],
+      a: 1,
+      e: "Yük; süre, şiddet ve voleybola özgü tekrarları içerir. Birkaç günlük eğilim, performans ve toparlanma bilgisiyle birlikte değerlendirilir; tek bir sayı tanı koymaz.",
+    },
+    {
+      q: "Servis ve smaç öncesi omuz koruyucu hazırlık hangi yapıları birlikte çalıştırmalıdır?",
+      o: ["Yalnız pazı kasını", "Rotator manşet, kürek kemiği, sırt ve gövdeyi", "Yalnız el bileğini", "Sadece boyun kaslarını"],
+      a: 1,
+      e: "Duvar kaydırma, dış rotasyon, yüz çekişi, serratus erişimi ve kontrollü gölge vuruşları omuz kuşağını bütüncül hazırlar. Voleybolcularda özgül omuz ısınmasının yaralanma sayısı ve şiddetini azaltabildiği bildirilmiştir.",
+    },
+    {
+      q: "Baş üstü harekette kürek kemiğinin doğru davranışı hangisidir?",
+      o: ["Göğüs kafesine zorla sabitlenmek", "Kolla uyumlu biçimde yukarı dönüp göğüs kafesi üzerinde akıcı hareket etmek", "Omzu kulağa doğru sıkıştırmak", "Belin aşırı çukurlaşmasını sağlamak"],
+      a: 1,
+      e: "Kürek kemiği kola hareketli ve sağlam bir taban oluşturur. Zorla sabitleme, kanatlaşma, boyun gerginliği veya bel telafisi sağlıklı omuz ritmini bozar.",
+    },
+    {
+      q: "Squat, frenleme ve inişte diz kontrolünün doğru göstergesi hangisidir?",
+      o: ["Dizin ayağın baktığı yönü izlemesi ve ayak tabanı desteğiyle kalça-gövde kontrolünün korunması", "Dizlerin her tekrarda içe çökmesi", "Topukların sürekli kalkması", "Yük arttıkça hizanın önemini kaybetmesi"],
+      a: 0,
+      e: "Diz hizası yalnız diz kaslarına bağlı değildir; ayak desteği, kalça kuvveti, gövde kontrolü ve uygun yük düzeyi birlikte rol oynar.",
+    },
+    {
+      q: "Ayak bileği burkulmasını önleme yaklaşımında en kapsamlı seçenek hangisidir?",
+      o: ["Yalnız bant kullanmak", "Hareket açıklığı, baldır kuvveti, tek ayak dengesi, tepki çalışması ve file altında güvenli iniş alanı alışkanlığını birlikte geliştirmek", "Sadece ayak bileğini sabit tutmak", "Burkulma geçmişini göz ardı etmek"],
+      a: 1,
+      e: "Voleybolda ayak bileği yaralanmaları özellikle file altında başka ayağa basma ile ilişkilidir. Destek veya bant yalnız sağlık profesyoneli önerisiyle, kuvvet-denge ve güvenli saha davranışının tamamlayıcısı olarak kullanılır.",
+    },
+    {
+      q: "Tek bacak denge çalışmasında uygun ilerleme sırası hangisidir?",
+      o: ["Doğrudan gözler kapalı maksimum yana sıçrama", "Destekli duruştan desteksiz duruşa; ardından top takibi, mini squat, erişme ve küçük sıçrama-tutuşa ilerlemek", "Yalnız güçlü bacağı çalıştırmak", "Denge kurulmadan reaktif top eklemek"],
+      a: 1,
+      e: "İlerleme basitten karmaşığa yapılır. Sağ ve sol tarafta diz hizası, hareket aralığı ve iki saniyelik denge aynı ölçütlerle izlenir.",
+    },
+    {
+      q: "File yakınında güvenli sıçrama inişi için ilk öncelik hangisidir?",
+      o: ["Havadayken iniş alanını görüp mümkün olduğunda iki ayakla, sessiz ve dengeli inmek; başka oyuncunun ayağına temastan kaçınmak", "Sıçrama yüksekliği ne olursa olsun file altına ilerlemek", "Dizleri kilitleyerek tek ayak üzerine inmek", "İniş alanına bakmadan topu izlemeyi sürdürmek"],
+      a: 0,
+      e: "İnişte ayak bileği, diz ve kalça birlikte bükülerek kuvvet dağıtılır. Sıçrama yüksekliği hiçbir zaman sporcunun iniş kontrolünün üzerine çıkarılmamalıdır.",
+    },
+    {
+      q: "Yuvarlanma ve plonjon öğretiminde güvenli başlangıç hangisidir?",
+      o: ["Sert zeminde tam hız ve yüksekten atlama", "Yumuşak zeminde, alçak pozisyondan güvenli yan düşüş ve omuz üzerinden çapraz yuvarlanmayı gözetimle öğrenmek", "Baş ve boyun üzerine doğrudan temas etmek", "Bileği zemine sertçe dayamak"],
+      a: 1,
+      e: "Yuvarlanma darbeyi dağıtmayı amaçlar. Baş-boyun korunur; minder üzerinde topsuz ve düşük hızlı tekrarlarla başlanıp top ve oyun hızı aşamalı eklenir.",
+    },
+    {
+      q: "Antrenman sırasında hangi yorgunluk örüntüsü yükün azaltılmasını gerektirir?",
+      o: ["Teknik kalite korunurken normal efor hissi", "Sıçrama yüksekliğinde belirgin düşüş, sert veya tek taraflı iniş, koordinasyon kaybı ve tekrarlayan teknik hata", "Isınma sonrası hareketlerin kolaylaşması", "Dinlenmeyle normale dönen hafif solunum artışı"],
+      a: 1,
+      e: "Hızlı performans düşüşü, olağan dışı ağrı, baş dönmesi, görme sorunu veya günlerce süren uyku ve performans bozulması yükün yeniden değerlendirilmesini gerektirir.",
+    },
+    {
+      q: "Uyku ve toparlanma günlüğünün doğru kullanımı hangisidir?",
+      o: ["Tek bir kötü uyku puanıyla tıbbi tanı koymak", "Uyku, yorgunluk, ağrı, iştah-sıvı ve yaşam stresi eğilimlerini birkaç gün izleyip kötüleşmede antrenörle yük ayarlamak", "Yalnız maç günlerinde kayıt yapmak", "Kötüleşen belirtileri gizlemek"],
+      a: 1,
+      e: "Toparlanma antrenmana verilen uyumu destekler. Tek değer yerine zaman içindeki eğilim ve ertesi günün antrenman yükü birlikte yorumlanır.",
+    },
+    {
+      q: "Sakatlık sonrası sahaya dönüşte doğru temel ilke hangisidir?",
+      o: ["Ağrı biraz azalınca doğrudan tam maça dönmek", "Sağlık onayıyla temel hareket, kuvvet-denge, koşu, yön değiştirme, sıçrama, teknik ve takım yükünü basamaklı artırmak", "Sporcunun tanı ve dönüş kararını yalnız kendisinin vermesi", "Ertesi gün belirtilerini değerlendirmemek"],
+      a: 1,
+      e: "Dönüş yalnız ağrının azalması değildir. Her basamakta ağrı, şişlik, güven, teknik ve ertesi gün tepkisi izlenir; belirti artarsa ilerleme durdurularak sağlık profesyoneline bildirilir.",
+    },
+    {
+      q: "Baş darbesi sonrası baş ağrısı, sersemlik veya denge sorunu yaşayan sporcu için doğru uygulama hangisidir?",
+      o: ["Belirtiler hafifse aynı gün oyuna dönmek", "Oyundan çıkarıp değerlendirmeye yönlendirmek; aynı gün geri döndürmemek ve sağlık onayıyla basamaklı dönüş uygulamak", "Sadece birkaç dakika oturtup maksimum sıçrama testi yapmak", "Belirtileri takım arkadaşlarından saklamak"],
+      a: 1,
+      e: "Uluslararası spor beyin sarsıntısı uzlaşısı şüpheli durumda sporcunun oyundan çıkarılmasını, değerlendirilmesini ve kontrollü dönüş sürecini destekler. Aynı gün dönüş ciddi sağlık riski oluşturabilir.",
+    },
+  ],
+  "Sporcu beslenmesi": [
+    {
+      q: "Çocuk ve genç voleybolcularda yeterli enerji alımı neden yalnız antrenman performansı için değerlendirilmez?",
+      o: ["Enerji yalnız kaslara gittiği için", "Büyüme, öğrenme, bağışıklık, hormon işlevi, günlük yaşam ve toparlanmayı da desteklediği için", "Genç sporcuların dinlenme gününde enerjiye ihtiyacı olmadığı için", "Yalnız vücut ağırlığını artırdığı için"],
+      a: 1,
+      e: "Enerji kullanılabilirliği, egzersizden sonra vücudun temel işlevlerine kalan enerjiyi ifade eder. Uzun süreli yetersizlik kadın ve erkek sporcularda sağlık ile performansı olumsuz etkileyebilir.",
+    },
+    {
+      q: "Hangisi uzun süreli yetersiz enerji alımını düşündürebilecek ve bildirilmesi gereken bir örüntüdür?",
+      o: ["Antrenman sonrası geçici normal iştah", "Sürekli yorgunluk, performans düşüşü, sık hastalanma, istemsiz kilo değişimi ve toparlanmanın uzaması", "Dengeli öğünlerden sonra tokluk", "Dinlenme gününde daha az acıkmak"],
+      a: 1,
+      e: "Bu belirtiler tek başına tanı değildir. Uyku, ruh hâli veya adet düzenindeki değişiklikler ve yemekle ilgili aşırı kaygı da aileye, antrenöre ve uygun sağlık profesyoneline bildirilmelidir.",
+    },
+    {
+      q: "Yoğun antrenman gününde dengeli sporcu tabağı nasıl uyarlanabilir?",
+      o: ["Karbonhidrat tamamen çıkarılır", "Karbonhidrat bölümü gereksinime göre artırılır; protein, sebze-meyve, sağlıklı yağ ve sıvı çeşitliliği korunur", "Yalnız protein yenir", "Bütün öğün tek bir şekerli üründen oluşturulur"],
+      a: 1,
+      e: "Tabak oranları yük, yaş, iştah ve kişisel gereksinime göre değişir. Yoğun gün daha fazla yakıt gerektirebilir; hafif günde de besin grubu çeşitliliği korunur.",
+    },
+    {
+      q: "Karbonhidratın voleyboldaki temel performans rolü hangisidir?",
+      o: ["Yalnız kemik yapımına katılmak", "Sıçrama, servis, hızlı savunma ve tekrarlı ralliler gibi yüksek şiddetli hareketler için önemli yakıt sağlamak", "Protein sentezinin tamamını tek başına yapmak", "Sıvı ihtiyacını tamamen ortadan kaldırmak"],
+      a: 1,
+      e: "Kas glikojeni ve kan glukozu yüksek şiddetli çalışmaya katkı sağlar. Karbonhidratı tamamen kesmek ya da yalnız şekerli ürünlerden almak dengeli sporcu beslenmesi değildir.",
+    },
+    {
+      q: "Proteinin toparlanma amacıyla en uygun kullanımı hangisidir?",
+      o: ["Günün bütün proteinini tek bir gece öğününde tüketmek", "Çeşitli kaliteli kaynakları ana ve ara öğünlere dağıtmak ve toparlanmada karbonhidratla birlikte kullanabilmek", "Karbonhidratın yerine tamamen protein koymak", "Yalnız takviye ürünlerinden almak"],
+      a: 1,
+      e: "Protein kas, tendon ve diğer dokuların yapım-onarımını destekler. Günlük toplam miktar önemlidir; gerçek besin kaynaklarını gün içine dağıtmak pratik bir yaklaşımdır.",
+    },
+    {
+      q: "Kemik sağlığı ve mikro besin yeterliliği için en doğru yaklaşım hangisidir?",
+      o: ["Tek bir vitamin takviyesine güvenmek", "Yeterli enerji ve proteinle birlikte kalsiyum, D vitamini, demir ve diğer besinleri çeşitli gerçek besinlerden değerlendirmek", "Bütün yağları diyetten çıkarmak", "Demir düşüklüğü şüphesinde kendi kendine yüksek doz takviye başlamak"],
+      a: 1,
+      e: "Yağlar enerji, hücre yapısı ve yağda çözünen vitaminler için gereklidir. Demir veya D vitamini gibi konularda eksiklik şüphesi profesyonel değerlendirme gerektirir.",
+    },
+    {
+      q: "Voleybolcunun günlük sıvı planı neden tek bir sabit litre değerine bağlanmamalıdır?",
+      o: ["Su hiçbir zaman ölçülemediği için", "Vücut büyüklüğü, sıcaklık, nem, süre, kıyafet ve kişisel terleme hızı ihtiyacı değiştirdiği için", "Yalnız maç skoru sıvı ihtiyacını belirlediği için", "Genç sporcular terlemediği için"],
+      a: 1,
+      e: "Gün boyunca düzenli sıvı, kişisel şişe, susama ve idrar rengi gibi işaretler birlikte izlenir. Profesyonel gözetimde antrenman öncesi-sonrası ağırlık değişimi kişisel terleme planına yardım edebilir.",
+    },
+    {
+      q: "Aşırı hızlı ve gereksiz miktarda sıvı tüketmek neden doğru değildir?",
+      o: ["Sıvı yalnız antrenman sonunda içilebildiği için", "Kişisel kaybın çok üzerinde içmek rahatsızlık ve kandaki sodyumun aşırı seyrelmesi gibi riskler oluşturabileceği için", "Su kaslarda enerji üretimini durdurduğu için", "Her durumda susuzluk oluşturduğu için"],
+      a: 1,
+      e: "Hedef ne susuz kalmak ne de kontrolsüz biçimde aşırı içmektir. Plan çevre, süre, terleme ve sağlık durumuna göre kişiselleştirilir.",
+    },
+    {
+      q: "Antrenman öncesi öğün için en doğru zamanlama ilkesi hangisidir?",
+      o: ["Antrenmana yaklaştıkça öğünü büyütmek ve yağ-lifi artırmak", "Birkaç saat varsa dengeli öğün; süre kısaldıkça daha küçük, kolay sindirilen ve önceden denenmiş seçenek kullanmak", "Her antrenmanda yeni ürün denemek", "Bütün gün aç kalıp son dakikada çok ağır yemek"],
+      a: 1,
+      e: "Ön öğünün amacı enerji sağlarken mide rahatsızlığını azaltmaktır. Kişisel tolerans antrenmanda sınanır; yarışma veya maç günü ilk kez ürün denenmez.",
+    },
+    {
+      q: "Kısa ve normal şiddetteki bir antrenmanda çoğu sporcu için antrenman sırasında temel yaklaşım hangisidir?",
+      o: ["Yüksek kafeinli enerji içeceği zorunludur", "Önceden yapılmış dengeli beslenme ve uygun su planı çoğunlukla yeterlidir", "Her 10 dakikada protein takviyesi gerekir", "Sıvı tüketilmemelidir"],
+      a: 1,
+      e: "Uzun, yoğun, sıcak veya çok seanslı günlerde karbonhidrat ve elektrolit ihtiyacı artabilir. Karar süre, şiddet, çevre, terleme, önceki öğün ve kişisel toleransa göre verilir.",
+    },
+    {
+      q: "Enerji içeceği ile sporcu içeceği hakkında doğru ifade hangisidir?",
+      o: ["İkisi her zaman aynı üründür", "Yüksek kafeinli enerji içeceği, karbonhidrat-elektrolit amaçlı sporcu içeceğiyle aynı değildir ve özellikle gençlerde uygun kabul edilmez", "Enerji içeceği suyun her zaman daha güvenli karşılığıdır", "Sporcu içeceği her antrenmanda zorunludur"],
+      a: 1,
+      e: "Ürünün adı değil içeriği ve kullanım amacı değerlendirilir. Genç sporcularda yüksek kafeinli ürünlerden ve rastgele takviyelerden kaçınılır.",
+    },
+    {
+      q: "Antrenman sonrası toparlanma öğününün üç temel bileşeni hangileridir?",
+      o: ["Yalnız protein, kafein ve vitamin tableti", "Karbonhidrat, protein ve sıvı", "Yalnız yağ ve lif", "Sadece su ve tuz"],
+      a: 1,
+      e: "Karbonhidrat enerji depolarını, protein doku onarımını, sıvı ise kayıpların yerine konmasını destekler. Terleme yüksekse elektrolit ve tuz ihtiyacı kişiye göre değerlendirilir.",
+    },
+    {
+      q: "Aynı gün ikinci maç bulunan turnuvada öğün seçimi nasıl yapılmalıdır?",
+      o: ["Maçlar arasındaki süreye bakmadan çok ağır ve yağlı yemek", "Arayı kısa, orta veya uzun olarak sınıflandırıp sindirimi kolay, denenmiş ve güvenli saklanmış seçeneğin boyutunu buna göre ayarlamak", "Bozulabilir yiyeceği sıcak çantada saatlerce tutmak", "İlk kez kullanılan takviyeyi denemek"],
+      a: 1,
+      e: "Kısa arada küçük ve kolay sindirilen yakıt, uzun arada daha kapsamlı öğün planlanabilir. Soğuk zincir ve gıda güvenliği performans kadar önemlidir.",
+    },
+    {
+      q: "Beslenme günlüğünün doğru amacı hangisidir?",
+      o: ["Çocuk ve genç sporcuda kalori ve kilo takıntısı oluşturmak", "Öğün zamanı, enerji, sindirim, performans, uyku ve toparlanma arasındaki kişisel örüntüleri davranış odaklı görmek", "Her gün yiyecekleri yasaklı ve serbest diye ayırmak", "Yalnız vücut ağırlığını kaydetmek"],
+      a: 1,
+      e: "Günlük bir tanı aracı değildir ve kısıtlayıcı kilo takibine dönüşmemelidir. Amaç kişisel toleransı fark edip spor diyetisyeni veya sağlık ekibiyle güvenli değişiklik planlamaktır.",
+    },
+    {
+      q: "Bir besin takviyesi üzerinde 'doğal' yazması ne anlama gelir?",
+      o: ["Ürünün kesinlikle güvenli ve dopingsiz olduğunu", "Güvenlik, etiket doğruluğu veya yasaklı madde içermeme garantisi vermediğini", "Üçüncü taraf teste gerek olmadığını", "Genç sporcuların hekim görüşü olmadan kullanabileceğini"],
+      a: 1,
+      e: "IOC uzlaşı raporu takviyelerde sağlık, içerik ve istemeden doping riskini vurgular. Önce gereksinim ve beslenme değerlendirilir; hekim, spor diyetisyeni ve anti-doping kurallarıyla risk-fayda analizi yapılır. Üçüncü taraf test riski azaltabilir fakat sıfırlamaz.",
+    },
+  ],
+  "Mental hazırlık": [
+    {
+      q: "23-23 skorunda servis sırası kendisinde olan oyuncu için hangisi uygulanabilir bir görev cümlesidir?",
+      o: ["Bu servisi kesin kaçıracağım", "Hata yaparsam herkes bana kızacak", "Nefes ver, bölge 5 hedefini gör, dengeli atış ve kontrollü temas uygula", "Bu sayıyı mutlaka kazanmalıyım"],
+      a: 2,
+      e: "Skor 23-23 bir olay, 'kaçıracağım' bir düşünce, nefes-hedef-atış-temas ise kontrol edilebilir görevdir. Oyuncu düşünceyi bastırmadan fark eder ve dikkatini uygulanabilir harekete taşır.",
+    },
+    {
+      q: "Kaygı uyandıran bir düşünce ortaya çıktığında dersin önerdiği ilk yaklaşım hangisidir?",
+      o: ["Düşünceyle uzun süre tartışmak", "Düşünceyi kesin gerçek kabul etmek", "Düşünceyi kısa biçimde adlandırıp nefes vererek tek görev ipucuna dönmek", "Düşünceyi kimseye söylemeden bastırmak"],
+      a: 2,
+      e: "'Hata düşüncesi geldi' biçiminde fark etmek, düşünce ile gerçek olay arasında mesafe oluşturur. Ardından sporcu kontrol edebildiği tek görevi seçer.",
+    },
+    {
+      q: "Servis öncesi nefes kullanımının amacı nedir?",
+      o: ["Bedeni tamamen gevşetip enerji düzeyini sıfıra indirmek", "Uyarılmayı işlevsel hazır oluş düzeyine getirip dikkati bir sonraki göreve toplamak", "Mümkün olduğunca uzun süre nefesi tutmak", "Baş dönmesi oluşana kadar derin nefes almak"],
+      a: 1,
+      e: "Bir veya iki rahat nefes, çene ve elleri gevşetme ve kısa odak sözcüğü kullanılabilir. Baş dönmesinde zorlayıcı nefes bırakılıp normal solunuma dönülür.",
+    },
+    {
+      q: "Oyuncunun dikkati geçmişteki hataya kaydığında şimdiye dönmesine yardım eden üç çapa hangileridir?",
+      o: ["Skor tahmini, seyirci ve sonuç", "Görsel ipucu, bedensel his ve görev sözcüğü", "Rakibin ünü, hakem ve önceki set", "Yalnız olumlu düşünce"],
+      a: 1,
+      e: "Topun dikişi veya hedef görsel; ayak tabanı veya nefes bedensel; 'ilk adım' veya 'platform hedefe' ise görev çapasıdır. Amaç dikkati mevcut rallideki eyleme döndürmektir.",
+    },
+    {
+      q: "Hangisi iyi tanımlanmış bir süreç hedefidir?",
+      o: ["Maçı mutlaka 3-0 kazanmak", "Hiç hata yapmamak", "Her servis karşılamadan önce saha paylaşımını söyleyip alçak hazır duruş almak", "Rakibin kötü oynamasını sağlamak"],
+      a: 2,
+      e: "Süreç hedefi kısa, gözlenebilir, uygulanabilir ve zamana bağlıdır. Kazanmak değerli bir sonuç hedefidir ancak tek oyuncunun tam kontrolünde değildir.",
+    },
+    {
+      q: "Etkili iç konuşmanın doğru örneği hangisidir?",
+      o: ["Asla hata yapmayacağım", "Ben her zaman en iyiyim", "Topun arkasına geç, platformu hedefe çevir", "Hata yaparsam oyundan çıkarım"],
+      a: 2,
+      e: "Etkili iç konuşma gerçekçi, kısa ve görev odaklıdır. Meta-analitik araştırmalar, özellikle eğitimle uygulanan öğretici iç konuşmanın performansı destekleyebildiğini gösterir.",
+    },
+    {
+      q: "Servis öncesi rutinin doğru özelliği hangisidir?",
+      o: ["Sonuca göre her seferinde tamamen değişmesi", "Kısa, aynı sıralı, zaman kurallarına uygun ve servis sonrası savunma görevine bağlanan davranışlardan oluşması", "Batıl bir ritüel olarak uzatılması", "Yalnız topa bakmadan yapılan nefes çalışması olması"],
+      a: 1,
+      e: "Skor ve planı görme, hedef seçme, rahat nefes, top hazırlığı, odak sözcüğü ve temas ritmi rutinin parçalarıdır. Rutinin uygulanması servis sonucundan ayrı değerlendirilir.",
+    },
+    {
+      q: "Karşılama öncesi rutinde servis vuruşundan önce tamamlanması gereken hazırlık hangisidir?",
+      o: ["Sadece pasörün arkasına bakmak", "Servisçiyi okumak, ara top sorumluluğunu paylaşmak, pasör hedefini kontrol etmek ve alçak hazır duruş almak", "Top karşı sahayı geçtikten sonra iletişim kurmak", "Ayakları sabitleyip dik beklemek"],
+      a: 1,
+      e: "Karşılama rutini görsel bilgi, takım iletişimi, saha paylaşımı ve ilk adım hazırlığını birleştirir. Temas sonrası oyuncu hücum veya koruma görevine geçer.",
+    },
+    {
+      q: "Hata sonrası üç adımlı sıfırlama sırası hangisidir?",
+      o: ["Analiz et → suçla → sonucu düşün", "Kabul et → bırak → yeni göreve yönel", "Unutmaya zorla → oyundan kop → bekle", "Hakeme itiraz et → takım arkadaşını eleştir → servis kullan"],
+      a: 1,
+      e: "Oyuncu rallinin bittiğini kabul eder, nefes ve kısa fiziksel işaretle bırakır, ardından yeni skor-rotasyon ve tek görevi seçer. Ayrıntılı teknik analiz ralli arasında değil daha uygun zamanda yapılır.",
+    },
+    {
+      q: "Hata sonrası sıfırlama rutini neden 3–6 saniye kadar kısa olmalıdır?",
+      o: ["Oyuncunun hatayı hiç öğrenmemesi için", "Yeni ralli başlamadan dikkati geçmiş öz eleştiriden mevcut görev ve rotasyona taşıyabilmek için", "Nefes almayı engellemek için", "Takım iletişimini tamamen kaldırmak için"],
+      a: 1,
+      e: "Duyguyu yok saymak amaçlanmaz; hata bir sonraki sayıya taşınmaz. Kısa rutin oyun akışına uyarken uzun analiz set arasına veya antrenman sonrasına bırakılır.",
+    },
+    {
+      q: "Yedek oyuncunun zihinsel olarak oyunda kalmasını sağlayan en uygun davranış hangisidir?",
+      o: ["Skoru ve rotasyonu takip etmeyi bırakmak", "Rakibin servis-hücum eğilimlerini, takım rotasyonunu ve olası görevini izleyip oyuna giriş için bir-iki hedef seçmek", "Yalnız telefonla ilgilenmek", "Oyuna çağrılana kadar fiziksel hazırlığı tamamen bırakmak"],
+      a: 1,
+      e: "Yedek oyuncu kendi pozisyonundaki görevleri ve rakip örüntülerini izler. Çağrıldığında skor, rotasyon ve ilk görevini kısa sürede söyleyebilmelidir.",
+    },
+    {
+      q: "Kritik sayıda 'sakinlik' en doğru nasıl tanımlanır?",
+      o: ["Hiç heyecan veya enerji hissetmemek", "Artan uyarılmaya rağmen dikkati sonuçtan takım planı, nefes ve tek görev ipucuna döndürmek", "Son anda bütün taktik planı değiştirmek", "Top gelmeden olumsuz sonucu düşünmek"],
+      a: 1,
+      e: "Kritik sayı rutini skor ve rotasyonu netleştirir, ana-yedek kararı belirler ve hareketi tereddütsüz uygulamaya bağlar. Amaç düşük enerji değil işlevsel odaktır.",
+    },
+    {
+      q: "Takım arkadaşının karşılama hatasından sonra en yararlı destek cümlesi hangisidir?",
+      o: ["Sen hep aynı hatayı yapıyorsun", "Bir daha hata yapma", "Bitti, sıradaki top; platformu hedefe çevir", "Bu top yüzünden set gitti"],
+      a: 2,
+      e: "Destek dili kısa, saygılı ve eyleme dönüktür. Kişilik yorumu, alay ve belirsiz suçlama iletişimi ve güveni zedeler.",
+    },
+    {
+      q: "Maç sonrası öğrenme günlüğünde en uygun kayıt hangisidir?",
+      o: ["Ben kötü bir oyuncuyum", "İki kanıtlı güçlü davranış, uygulanan süreç hedefi, dikkatin dağıldığı an ve sonraki antrenman için tek uygulanabilir adım", "Yalnız maç skorunu yazmak", "Bütün hatalar için takım arkadaşlarını suçlamak"],
+      a: 1,
+      e: "Günlük yargılama değil öğrenme aracıdır. Kısa ilk not daha sonra video ve antrenör geri bildirimiyle tamamlanır; uyku, enerji ve stres de bağlam olarak kaydedilir.",
+    },
+    {
+      q: "Mental beceri eğitiminin sınırıyla ilgili doğru ifade hangisidir?",
+      o: ["Nefes ve rutin bütün ruh sağlığı sorunlarının tedavisidir", "Belirtiler haftalarca sürüyor, yoğunlaşıyor veya okul, uyku, yemek, ilişkiler ve sporu etkiliyorsa lisanslı uzmandan destek istenmelidir", "Yardım istemek mental zayıflık göstergesidir", "Kendine zarar düşüncesinde bir sonraki antrenman beklenmelidir"],
+      a: 1,
+      e: "Mental performans becerileri klinik değerlendirme veya tedavinin yerine geçmez. IOC uzlaşısı yardım istemeyi destekler; kendine zarar düşüncesi veya acil güvenlik riskinde yerel acil yardım ve kriz desteği hemen kullanılmalıdır.",
+    },
+  ],
+  "Plaj voleybolu temelleri": [
+    {
+      q: "Güncel FIVB kurallarına göre plaj voleybolu sahasının ölçüsü ve sahadaki takım yapısı hangisidir?",
+      o: ["18 × 9 metre ve altı oyuncu", "16 × 8 metre ve iki oyuncu", "14 × 7 metre ve üç oyuncu", "20 × 10 metre ve dört oyuncu"],
+      a: 1,
+      e: "Plaj voleybolu 16 × 8 metrelik kum sahada iki kişilik takımlarla oynanır. Her iki oyuncu da oyunda kalır; maç içinde oyuncu değişikliği veya yedek oyuncu yoktur.",
+    },
+    {
+      q: "Plaj voleybolunda blok teması sonrası takımın topu rakibe göndermek için kaç vuruş hakkı kalır?",
+      o: ["Üç", "İki", "Bir", "Hiç"],
+      a: 1,
+      e: "FIVB 2025–2028 Plaj Voleybolu Kuralları'nda blok teması bir takım vuruşu sayılır. Bloktan sonra, blok yapan oyuncu dâhil herhangi bir oyuncu kalan iki temastan ilkini yapabilir.",
+    },
+    {
+      q: "Plaj voleybolunda doğru set ve saha değişimi düzeni hangisidir?",
+      o: ["Tüm setler 25 sayıdır; her 8 sayıda değişilir", "İlk iki set 21, karar seti 15 sayıdır; ilk iki sette toplam her 7, karar setinde her 5 sayıda saha değiştirilir", "İlk iki set 15, karar seti 21 sayıdır", "Saha yalnız set sonunda değiştirilir"],
+      a: 1,
+      e: "Maç iki set kazanan takımındır ve her set en az iki farkla biter. Rüzgâr ve güneş etkisini dengelemek için saha değişimleri toplam sayı üzerinden düzenli yapılır.",
+    },
+    {
+      q: "Kumda etkili hazır pozisyonun özelliği hangisidir?",
+      o: ["Çok geniş, sert ve ayakları kuma gömen duruş", "Ayaklar omuz genişliğine yakın, dizler yumuşak, gövde hafif önde ve ağırlık ön-orta ayakta", "Dizler kilitli ve ağırlık topuklarda", "Ayaklar çapraz, eller arkada"],
+      a: 1,
+      e: "Kumun gevşek yapısı çok geniş ve sert duruşta ilk adımı geciktirir. Dengeli, alçak ve hareketli pozisyon kısa hazırlık adımına izin verir.",
+    },
+    {
+      q: "Kumda uzak bir topa giderken en ekonomik ayak çalışması hangisidir?",
+      o: ["İlk adımdan itibaren mümkün olan en uzun adımlar", "Kısa ve güçlü hızlanma adımlarıyla başlayıp mesafeye göre adım boyunu kademeli büyütmek, temas öncesi yeniden kontrol etmek", "Ayakları kuma sürükleyerek ilerlemek", "Sert zemindeki koşuyu hiç değiştirmeden uygulamak"],
+      a: 1,
+      e: "Uzun ilk adım ayağın kuma gömülmesine ve yön değişiminin gecikmesine neden olabilir. Son bölümde adımlar yeniden ayarlanarak platform ve gövde kontrolü hazırlanır.",
+    },
+    {
+      q: "İki kişilik takımda top karşıya geçmeden önce hangi sorumlulukların paylaşılması gerekir?",
+      o: ["Yalnız sağ ve sol çizgi", "Kısa, derin, ara top, blok sonrası alan ve gerektiğinde ikinci top sorumluluğu", "Sadece servis atacak oyuncu", "Yalnız hücum yönü"],
+      a: 1,
+      e: "İki oyuncu bütün sahayı birlikte yönetir. 'Benim-senin', 'kısa-derin', 'hat-çapraz' ve yardım çağrıları erken yapılır; geç çağrı çarpışma veya boş top oluşturabilir.",
+    },
+    {
+      q: "Arka rüzgârda servis veya pas planı için en güvenli uyarlama hangisidir?",
+      o: ["Topu gereksiz yükseltip dış çizgiyi hedeflemek", "Atış ve yörüngeyi daha kontrollü tutup hedef payını sahanın içine almak", "Rüzgârı tamamen yok saymak", "Her topa maksimum güç uygulamak"],
+      a: 1,
+      e: "Arka rüzgâr topu uzatabilir. Oyuncu daha düşük ve kontrollü yörünge ile iç hedef kullanır; rüzgârın yönünü her rallide yeniden gözlemler.",
+    },
+    {
+      q: "Plaj servis karşılamasında ideal hedef neden topu fileye yapıştırmak değildir?",
+      o: ["Top fileye hiç yaklaşamayacağı için", "Partnerin dengeli ikinci temas yapabileceği oyun kurma alanına yönlendirmek ve hücumcuya yaklaşma mesafesi bırakmak için", "İkinci temas yasak olduğu için", "Servis karşılamada yalnız tek elle oynanabildiği için"],
+      a: 1,
+      e: "İki kişilik oyunda pasör de hareket etmek zorundadır. Başarılı ilk temas partnerin yaklaşık iki adım içinde ulaşabileceği, fileden güvenli mesafedeki alana gider.",
+    },
+    {
+      q: "İkinci topta parmak pas yerine manşet pasın daha güvenli olabileceği durum hangisidir?",
+      o: ["Oyuncu dengeli biçimde topun tam altındayken", "Top düşük, hızlı veya gövdeden uzaktayken ya da güçlü rüzgâr kontrolü zorlaştırırken", "Her durumda yalnız manşet zorunlu olduğu için", "Top sabit ve rüzgâr yokken"],
+      a: 1,
+      e: "Teknik seçimi topun yüksekliği, oyuncunun dengesi, rüzgâr ve beceri düzeyine göre yapılır. Amaç hücumcuya ritimli, öngörülebilir ve kural uygun bir ikinci top vermektir.",
+    },
+    {
+      q: "Kumdaki yaklaşmalı hücum sıçraması neden sert zemindeki kadar uzun ve kontrolsüz hızlı olmamalıdır?",
+      o: ["Kumda kol salınımı yasak olduğu için", "Kumun uyumlu ve kararsız yüzeyi itiş kuvveti ile kalkış hızını değiştirir; aşırı uzun son adım ayağı gömüp ritmi bozabilir", "Kumda sıçrama yapılamadığı için", "Plaj voleybolunda yalnız ayakta hücum edildiği için"],
+      a: 1,
+      e: "Biyomekanik araştırmalar kumda sıçrama yüksekliği, kuvvet ve eklem davranışlarının sert yüzeyden farklı olduğunu gösterir. Oyuncu kontrollü yaklaşır, iki ayağı dengeli yerleştirir ve dikey yükselişi önceler.",
+    },
+    {
+      q: "Yaygın blok işaretleme sisteminde bir parmak ve iki parmak genellikle neyi belirtir?",
+      o: ["Bir parmak kısa servis, iki parmak derin servis", "Bir parmak çizgi, iki parmak çapraz hücum hattının blokla kapatılacağını", "Bir parmak pas, iki parmak manşet", "Bir parmak sağ oyuncu, iki parmak sol oyuncu değişikliği"],
+      a: 1,
+      e: "İşaretlerin kesin anlamı takım içinde önceden ortaklaştırılmalıdır. Yaygın sistemde el, karşısındaki hücumcuyu; parmak sayısı ise kapatılacak hattı belirtir.",
+    },
+    {
+      q: "Blokçu çizgi hücumunu kapatıyorsa arka alan savunmacısının temel başlangıç sorumluluğu nedir?",
+      o: ["Aynı çizgi hattını blokçuyla birlikte savunmak", "Blok dışında kalan çapraz sert vuruşu ve plase seçeneklerini dengeleyecek alana yerleşmek", "File altında blokçının arkasında beklemek", "Sahayı terk etmek"],
+      a: 1,
+      e: "Blok ve savunma tek sistemdir. İki oyuncunun aynı hattı kapatması geniş bir boşluk bırakır; savunmacı blokla kapatılmayan alanı tamamlar.",
+    },
+    {
+      q: "Rakibin pası fileden çok uzak ve hücum seçeneği sınırlıysa blokçu için uygun karar hangisidir?",
+      o: ["Her durumda filede kalıp maksimum sıçramak", "Erken 'çekil' çağrısıyla bloktan ayrılıp arka alan savunmasına katılmak", "Partnerine haber vermeden saha dışına çıkmak", "Servis sırasını değiştirmek"],
+      a: 1,
+      e: "Kötü pas, blok yerine iki oyunculu saha savunmasını daha değerli kılabilir. Çağrı erken verilirse partner başlangıç yerini buna göre ayarlar.",
+    },
+    {
+      q: "Savunmadan hücuma geçişte doğru rol değişimi hangisidir?",
+      o: ["İlk teması yapan oyuncunun topu izleyip yerde kalması", "İlk teması yapanın hücum hattına açılması, partnerin ikinci topu üstlenmesi ve pas konumu ile açık alan bilgisinin erken söylenmesi", "Her iki oyuncunun aynı anda ikinci topa koşması", "İletişimin yalnız hücumdan sonra yapılması"],
+      a: 1,
+      e: "'Benim', 'bende', 'içeride-dışarıda-yakın' ve 'hat-çapraz' çağrıları rol değişimini hızlandırır. Üç temaslı düzen, savunma topunu kontrollü hücuma dönüştürür.",
+    },
+    {
+      q: "Plaj voleybolunda çevre ve güvenlik kontrolü için doğru uygulama hangisidir?",
+      o: ["Kumu, sıcaklığı ve rüzgârı yalnız maç bittikten sonra değerlendirmek", "Kumda taş veya tehlikeli parçaları, yüzey sıcaklığını, güneş-rüzgâr koşullarını ve sıvı ihtiyacını antrenman öncesi ve sırasında izlemek", "Aşırı sıcakta mola vermeden devam etmek", "Ağrıyı normal kum yorgunluğu kabul etmek"],
+      a: 1,
+      e: "FIVB güvenli ve yabancı maddelerden arındırılmış kum yüzeyi ister. Hava, yüzey ve sporcunun belirtileri değiştikçe mola, sıvı ve yük planı güncellenir; ağrı veya olağan dışı belirti zorlanmaz.",
     },
   ],
 };
@@ -1768,116 +4546,142 @@ function questionsFor(title) {
     e: `Doğru cevap “${p}”dir; bu adım ${title} dersinin müfredatında yer alır.`,
   }));
 }
-function ExamPage({ initialCourse }) {
-  const [title, setTitle] = useState(initialCourse?.[1] || courseCategories[0]);
+const EXAM_PASS_SCORE = 70;
+const EXAM_ATTEMPTS_KEY = "volleyballExamAttempts";
+const readExamAttempts = () => {
+  try { return JSON.parse(localStorage.getItem(EXAM_ATTEMPTS_KEY) || "[]"); }
+  catch { return []; }
+};
+const examIdFor = (title) => `SNV-${String(courseCategories.indexOf(title) + 1).padStart(2, "0")}`;
+
+function ExamPage({ initialCourse, account }) {
+  const accountType = account?.accountType || "";
+  const isClub = accountType === "club";
+  const canTakeExam = accountType === "athlete" || accountType === "trainer";
+  const matchingSchool = readSchools().find((school) => school.id === account?.schoolId || String(school.schoolName || "").toLocaleLowerCase("tr") === String(account?.schoolName || "").toLocaleLowerCase("tr"));
+  const schoolId = accountType === "club" ? account?.id : account?.schoolId || matchingSchool?.id || `OKUL-${account?.schoolCode || "BELIRSIZ"}`;
+  const schoolName = account?.schoolName || matchingSchool?.schoolName || "Okul bilgisi yok";
+  const userId = canTakeExam ? account?.id : "";
+  const userName = canTakeExam ? account?.name : "";
+  const [attempts, setAttempts] = useState(readExamAttempts);
+  const userAttempts = attempts.filter((item) => canTakeExam ? item.userId === userId : item.schoolId === schoolId);
+  const uniqueExamAttempts = Array.from(userAttempts.reduce((bestByExam, item) => {
+    const key = `${item.userId}::${item.examId}`;
+    const current = bestByExam.get(key);
+    const currentTime = new Date(current?.completedAt || 0).getTime();
+    const itemTime = new Date(item.completedAt || 0).getTime();
+    if (!current || Number(item.score || 0) > Number(current.score || 0) || (Number(item.score || 0) === Number(current.score || 0) && itemTime > currentTime)) bestByExam.set(key, item);
+    return bestByExam;
+  }, new Map()).values()).sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+  const historyGroups = Array.from(uniqueExamAttempts.reduce((groups, item) => {
+    if (!groups.has(item.userId)) groups.set(item.userId, { userId: item.userId, userName: item.userName, userType: item.userType, exams: [] });
+    groups.get(item.userId).exams.push(item);
+    return groups;
+  }, new Map()).values());
+  const passedIds = new Set(userAttempts.filter((item) => item.passed).map((item) => item.examId));
+  const firstPending = courseCategories.findIndex((item) => !passedIds.has(examIdFor(item)));
+  const unlockedIndex = firstPending < 0 ? courseCategories.length - 1 : firstPending;
+  const requestedTitle = initialCourse?.[1] || courseCategories[0];
+  const requestedIndex = courseCategories.indexOf(requestedTitle);
+  const [title, setTitle] = useState(() => isClub && requestedIndex >= 0 ? requestedTitle : canTakeExam && requestedIndex >= 0 && requestedIndex <= unlockedIndex ? requestedTitle : courseCategories[unlockedIndex]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [done, setDone] = useState(false);
   const qs = questionsFor(title);
-  const choose = (n) => setAnswers({ ...answers, [index]: n });
-  const reset = (t) => {
-    if (t) setTitle(t);
+  const examId = examIdFor(title);
+  const examOrder = courseCategories.indexOf(title);
+  const choose = (answerIndex) => setAnswers({ ...answers, [index]: answerIndex });
+  const reset = (nextTitle) => {
+    if (nextTitle) setTitle(nextTitle);
     setIndex(0);
     setAnswers({});
     setDone(false);
   };
-  const score = qs.reduce((s, q, i) => s + (answers[i] === q.a ? 1 : 0), 0);
+  const score = qs.reduce((sum, question, questionIndex) => sum + (answers[questionIndex] === question.a ? 1 : 0), 0);
+  const scorePercent = Math.round((score / Math.max(qs.length, 1)) * 100);
+  const passed = scorePercent >= EXAM_PASS_SCORE;
+  const passedCount = passedIds.size;
+  const totalPoints = uniqueExamAttempts.reduce((sum, item) => sum + Number(item.score || 0), 0);
+  const bestScore = uniqueExamAttempts.length ? Math.max(...uniqueExamAttempts.map((item) => Number(item.score || 0))) : 0;
+  const nextExamTitle = examOrder < courseCategories.length - 1 ? courseCategories[examOrder + 1] : "";
+  const finishExam = () => {
+    const attempt = {
+      attemptId: `GIRIS-${Date.now()}`,
+      schoolId,
+      schoolName,
+      userId,
+      userName,
+      userType: accountType === "trainer" ? "Antrenör" : "Sporcu",
+      examId,
+      examTitle: title,
+      examOrder: examOrder + 1,
+      attemptNumber: userAttempts.filter((item) => item.examId === examId).length + 1,
+      questionCount: qs.length,
+      correctCount: score,
+      wrongCount: qs.length - score,
+      score: scorePercent,
+      passingScore: EXAM_PASS_SCORE,
+      passed,
+      completedAt: new Date().toISOString(),
+    };
+    const nextAttempts = [...attempts, attempt];
+    localStorage.setItem(EXAM_ATTEMPTS_KEY, JSON.stringify(nextAttempts));
+    setAttempts(nextAttempts);
+    setDone(true);
+  };
+  const selectExam = (nextTitle) => {
+    const nextIndex = courseCategories.indexOf(nextTitle);
+    const unlocked = nextIndex === 0 || passedIds.has(examIdFor(courseCategories[nextIndex - 1]));
+    if (isClub || (canTakeExam && unlocked)) reset(nextTitle);
+  };
+  const goToNextExam = () => {
+    if (!passed || !nextExamTitle) return;
+    reset(nextExamTitle);
+    window.scrollTo({ top: document.querySelector(".exam-workspace")?.offsetTop || 0, behavior: "smooth" });
+  };
   return (
     <div className="exam-page page">
-      <div className="page-head">
-        <span className="eyebrow">ÖLÇME & DEĞERLENDİRME</span>
-        <h1>Voleybol sınavları</h1>
-        <p>
-          Her dersin anlatımına uygun hazırlanmış çoktan seçmeli sınavlar.
-        </p>
-      </div>
-      <label className="exam-select">
-        Sınav konusu
-        <select value={title} onChange={(e) => reset(e.target.value)}>
-          {courseCategories.map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-        </select>
-      </label>
-      {!done ? (
-        <div className="exam-card">
-          <div className="exam-progress">
-            <span>
-              SORU {index + 1} / {qs.length}
-            </span>
-            <div>
-              <i style={{ width: `${((index + 1) / qs.length) * 100}%` }} />
-            </div>
+      <section className="exam-hero">
+        <div><span className="eyebrow"><ClipboardCheck/> ÖLÇME VE DEĞERLENDİRME</span><h1>{isClub ? "Kulübünün sınavlarını tek yerden kontrol et." : "Sahadaki gelişimini sınavlarla kanıtla."}</h1><p>{isClub ? "Tüm sınavları kilitsiz görüntüle; soru, doğru yanıt ve açıklamaları incele. Katılımcı sonuçlarını okul kimliğiyle takip et." : `Sınavları sırayla tamamla, en az %${EXAM_PASS_SCORE} puan al ve bir sonraki konunun kilidini aç.`}</p></div>
+        <div className="exam-account-card"><span>{accountType === "trainer" ? <GraduationCap/> : accountType === "club" ? <School/> : <UserRound/>}</span><div><small>{accountType === "trainer" ? "ANTRENÖR" : accountType === "club" ? "KULÜP YÖNETİMİ" : "SPORCU"}</small><b>{userName || schoolName}</b><em>Okul ID: {schoolId}</em></div></div>
+      </section>
+      <section className="exam-stats">
+        <article><Award/><span><b>{passedCount}</b><small>Geçilen Sınav</small></span></article>
+        <article><Target/><span><b>{bestScore}</b><small>En Yüksek Puan</small></span></article>
+        <article><Trophy/><span><b>{totalPoints}</b><small>Toplam Puan</small></span></article>
+        <article>{isClub ? <ClipboardCheck/> : <LockKeyhole/>}<span><b>{isClub ? courseCategories.length : Math.max(0, courseCategories.length - passedCount - 1)}</b><small>{isClub ? "Kontrole Açık Sınav" : "Kilitli Sınav"}</small></span></article>
+      </section>
+      {isClub ? (
+        <>
+          <section className="exam-club-view"><School/><div><span className="eyebrow">KULÜP SINAV KONTROLÜ</span><h2>Tüm sınavlar incelemeye açık</h2><p>Kulüp hesabında sıra kilidi uygulanmaz. Sol listeden bir sınav seçerek soruları ve cevap açıklamalarını kontrol edebilirsin; sporcu ve antrenör sonuçları aşağıdaki geçmişte ayrıca listelenir.</p></div></section>
+          <div className="exam-club-control">
+            <aside className="exam-roadmap club-control-nav"><div><small>SINAV KÜTÜPHANESİ</small><b>{courseCategories.length} sınav • kilit yok</b><span><i style={{width:"100%"}}/></span></div><nav>{courseCategories.map((item,itemIndex)=>{const itemQuestions=questionsFor(item);return <button key={item} className={title===item?"active":""} onClick={()=>selectExam(item)}><i>{String(itemIndex+1).padStart(2,"0")}</i><span><b>{item}</b><small>{itemQuestions.length} soru • Kontrole açık</small></span></button>})}</nav></aside>
+            <section className="exam-club-preview"><header><span><small>{examId} • SINAV ÖNİZLEME</small><h2>{title}</h2><p>{qs.length} sorunun doğru yanıtları ve öğretici açıklamaları</p></span><em><CheckCircle2/> Kilitsiz</em></header><div className="exam-club-question-list">{qs.map((question,questionIndex)=><article key={question.q}><i>{questionIndex+1}</i><div><b>{question.q}</b><span><strong>Doğru yanıt:</strong> {question.o[question.a]}</span><p>{question.e}</p></div></article>)}</div></section>
           </div>
-          <h2>{qs[index].q}</h2>
-          <div className="exam-options">
-            {qs[index].o.map((o, i) => (
-              <button
-                className={answers[index] === i ? "selected" : ""}
-                onClick={() => choose(i)}
-                key={o}
-              >
-                <i>{String.fromCharCode(65 + i)}</i>
-                {o}
-              </button>
-            ))}
-          </div>
-          <div className="exam-actions">
-            <button
-              className="btn ghost"
-              disabled={index === 0}
-              onClick={() => setIndex(index - 1)}
-            >
-              Önceki
-            </button>
-            {index < qs.length - 1 ? (
-              <button
-                className="btn"
-                disabled={answers[index] === undefined}
-                onClick={() => setIndex(index + 1)}
-              >
-                Sonraki <ArrowRight />
-              </button>
+        </>
+      ) : (
+        <div className="exam-workspace">
+          <aside className="exam-roadmap"><div><small>SINAV YOLCULUĞU</small><b>{passedCount} / {courseCategories.length} tamamlandı</b><span><i style={{width:`${(passedCount/courseCategories.length)*100}%`}}/></span></div><nav>{courseCategories.map((item, itemIndex)=>{const itemId=examIdFor(item); const itemPassed=passedIds.has(itemId); const itemUnlocked=itemIndex===0||passedIds.has(examIdFor(courseCategories[itemIndex-1])); return <button key={item} className={`${title===item?"active":""} ${itemPassed?"passed":""}`} disabled={!itemUnlocked} onClick={()=>selectExam(item)}><i>{itemPassed?<CheckCircle2/>:itemUnlocked?String(itemIndex+1).padStart(2,"0"):<LockKeyhole/>}</i><span><b>{item}</b><small>{itemPassed?"Geçildi":itemUnlocked?"Girişe açık":"Önceki sınavı geç"}</small></span></button>})}</nav></aside>
+          <div className="exam-stage">
+            {!done ? (
+              <div className="exam-card">
+                <div className="exam-card-head"><span><small>{examId} • {examOrder + 1}. SINAV</small><h2>{title}</h2></span><em>Geçme puanı: {EXAM_PASS_SCORE}</em></div>
+                <div className="exam-progress"><span>SORU {index + 1} / {qs.length}</span><div><i style={{ width: `${((index + 1) / qs.length) * 100}%` }} /></div></div>
+                <h3>{qs[index].q}</h3>
+                <div className="exam-options">{qs[index].o.map((option, optionIndex) => <button className={answers[index] === optionIndex ? "selected" : ""} onClick={() => choose(optionIndex)} key={option}><i>{String.fromCharCode(65 + optionIndex)}</i>{option}</button>)}</div>
+                <div className="exam-actions"><button className="btn ghost" disabled={index === 0} onClick={() => setIndex(index - 1)}>Önceki</button>{index < qs.length - 1 ? <button className="btn" disabled={answers[index] === undefined} onClick={() => setIndex(index + 1)}>Sonraki <ArrowRight /></button> : <button className="btn" disabled={answers[index] === undefined} onClick={finishExam}>Sınavı Bitir</button>}</div>
+              </div>
             ) : (
-              <button
-                className="btn"
-                disabled={answers[index] === undefined}
-                onClick={() => setDone(true)}
-              >
-                Sınavı Bitir
-              </button>
+              <div className={`exam-result ${passed ? "passed" : "failed"}`}>
+                {passed ? <Trophy /> : <RotateCcw />}<span>{passed ? "SINAVI GEÇTİN" : "TEKRAR ÇALIŞMALISIN"}</span><h2>{scorePercent} puan</h2><p>{score} doğru, {qs.length - score} yanlış. {passed ? nextExamTitle ? `Sıradaki sınav: ${nextExamTitle}.` : "Tüm sınavları tamamladın." : `İlerlemek için en az ${EXAM_PASS_SCORE} puan almalısın.`}</p><div className="exam-result-actions">{passed && nextExamTitle && <button className="btn" onClick={goToNextExam}>Sonraki Sınava Geç <ArrowRight/></button>}<button className="btn ghost" onClick={() => reset()}>Tekrar Dene</button></div>
+                <div>{qs.map((question, questionIndex) => <article className={answers[questionIndex] === question.a ? "correct" : "wrong"} key={question.q}><b>{questionIndex + 1}. {question.q}</b><p>{question.e}</p></article>)}</div>
+              </div>
             )}
           </div>
         </div>
-      ) : (
-        <div className="exam-result">
-          <Trophy />
-          <span>SINAV TAMAMLANDI</span>
-          <h2>
-            {score} / {qs.length}
-          </h2>
-          <p>
-            Başarı oranın %{Math.round((score / qs.length) * 100)}. Yanıtların
-            açıklamalarını aşağıda inceleyebilirsin.
-          </p>
-          <button className="btn" onClick={() => reset()}>
-            Tekrar Dene
-          </button>
-          <div>
-            {qs.map((q, i) => (
-              <article
-                className={answers[i] === q.a ? "correct" : "wrong"}
-                key={q.q}
-              >
-                <b>
-                  {i + 1}. {q.q}
-                </b>
-                <p>{q.e}</p>
-              </article>
-            ))}
-          </div>
-        </div>
       )}
+      <section className="exam-history"><div className="exam-section-head"><span><small>SINAV GEÇMİŞİ</small><h2>{accountType === "club" ? "Okula bağlı katılımcılar ve sınavları" : "Girdiğin sınavlar"}</h2></span><em>{schoolId}</em></div>{historyGroups.length ? <div className="exam-participant-list">{historyGroups.map((group)=><article className="exam-participant" key={group.userId}><header><span className="exam-participant-avatar"><UserRound/></span><span><b>{group.userName}</b><small>{group.userId}</small></span><em>{group.userType}</em><strong>{group.exams.length} sınav</strong></header><div className="exam-taken-list"><div className="exam-taken-row header"><span>Girdiği Sınav</span><span>Puan</span><span>Durum</span></div>{group.exams.map((item)=><div className="exam-taken-row" key={`${group.userId}-${item.examId}`}><span><b>{item.examTitle}</b><small>{new Date(item.completedAt).toLocaleDateString("tr-TR")} • En iyi sonuç</small></span><strong>{item.score}</strong><em className={item.passed?"passed":"failed"}>{item.passed?"Geçti":"Kaldı"}</em></div>)}</div></article>)}</div> : <div className="exam-empty"><ClipboardCheck/><h3>Henüz sınav kaydı yok</h3><p>İlk sınav tamamlandığında okul kimliği, kullanıcı ve puan bilgisi burada görünecek.</p></div>}</section>
+      <section className="exam-reminder"><span><Award/></span><div><small>İÇERİK HATIRLATMASI</small><h2>Her ders konusu için özgün sınav hazırlanmalı.</h2><p>Toplam {courseCategories.length} konu bulunuyor. Sorular; ders anlatımı, teknik doğrular ve yaygın hatalarla bire bir eşleştirilerek sırayla hazırlanacak.</p></div><b>{courseCategories.length} KONU</b></section>
     </div>
   );
 }
@@ -2800,12 +5604,16 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     const athlete = readAthletes().find((item) => item.id === currentId);
     if (athlete) return { type:"athlete", athlete };
+    const trainerId = localStorage.getItem("volleyballCurrentTrainerId");
+    const trainer = readTrainers().find((item) => item.id === trainerId);
+    if (trainer) return { type:"trainer", trainer };
     try {
       const school = JSON.parse(localStorage.getItem("volleyballCurrentClub") || "null");
       return school ? { type:"club", school } : null;
     } catch { return null; }
   });
   const [notice, setNotice] = useState(initialNotice);
+  const [trainers, setTrainers] = useState(() => readTrainers());
   useEffect(() => {
     if (!registrationApi) return;
     let disposed = false;
@@ -2817,6 +5625,10 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
         ]);
         if (!disposed) setSchools(syncRegistrationStorage(schoolRows, athleteRows).schools);
       } catch (error) { console.warn("Okul listesi yenilenemedi:", error); }
+      try {
+        const trainerRows = await fetchRegistrationSheet("Antrenor Kayitlari");
+        if (!disposed) setTrainers(syncTrainerStorage(trainerRows));
+      } catch { /* Antrenör sekmesi oluşturulana kadar yerel kayıtları koru. */ }
     };
     refreshSchools();
     const timer = window.setInterval(refreshSchools, 10000);
@@ -2845,18 +5657,29 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       if (!school) { setNotice("Kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentClub", JSON.stringify(school));
       localStorage.removeItem("volleyballCurrentAthleteId");
+      localStorage.removeItem("volleyballCurrentTrainerId");
       const clubSession = { type:"club", school };
       setSession(clubSession); onSessionChange(clubSession);
-    } else {
+    } else if (type === "athlete") {
       const athleteName = String(data.get("athleteName") || "").trim();
       const athlete = readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && item.schoolCode === schoolCode && item.name.toLocaleLowerCase("tr") === athleteName.toLocaleLowerCase("tr"));
       if (!athlete) { setNotice("Sporcu adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentAthleteId", athlete.id);
       localStorage.removeItem("volleyballCurrentClub");
+      localStorage.removeItem("volleyballCurrentTrainerId");
       const active = { ...athlete, online:true, lastSeen:new Date().toISOString() };
       localStorage.setItem("volleyballAthletes", JSON.stringify(readAthletes().map((item) => item.id === active.id ? active : item)));
       const athleteSession = { type:"athlete", athlete:active };
       setSession(athleteSession); onSessionChange(athleteSession); onActivityChange();
+    } else {
+      const trainerName = String(data.get("trainerName") || "").trim();
+      const trainer = trainers.find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.schoolCode) === schoolCode && item.name.toLocaleLowerCase("tr") === trainerName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
+      if (!trainer) { setNotice("Antrenör adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
+      localStorage.setItem("volleyballCurrentTrainerId", trainer.id);
+      localStorage.removeItem("volleyballCurrentAthleteId");
+      localStorage.removeItem("volleyballCurrentClub");
+      const trainerSession = { type:"trainer", trainer };
+      setSession(trainerSession); onSessionChange(trainerSession);
     }
   };
   const logout = () => {
@@ -2867,6 +5690,7 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       onActivityChange();
     }
     localStorage.removeItem("volleyballCurrentClub");
+    localStorage.removeItem("volleyballCurrentTrainerId");
     onSessionChange(null); setSession(null); setNotice("");
   };
   if (session?.type === "club") {
@@ -2879,45 +5703,88 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       <section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
     </div>;
   }
+  if (session?.type === "trainer") {
+    const trainer = session.trainer;
+    const school = schools.find((item) => item.schoolName.toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr"));
+    const teamLogo = trainer.teamLogo || school?.teamLogo || "";
+    return <div className="page profile-area trainer-profile">
+      <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={trainer.schoolName}/> : <GraduationCap/>}</div><span><small>ANTRENÖR PROFİLİ</small><h1>{trainer.name}</h1><p>{trainer.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
+      <div className="athlete-profile-grid"><article><small>GÖREV</small><b>{trainer.title || "Antrenör"}</b></article><article><small>KULÜP KODU</small><b>{trainer.schoolCode}</b></article><article><small>PROFİL KİMLİĞİ</small><b>{trainer.id}</b></article></div>
+      <div className="profile-info-note"><ShieldCheck/><span><b>Kulübe bağlı antrenör hesabı</b><p>Bu profil yalnızca bağlı olduğu kulübün adı ve 6 haneli kullanıcı koduyla kullanılabilir.</p></span></div>
+    </div>;
+  }
   if (session?.type === "athlete") {
     const athlete=session.athlete;
     return <div className="page profile-area athlete-profile"><section className="profile-hero-card"><AthleteAvatar id={athlete.avatar} className="profile-large-avatar"/><span><small>SPORCU PROFİLİ</small><h1>{athlete.name}</h1><p>{athlete.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section><div className="athlete-profile-grid"><article><small>KULÜP KODU</small><b>{athlete.schoolCode}</b></article><article><small>AKTİFLİK</small><b className="green-text">Derste</b></article><article><small>PROFİL KİMLİĞİ</small><b>{athlete.id}</b></article></div><div className="profile-info-note"><CheckCircle2/><span><b>Profilin aktif</b><p>Bu sayfa açık kaldığı sürece üst menüde “Derste olanlar” bölümünde görünürsün. Çıkış yaptığında otomatik kaldırılırsın.</p></span></div></div>;
   }
-  return <div className="page profile-login-page"><div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular kendi profillerine girerek derse aktif olarak katılır.</p></div><section className="profile-login-card"><div className="registration-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setNotice("")}}><School/> Kulüp profili</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu profili</button></div><form className="registration-form" onSubmit={submit}><div className="form-heading">{type==="club"?<School/>:<UserPlus/>}<span><b>{type==="club"?"Kulüp girişi":"Sporcu girişi"}</b><small>Okul adını yazın veya kayıtlı takımlardan seçin.</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={clubOptions.length===0||!selectedClub}>Profile giriş yap <ArrowRight/></button></form>{notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}</section></div>;
+  const profileIcon = type === "club" ? <School/> : type === "trainer" ? <GraduationCap/> : <UserPlus/>;
+  const profileTitle = type === "club" ? "Kulüp girişi" : type === "trainer" ? "Antrenör girişi" : "Sporcu girişi";
+  return <div className="page profile-login-page">
+    <div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular ve antrenörler bağlı oldukları kulüp üzerinden akademiye katılır.</p></div>
+    <section className="profile-login-card">
+      <div className="registration-tabs profile-login-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setNotice("")}}><School/> Kulüp</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setNotice("")}}><GraduationCap/> Antrenör</button></div>
+      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>Bağlı olduğunuz kulübü seçip kullanıcı bilgilerinizi girin.</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={clubOptions.length===0||!selectedClub}>Profile giriş yap <ArrowRight/></button></form>
+      {notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}
+    </section>
+  </div>;
 }
 
 function TrainingVideosPage() {
+  const [library, setLibrary] = useState("academy");
   const [query, setQuery] = useState("");
   const [topic, setTopic] = useState("Tümü");
   const [selected, setSelected] = useState(trainingVideos[0]);
   const [playerStarted, setPlayerStarted] = useState(false);
   const [visible, setVisible] = useState(12);
+  const videos = library === "individual" ? individualTrainingVideos : trainingVideos;
+  const topics = library === "individual" ? individualVideoTopics : videoTopics;
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("tr");
-    return trainingVideos.filter((video) => (topic === "Tümü" || video.topic === topic) && (!term || video.title.toLocaleLowerCase("tr").includes(term) || video.topic.toLocaleLowerCase("tr").includes(term) || String(video.number) === term));
-  }, [query, topic]);
+    return videos.filter((video) => (topic === "Tümü" || video.topic === topic) && (!term || video.title.toLocaleLowerCase("tr").includes(term) || video.topic.toLocaleLowerCase("tr").includes(term) || video.fileName?.toLocaleLowerCase("tr").includes(term) || String(video.number) === term));
+  }, [query, topic, videos]);
+  const changeLibrary = (nextLibrary) => {
+    const nextVideos = nextLibrary === "individual" ? individualTrainingVideos : trainingVideos;
+    const nextTopic = nextLibrary === "individual" ? individualVideoTopics[0].name : "Tümü";
+    setLibrary(nextLibrary); setTopic(nextTopic); setQuery(""); setVisible(12);
+    setSelected(nextVideos[0]); setPlayerStarted(false);
+  };
+  const selectPlaylistTopic = (nextTopic) => {
+    const nextVideo = videos.find((video) => nextTopic === "Tümü" || video.topic === nextTopic);
+    setTopic(nextTopic); setVisible(12); setPlayerStarted(false);
+    if (nextVideo) setSelected(nextVideo);
+  };
   const choose = (video) => {
     setSelected(video);
     setPlayerStarted(false);
     requestAnimationFrame(() => document.querySelector(".video-player-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
+  const playlistVideos = (topic === "Tümü" ? videos : filtered).slice(0, 40);
   return <div className="video-library-page">
     <section className="video-library-hero">
-      <div><span className="eyebrow"><Video size={16}/> VİDEO KÜTÜPHANESİ</span><h1>Hareketi izle,<br/><em>sahada uygula.</em></h1><p>{trainingVideos.length} teknik çalışma, tek ve mobil uyumlu bir eğitim kütüphanesinde.</p><div className="video-hero-stats"><span><b>{trainingVideos.length}</b> eğitim videosu</span><span><b>Güncel</b> eğitim içeriği</span></div></div>
+      <div><span className="eyebrow"><Video size={16}/> VİDEO KÜTÜPHANESİ</span><h1>Hareketi izle,<br/><em>sahada uygula.</em></h1><p>Eğitim videoları ve bireysel antrenman çalışmaları konu başlıklarına göre düzenlendi.</p><div className="video-hero-stats"><span><b>{trainingVideos.length}</b> eğitim videosu</span><span><b>{individualTrainingVideos.length}</b> bireysel çalışma</span></div></div>
       <div className="video-hero-mark" aria-hidden="true"><Play/><i/><i/><i/></div>
     </section>
     <section className="video-library-content">
-      <div className="video-player-panel">
-        <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
-        <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
-          {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen />}
-          {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}><img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/><span><Play/> Videoyu başlat</span></button>}
+      <div className="video-library-switch" aria-label="Video kütüphanesi türü"><button className={library === "academy" ? "active" : ""} onClick={() => changeLibrary("academy")}><Video/><span><b>Eğitim Videoları</b><small>{trainingVideos.length} video</small></span></button><button className={library === "individual" ? "active" : ""} onClick={() => changeLibrary("individual")}><Dumbbell/><span><b>Bireysel Antrenman Videoları</b><small>{individualTrainingVideos.length} çalışma</small></span></button></div>
+      <div className="video-watch-layout">
+        <div className="video-player-panel">
+          <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
+          <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
+            {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen />}
+            {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}>{selected.source ? <video src={selected.source} muted playsInline preload="metadata" aria-label={`${selected.title} video ön izlemesi`}/> : <img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/>}<span><Play/> Videoyu başlat</span></button>}
+          </div>
+          <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır.</p>
+          {selected.practice && <div className="video-practice-info"><article><Users/><span><small>SPORCU SAYISI</small><b>{selected.practice.athletes} sporcu</b></span></article><article><CircleDot/><span><small>TOP SAYISI</small><b>{selected.practice.balls} top</b></span></article><article><Target/><span><small>ÇALIŞMA AMACI</small><b>{selected.practice.goal}</b></span></article><article className="practice-advice"><Dumbbell/><span><small>ANTRENÖR ÖNERİSİ</small><b>{selected.practice.advice}</b></span></article></div>}
         </div>
-        <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. Tarayıcı otomatik oynatmayı engellerse oynat düğmesine bir kez dokunun.</p>
+        <aside className="video-playlist-panel" aria-label="Video oynatma listesi">
+          <header><span><small>OYNATMA LİSTESİ</small><b>{topic === "Tümü" ? (library === "individual" ? "Bireysel Antrenmanlar" : "Eğitim Videoları") : topic}</b></span><em>{playlistVideos.findIndex((video)=>video.id===selected.id)+1 || 1} / {playlistVideos.length}</em></header>
+          <div className="playlist-category-tabs">{topics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>selectPlaylistTopic(item.name)}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
+          <div className="video-playlist-scroll">{playlistVideos.map((video,index)=><button key={video.id} className={selected.id===video.id?"active":""} onClick={()=>choose(video)}><i>{index+1}</i><span className="playlist-thumb">{video.source ? <video src={video.source} muted playsInline preload="metadata"/> : <img src={video.thumbnail} alt="" loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/>}<Play/></span><span className="playlist-copy"><b>{video.title}</b><small>{video.topic}</small></span></button>)}</div>
+        </aside>
       </div>
-      <div className="video-topic-bar" aria-label="Video konuları"><button className={topic==="Tümü"?"active":""} onClick={()=>{setTopic("Tümü");setVisible(12)}}><span>Tüm videolar</span><b>{trainingVideos.length}</b></button>{videoTopics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>{setTopic(item.name);setVisible(12)}}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
-      <div className="video-library-toolbar"><div><span className="eyebrow">VİDEO ARŞİVİ</span><h2>Tüm eğitim videoları</h2></div><label className="video-search"><Search/><span className="sr-only">Video ara</span><input value={query} onChange={(event)=>{setQuery(event.target.value);setVisible(12)}} placeholder="Video adı veya numarası ara"/></label></div>
-      {filtered.length ? <div className="training-video-grid">{filtered.slice(0,visible).map((video)=><article className={selected.id===video.id?"training-video-card active":"training-video-card"} key={video.id}><button className="video-card-preview" onClick={()=>choose(video)} aria-label={`${video.title} videosunu oynat`}><img src={video.thumbnail} alt={`${video.title} video görüntüsü`} loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/><span className="video-number">#{String(video.number).padStart(2,"0")}</span><span className="video-topic-label">{video.topic}</span><span className="video-play"><Play/></span></button><div><small>{video.topic.toLocaleUpperCase("tr")}</small><h3>{video.title}</h3><button onClick={()=>choose(video)}>Videoyu izle <ArrowRight/></button></div></article>)}</div> : <div className="video-empty"><Search/><h2>Video bulunamadı</h2><p>Arama numarasını veya konuyu değiştirin.</p></div>}
+      <div className="video-topic-bar" aria-label="Video konuları"><button className={topic==="Tümü"?"active":""} onClick={()=>selectPlaylistTopic("Tümü")}><span>Tüm videolar</span><b>{videos.length}</b></button>{topics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>selectPlaylistTopic(item.name)}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
+      <div className="video-library-toolbar"><div><span className="eyebrow">{library === "individual" ? "BİREYSEL ÇALIŞMA ARŞİVİ" : "VİDEO ARŞİVİ"}</span><h2>{library === "individual" ? "Bireysel antrenman videoları" : "Tüm eğitim videoları"}</h2></div><label className="video-search"><Search/><span className="sr-only">Video ara</span><input value={query} onChange={(event)=>{setQuery(event.target.value);setVisible(12)}} placeholder="Video adı veya numarası ara"/></label></div>
+      {filtered.length ? <div className="training-video-grid">{filtered.slice(0,visible).map((video)=><article className={selected.id===video.id?"training-video-card active":"training-video-card"} key={video.id}><button className="video-card-preview" onClick={()=>choose(video)} aria-label={`${video.title} videosunu oynat`}>{video.source ? <video src={video.source} muted playsInline preload="metadata" aria-label={`${video.title} video görüntüsü`}/> : <img src={video.thumbnail} alt={`${video.title} video görüntüsü`} loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/>}<span className="video-number">#{library === "individual" ? video.number : String(video.number).padStart(2,"0")}</span><span className="video-topic-label">{video.topic}</span><span className="video-play"><Play/></span></button><div><small>{video.topic.toLocaleUpperCase("tr")}</small><h3>{video.title}</h3>{video.fileName && <p className="video-file-name">{video.fileName}</p>}<button onClick={()=>choose(video)}>Videoyu izle <ArrowRight/></button></div></article>)}</div> : <div className="video-empty"><Search/><h2>Video bulunamadı</h2><p>Arama numarasını veya konuyu değiştirin.</p></div>}
       {visible < filtered.length && <button className="btn ghost video-load-more" onClick={()=>setVisible((value)=>value+12)}>Daha fazla video göster <ChevronDown/></button>}
     </section>
   </div>;

@@ -1,0 +1,38 @@
+@media (min-width: 1051px) {
+  .video-watch-layout {
+    position: relative;
+    align-items: start;
+  }
+
+  .video-playlist-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 28%;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .video-playlist-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 1050px) {
+  .video-playlist-panel {
+    position: static;
+    width: auto;
+    height: auto;
+    max-height: 440px;
+  }
+}
+
+@media (max-width: 600px) {
+  .video-playlist-panel {
+    max-height: 390px;
+  }
+}
