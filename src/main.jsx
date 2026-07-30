@@ -212,13 +212,23 @@ const setAthleteLoggedOut = (id, loggedOut) => {
 };
 const SESSION_ACTIVITY_KEY = "volleyballSessionLastActivity";
 const SESSION_IDLE_LIMIT = 15 * 60 * 1000;
-const PRESENCE_HEARTBEAT_INTERVAL = 15000;
+const PRESENCE_HEARTBEAT_INTERVAL = 10000;
+const PRESENCE_STALE_AFTER = 45000;
 const markSessionActivity = () => localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
 const clearSessionActivity = () => localStorage.removeItem(SESSION_ACTIVITY_KEY);
-// Sporcu, açık oturumdan çıkış yapana kadar çevrim içi kabul edilir. Son
-// görülme süresine bağlı otomatik gizleme, yenilemeler arasında yanıp sönmeye
-// neden olduğu için çevrim içi bayrağı tek doğruluk kaynağıdır.
-const isAthleteActive = (athlete) => athlete.online === true;
+const presenceTime = (value) => {
+  if (!value) return 0;
+  const native = new Date(value).getTime();
+  if (Number.isFinite(native)) return native;
+  const match = String(value).match(/^(\d{1,2})[.\/]\s*(\d{1,2})[.\/]\s*(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  return match ? new Date(Number(match[3]), Number(match[2])-1, Number(match[1]), Number(match[4]||0), Number(match[5]||0), Number(match[6]||0)).getTime() : 0;
+};
+const isAthleteActive = (athlete) => {
+  if (athlete.online !== true) return false;
+  if (athlete.id === localStorage.getItem("volleyballCurrentAthleteId")) return true;
+  const seenAt = presenceTime(athlete.lastSeen);
+  return seenAt > 0 && Date.now() - seenAt <= PRESENCE_STALE_AFTER;
+};
 const activeAthleteKey = (athlete) => {
   const school = String(athlete.schoolName || "").trim().toLocaleLowerCase("tr-TR");
   const name = String(athlete.name || "")
@@ -269,7 +279,6 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
   const localSchools = readSchools();
   const localAthletes = readAthletes();
   const currentAthleteId = localStorage.getItem("volleyballCurrentAthleteId");
-  const loggedOutAthleteIds = readLoggedOutAthleteIds();
   const schoolKey = (value) => String(value || "").trim().toLocaleLowerCase("tr");
   const teamLogoBySchool = new Map();
   schoolRows.forEach((row) => {
@@ -316,7 +325,10 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
       name: registrationValue(row, "Sporcu Adı"),
       avatar: registrationValue(row, "Profil Kodu") || local.avatar || profileChoices[0].id,
       teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || teamLogoBySchool.get(schoolKey(registrationValue(row, "Okul Adı"))) || local.teamLogo || "",
-      online: !loggedOutAthleteIds.has(id) && (hasActiveLocalSession || registrationBoolean(registrationValue(row, "Çevrim İçi"))),
+      // Sunucudaki durum cihazlar arasındaki tek doğruluk kaynağıdır. Bu
+      // tarayıcıda daha önce çıkış yapılmış olması, başka bir telefondan yeniden
+      // giriş yapan sporcunun takım sayfasında gizlenmesine neden olmamalıdır.
+      online: hasActiveLocalSession || registrationBoolean(registrationValue(row, "Çevrim İçi")),
       lastSeen: hasActiveLocalSession ? local.lastSeen : registrationValue(row, "Son Görülme"),
       createdAt: registrationValue(row, "Kayıt Tarihi"),
       source: "google-sheets",
@@ -440,7 +452,7 @@ function App() {
     };
     const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshRegistrations(); };
     refreshRegistrations();
-    const timer = window.setInterval(refreshRegistrations, 15000);
+    const timer = window.setInterval(refreshRegistrations, 8000);
     window.addEventListener("focus", refreshRegistrations);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
@@ -496,10 +508,6 @@ function App() {
       setLocalPresence(true);
       sendAthletePresence(currentId, true);
     };
-    const leave = () => {
-      setLocalPresence(false);
-      sendAthletePresenceBeacon(currentId, false);
-    };
     const returnToPage = () => {
       if (document.visibilityState !== "visible") return;
       scheduleExpiry();
@@ -511,13 +519,11 @@ function App() {
     const heartbeatTimer = window.setInterval(heartbeat, PRESENCE_HEARTBEAT_INTERVAL);
     const activityEvents = ["pointerdown", "keydown", "touchstart", "scroll"];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, registerActivity, { passive:true }));
-    window.addEventListener("pagehide", leave);
     document.addEventListener("visibilitychange", returnToPage);
     return () => {
       window.clearInterval(heartbeatTimer);
       window.clearTimeout(idleTimer);
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, registerActivity));
-      window.removeEventListener("pagehide", leave);
       document.removeEventListener("visibilitychange", returnToPage);
     };
   }, [currentAthlete?.id, currentClub?.id, currentTrainer?.id]);
@@ -660,7 +666,9 @@ async function sendRegistration(payload) {
   if (!registrationApi) return { ok: true, demo: true };
   const response = await fetch(registrationApi, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
   if (!response.ok) throw new Error("Kayıt servisine ulaşılamadı.");
-  return response.json();
+  const result = await response.json();
+  if (result?.ok === false) throw new Error(result.error || "Kayıt işlemi tamamlanamadı.");
+  return result;
 }
 
 function OnlineTeamStrip({ athletes }) {
