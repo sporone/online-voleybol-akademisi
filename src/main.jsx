@@ -57,6 +57,7 @@ import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
 import { individualTrainingVideos, individualVideoTopics } from "./individual-video-library.js";
 import { SITE_URL, resolveRoute, routeFor, seoFor } from "./seo.js";
+import { initAnalytics } from "./analytics.js";
 const Instagram = Heart,
   Youtube = Play,
   Linkedin = Users;
@@ -6271,6 +6272,7 @@ function Footer({ go }) {
   );
 }
 const rootElement = document.getElementById("root");
+initAnalytics();
 const appRoot = rootElement.__reactRoot || createRoot(rootElement);
 rootElement.__reactRoot = appRoot;
 appRoot.render(<App />);
