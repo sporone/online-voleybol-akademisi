@@ -53,6 +53,7 @@ import "./demo.css";
 import "./registered-schools.css";
 import "./junior-referee.css";
 import "./blog.css";
+import VolleyballAIPage from "./volleyball-ai.jsx";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
@@ -182,6 +183,7 @@ const nav = [
   ["exams", "Sınavlar", CheckCircle2],
   ["junior-referee", "Junior Hakem", Flag],
   ["blog", "Blog", Newspaper],
+  ["volleyball-ai", "Voleybol AI", MessageCircle],
   ["demo", "Demo", Play],
   ["pricing", "Ücretler", BadgeTurkishLira],
   ["register", "Kayıt", UserPlus],
@@ -591,6 +593,8 @@ function App() {
           <JuniorRefereePage />
         ) : page === "blog" ? (
           <BlogPage />
+        ) : page === "volleyball-ai" ? (
+          <VolleyballAIPage courses={courses} go={go} />
         ) : page === "faq" ? (
           <FAQPage go={go} />
         ) : page === "videos" ? (
@@ -1031,7 +1035,7 @@ function BlogPage() {
 function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout }) {
   const visibleNav = isAuthenticated
     ? nav.filter(([key]) => !["profiles", "demo", "pricing", "register"].includes(key))
-    : nav.filter(([key]) => ["home", "junior-referee", "blog", "demo", "pricing", "register", "profiles"].includes(key));
+    : nav.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
       || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
@@ -6199,12 +6203,13 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["exams", CheckCircle2, "Sınavlar"],
     ["junior-referee", Flag, "Junior Hakem"],
     ["blog", Newspaper, "Blog"],
+    ["volleyball-ai", MessageCircle, "Voleybol AI"],
     ["demo", Play, "Demo"],
     ["pricing", BadgeTurkishLira, "Ücretler"],
     ["register", UserPlus, "Kayıt"],
     ["profiles", Users, isAuthenticated ? "Hesabım" : "Giriş Yap"],
   ];
-  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "demo", "pricing", "register", "profiles"].includes(key));
+  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   return (
     <nav className="mobile-nav">
