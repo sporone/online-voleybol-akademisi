@@ -40,6 +40,7 @@ import {
   RotateCcw,
   CircleDot,
   Newspaper,
+  CircleHelp,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
@@ -584,6 +585,8 @@ function App() {
           <JuniorRefereePage />
         ) : page === "blog" ? (
           <BlogPage />
+        ) : page === "faq" ? (
+          <FAQPage go={go} />
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
@@ -866,7 +869,7 @@ function DemoPage({ go }) {
   </div>;
 }
 
-const blogCategories = ["Tümü", "Teknik", "Taktik", "Pozisyonlar", "Atletik Performans", "Sağlık", "Beslenme", "Mental Gelişim", "Plaj Voleybolu"];
+const blogCategories = ["Tümü", "Eğitim", "Teknik", "Taktik", "Pozisyonlar", "Atletik Performans", "Sağlık", "Beslenme", "Mental Gelişim", "Spor Okulları", "Rehber", "Plaj Voleybolu"];
 const blogPosts = [
   { id:"servis-karsilama", category:"Teknik", title:"Servis karşılamada platform açısını nasıl kontrol edersin?", excerpt:"Manşet platformu, ayak yerleşimi ve hedef çizgisini bir araya getiren uygulamalı bir teknik rehber.", date:"28 Temmuz 2026", read:"8 dk", image:"/blog/servis-karsilama.webp", featured:true, keywords:["servis karşılama", "manşet tekniği", "platform açısı"], body:"Servis karşılamanın temeli topa yalnız kollarla uzanmak değil, erken okuyup dengeli bir platform oluşturmaktır. Omuzlar hedefe yönelirken dirsekler kilitlenmeden uzatılır; temas iki ön kolun düz yüzeyinde gerçekleşir." },
   { id:"hucum-temposu", category:"Taktik", title:"Hücum temposu: Pasör ile hücumcu arasındaki zamanlama", excerpt:"Birinci, ikinci ve yüksek top temposunda yaklaşma başlangıcını doğru planla.", date:"25 Temmuz 2026", read:"9 dk", image:"/blog/hucum-temposu.webp", keywords:["voleybol hücum temposu", "pasör zamanlaması", "smaç yaklaşması"], body:"Etkili hücum organizasyonu pasörün topa temas anı ile hücumcunun yaklaşma ritmini eşleştirir. Hücumcu karşılama kalitesini okuyarak rotasını ayarlar; pasör ise blok yerleşimine göre hız ve yüksekliği seçer." },
@@ -876,6 +879,17 @@ const blogPosts = [
   { id:"mac-gunu-beslenme", category:"Beslenme", title:"Maç günü enerji ve sıvı planı nasıl hazırlanır?", excerpt:"Maç öncesi öğünden set aralarındaki sıvı alımına kadar uygulanabilir öneriler.", date:"13 Temmuz 2026", read:"8 dk", image:"/blog/mac-gunu-beslenme.webp", keywords:["voleybolcu beslenmesi", "maç öncesi beslenme", "sporcu sıvı planı"], body:"Maç günü planı ilk kez maç sabahı denenmemelidir. Sporcunun alışık olduğu, sindirimi kolay karbonhidrat kaynakları seçilir; protein ve sıvı planı maç saatine göre düzenlenir." },
   { id:"baski-altinda-odak", category:"Mental Gelişim", title:"Baskı altında bir sonraki sayıya odaklanmak", excerpt:"Hata sonrası kısa rutinlerle dikkati geçmiş sayıdan yeni göreve taşı.", date:"10 Temmuz 2026", read:"7 dk", image:"/blog/baski-altinda-odak.webp", keywords:["voleybolda mental hazırlık", "maç odağı", "hata sonrası rutin"], body:"Mental dayanıklılık hatasız oynamak değil, hatadan sonra doğru göreve hızla dönebilmektir. Kısa bir nefes, net bir anahtar kelime ve bir sonraki pozisyon görevi dikkati yeniden düzenler." },
   { id:"kumda-hareket", category:"Plaj Voleybolu", title:"Kumda dengeli hareket ve ikili takım iletişimi", excerpt:"Kum zemine uyum sağlayan adımlar, savunma paylaşımı ve çağrı sistemi.", date:"7 Temmuz 2026", read:"9 dk", image:"/blog/kumda-hareket.webp", keywords:["plaj voleybolu teknikleri", "kumda hareket", "ikili takım iletişimi"], body:"Kum zeminde uzun ve sert adımlar enerji kaybettirir. Sporcu ağırlık merkezini kontrollü tutup kısa ayarlama adımları kullanır; ikili düzende görevler her ralliden önce paylaşılır." },
+  { id:"voleybol-egitimleri-rehberi", category:"Eğitim", title:"Voleybol eğitimleri: Temelden ileri seviyeye gelişim rehberi", excerpt:"Teknik, taktik, fiziksel ve zihinsel gelişimi birlikte planlayan kapsamlı voleybol eğitimi rehberi.", date:"30 Temmuz 2026", read:"11 dk", image:"/blog/hucum-temposu.webp", keywords:["voleybol eğitimleri", "online voleybol eğitimi", "voleybol dersleri"], body:"Voleybol eğitimi yalnız topa vurmayı öğrenmek değildir. Doğru program; temel hareket becerilerini, teknik uygulamayı, oyun bilgisini, fiziksel hazırlığı ve güvenli yüklenmeyi sporcunun yaşına ve seviyesine göre bir araya getirir." },
+  { id:"baslangic-orta-ileri-seviye-voleybol", category:"Eğitim", title:"Başlangıç, orta ve ileri seviye voleybol dersleri nasıl planlanır?", excerpt:"Her seviyede öğrenme hedefleri, teknik öncelikler ve bir üst aşamaya geçiş ölçütleri.", date:"30 Temmuz 2026", read:"10 dk", image:"/blog/sicrama-yuku.webp", keywords:["başlangıç voleybol dersleri", "orta seviye voleybol", "ileri seviye voleybol"], body:"Voleybolda seviye yalnız yaşa veya kaç yıl oynandığına göre belirlenmez. Top kontrolü, hareket kalitesi, karar verme, oyun kurallarını uygulama ve baskı altında tekniği koruma birlikte değerlendirilmelidir." },
+  { id:"parmak-pas-manset-servis-smac-blok", category:"Teknik", title:"Parmak pas, manşet, servis, smaç ve blok teknikleri", excerpt:"Voleybolun beş temel tekniğini doğru uygulama sırası, yaygın hatalar ve çalışma önerileriyle öğrenin.", date:"30 Temmuz 2026", read:"14 dk", image:"/blog/servis-karsilama.webp", keywords:["parmak pas tekniği", "manşet nasıl yapılır", "servis smaç blok rehberi"], body:"Parmak pas, manşet, servis, smaç ve blok birbirinden ayrı görünse de hazır pozisyon, topu erken okuma, doğru temas noktası ve dengeli bitiriş ilkelerini paylaşır. Teknik öğrenme basitten karmaşığa ve düşük hızdan oyun hızına ilerlemelidir." },
+  { id:"online-voleybol-egitimi-nasil-calisir", category:"Eğitim", title:"Online voleybol eğitimi nasıl çalışır?", excerpt:"Ders, video, sınav ve saha uygulamasını birleştiren çevrim içi voleybol öğrenme modelini keşfedin.", date:"30 Temmuz 2026", read:"8 dk", image:"/blog/baski-altinda-odak.webp", keywords:["online voleybol eğitimi", "çevrim içi voleybol dersi", "voleybol eğitim platformu"], body:"Online voleybol eğitimi, sporcunun tekniği görsel olarak incelemesini, aşamalı konu anlatımını takip etmesini ve bilgisini sınavlarla ölçmesini sağlar. En iyi sonuç, dijital öğrenmenin antrenör gözetimindeki saha uygulamasıyla birleştirilmesiyle alınır." },
+  { id:"voleybol-egitimine-kimler-katilabilir", category:"Eğitim", title:"Voleybol eğitimine kimler katılabilir?", excerpt:"Yeni başlayan çocuklardan aktif sporculara ve antrenörlere kadar eğitim yollarını karşılaştırın.", date:"30 Temmuz 2026", read:"7 dk", image:"/blog/libero-alan-savunmasi.webp", keywords:["kimler voleybol oynayabilir", "çocuk voleybol eğitimi", "yetişkin voleybol kursu"], body:"Voleybol farklı yaş ve deneyim düzeylerine uyarlanabilen bir takım sporudur. Eğitimin içeriği; sporcunun gelişim yaşı, sağlık durumu, hareket deneyimi, hedefi ve mevcut teknik seviyesi dikkate alınarak seçilmelidir." },
+  { id:"voleybol-yas-gruplari", category:"Eğitim", title:"Voleybol yaş grupları ve yaşa uygun eğitim yaklaşımı", excerpt:"Çocukluk, ergenlik ve yetişkinlik dönemlerinde güvenli ve etkili voleybol eğitimi nasıl değişir?", date:"30 Temmuz 2026", read:"10 dk", image:"/blog/sicrama-yuku.webp", keywords:["voleybol yaş grupları", "çocuklar için voleybol", "kaç yaşında voleybola başlanır"], body:"Voleybola başlamak için tek bir ideal yaş yoktur; ancak öğretim yöntemi gelişim dönemine uygun olmalıdır. Küçük yaşlarda oyun ve koordinasyon, ilerleyen dönemlerde teknik istikrar, karar verme ve bireyselleştirilmiş performans gelişimi öne çıkar." },
+  { id:"voleybol-antrenoru-ve-uzman-secimi", category:"Rehber", title:"Voleybol antrenörü ve uzman profili nasıl değerlendirilir?", excerpt:"Eğitim, deneyim, iletişim, çocuk güvenliği ve gelişim takibi açısından doğru uzmanı seçme rehberi.", date:"30 Temmuz 2026", read:"9 dk", image:"/blog/omuz-koruma.webp", keywords:["voleybol antrenörü", "voleybol uzmanı", "iyi antrenör nasıl seçilir"], body:"İyi bir voleybol antrenörü yalnız teknik bilgi aktaran kişi değildir. Güvenli öğrenme ortamı kurar, yaşa uygun iletişim kullanır, gelişimi ölçer ve sporcunun uzun vadeli sağlığını kısa vadeli sonuçların önünde tutar." },
+  { id:"voleybol-egitimi-sik-sorulan-sorular", category:"Rehber", title:"Voleybol eğitimi hakkında sık sorulan sorular", excerpt:"Derse başlama yaşı, ekipman, antrenman sıklığı, online eğitim ve ilerleme hakkında kısa yanıtlar.", date:"30 Temmuz 2026", read:"9 dk", image:"/blog/servis-karsilama.webp", keywords:["voleybol sık sorulan sorular", "voleybol kursu soruları", "voleybol eğitimi"], body:"Voleybol eğitimine başlamadan önce aileler ve sporcular yaş, ekipman, antrenman sıklığı ve gelişim süresi hakkında benzer sorular sorar. Yanıtlar kişiye göre değişse de güvenli ve düzenli öğrenmenin temel ilkeleri ortaktır." },
+  { id:"uyelik-ve-egitim-sistemi", category:"Rehber", title:"Online Voleybol Akademisi üyelik ve eğitim sistemi", excerpt:"Spor okulu kaydı, sporcu erişimi, dersler, videolar ve sınavların nasıl kullanıldığını adım adım görün.", date:"30 Temmuz 2026", read:"7 dk", image:"/blog/baski-altinda-odak.webp", keywords:["voleybol akademisi üyelik", "spor okulu kayıt sistemi", "online voleybol dersleri"], body:"Online Voleybol Akademisi spor okullarını, sporcuları ve antrenörleri aynı eğitim düzeninde buluşturur. Kayıtlı kullanıcılar ders içeriklerine, eğitim videolarına ve konu sınavlarına profilleri üzerinden erişebilir." },
+  { id:"istanbul-ilce-voleybol-okullari", category:"Spor Okulları", title:"İstanbul ve ilçe bazlı voleybol spor okulları rehberi", excerpt:"Ataşehir ve İstanbul’un diğer ilçelerinde voleybol okulu seçerken konumun ötesinde değerlendirilecek ölçütler.", date:"30 Temmuz 2026", read:"11 dk", image:"/blog/hucum-temposu.webp", keywords:["İstanbul voleybol okulları", "Ataşehir voleybol kursu", "yakınımdaki voleybol okulu"], body:"İlçe bazlı voleybol okulu aramasında yalnız mesafeye göre karar vermek yeterli değildir. Antrenör niteliği, yaş grubu düzeni, salon güvenliği, ders kapasitesi, iletişim ve gelişim takibi birlikte değerlendirilmelidir." },
+  { id:"voleybol-terimleri-sozlugu", category:"Rehber", title:"Voleybol terimleri sözlüğü: Temel kavramlar ve anlamları", excerpt:"Rotasyon, ralli, side-out, libero, pipe, plase ve daha birçok voleybol terimini anlaşılır biçimde öğrenin.", date:"30 Temmuz 2026", read:"12 dk", image:"/blog/libero-alan-savunmasi.webp", keywords:["voleybol terimleri", "voleybol sözlüğü", "voleybol kavramları"], body:"Voleybol terminolojisini bilmek, antrenör komutlarını anlamayı ve oyunu daha hızlı okumayı kolaylaştırır. Bu sözlük saha bölgelerinden pozisyonlara, tekniklerden taktik kavramlara kadar sık kullanılan ifadeleri sade Türkçeyle açıklar." },
 ];
 
 const blogArticleDetails = {
@@ -918,6 +932,61 @@ const blogArticleDetails = {
     {title:"Plaj voleybolunda kumda hareket tekniği",text:"Kum, zemine uygulanan kuvvetin bir bölümünü emer. Bu nedenle kısa, ritmik ve dengeli adımlar enerji kaybını azaltır. Sporcu gereksiz dikleşmeden merkezini kontrol eder.",points:["İlk adımı kısa ve yönlü kullanın.","Topa yaklaşırken son adımları ayarlayın.","Çıplak ayakta güvenli ve temiz saha koşullarını kontrol edin."]},
     {title:"İkili takımda görev paylaşımı",text:"İki oyunculu düzende her sporcu geniş alan savunur. Servis hedefi, blok yönü, kısa top ve serbest top sorumlulukları ralliden önce netleştirilir.",points:["Blok işaretlerini iki oyuncu da doğrulasın.","Top arası iletişimi kısa ve erken yapın.","Savunmadan hücuma geçiş rotasını önceden belirleyin."]},
     {title:"Kumda kondisyon ve yük yönetimi",text:"Kumda hareket enerji maliyetini artırabilir. Çalışma süresi, sıcaklık ve güneş koşulları dikkate alınmalı; teknik kalite düşmeden dinlenme verilmelidir.",points:["Günün serin saatlerini tercih edin.","Sıvı ve güneşten korunma planı oluşturun.","Salon temposunu doğrudan kuma taşımayın; uyum süresi verin."]},
+  ],
+  "voleybol-egitimleri-rehberi":[
+    {title:"Voleybol eğitiminin dört temel bileşeni",text:"Etkili eğitim teknik beceri, oyun anlayışı, fiziksel hazırlık ve zihinsel becerileri aynı gelişim planında birleştirir. Bir bileşeni diğerlerinden bağımsız ve aşırı yüklemek kalıcı öğrenmeyi sınırlar.",points:["Teknik hareketi önce kontrollü ortamda öğrenin.","Karar verme görevlerini küçük oyunlarla geliştirin.","Kuvvet, hareketlilik ve toparlanmayı haftalık plana ekleyin."]},
+    {title:"Ders sırası nasıl oluşturulur?",text:"Program hazır pozisyon ve top kontrolüyle başlar; parmak pas, manşet ve servis temellerinden smaç, blok, pozisyon ve takım organizasyonlarına ilerler. Her yeni görev önceki becerinin üzerine kurulmalıdır.",points:["Önce doğruluk, sonra hız ve baskı ekleyin.","Her bölüm için gözlenebilir başarı ölçütü belirleyin.","Hata düzeltmesini kısa, açık ve uygulanabilir tutun."]},
+    {title:"Gelişim nasıl takip edilir?",text:"Tek bir maç sonucu gelişimi göstermez. Antrenmana devamlılık, hedef isabeti, teknik kalite, doğru karar yüzdesi ve sporcunun öz değerlendirmesi birlikte izlenmelidir.",points:["Aylık teknik hedef belirleyin.","Video ve sınav sonuçlarını saha gözlemiyle karşılaştırın.","Programı yaşa, role ve güncel ihtiyaca göre güncelleyin."]},
+  ],
+  "baslangic-orta-ileri-seviye-voleybol":[
+    {title:"Başlangıç seviyesi",text:"Başlangıç döneminde amaç topu güçlü vurmak değil; dengeli hazır pozisyon, topun uçuşunu izleme, temel temas ve saha güvenliğini öğrenmektir.",points:["Parmak pas ve manşette doğru temas yüzeyini kurun.","Alttan servisle kontrollü başlangıç yapın.","Temel rotasyon ve üç temas kuralını öğrenin."]},
+    {title:"Orta seviye",text:"Orta seviyede teknikler hareket, hedef ve karar verme ile birleştirilir. Sporcu servis karşılama düzenini, hücum yaklaşmasını ve blok-savunma ilişkisini uygulamaya başlar.",points:["Farklı servis türlerine karşı pas kalitesini koruyun.","Pozisyona özgü görevleri çalışın.","Oyun hızında iletişim ve geçiş becerisi geliştirin."]},
+    {title:"İleri seviye",text:"İleri seviyede amaç baskı altında tutarlılık, rakip analizi ve taktik esnekliktir. Yük planı bireyselleştirilir ve performans verileriyle izlenir.",points:["Rakibe göre servis ve hücum hedefi seçin.","Birden fazla hücum temposunda oynayın.","Teknik kaliteyi yorgunluk altında koruyun."]},
+  ],
+  "parmak-pas-manset-servis-smac-blok":[
+    {title:"Parmak pas ve manşet",text:"Parmak pasta top alın önünde, iki elin dengeli temasıyla yönlendirilir. Manşette iki ön kol tek platform oluşturur; çıkış açısı omuz ve gövde yönüyle kontrol edilir.",points:["Topa ulaşmak için önce ayakları kullanın.","Temas noktasını vücudun önünde tutun.","Kollarla aşırı savurma yerine bacak-gövde uyumu kurun."]},
+    {title:"Servis ve smaç",text:"Serviste tutarlı top atışı vuruş kalitesinin temelidir. Smaçta yaklaşma ritmi, son iki adım, çift ayak dengesi, kol çekişi ve yüksek temas birbirini tamamlar.",points:["Servis top atışını her tekrarda aynı bölgede tutun.","Smaçta topun altına kaçmadan vuruş omzunu hazırlayın.","Vuruş sonrası dengeli iniş yapın."]},
+    {title:"Blok",text:"Blok yalnız sıçrama değildir; pasörü ve hücumcuyu okuma, file boyunca hızlı hareket, elleri rakip alana yönlendirme ve savunmayla ortak alan kapatma becerisidir.",points:["Sıçrama zamanını hücumcunun kol hareketine göre ayarlayın.","Eller arasındaki boşluğu kapatın.","İnişte fileye temas etmeden dengeyi koruyun."]},
+  ],
+  "online-voleybol-egitimi-nasil-calisir":[
+    {title:"Dijital ders akışı",text:"Sporcu önce konu anlatımını okur, ilgili hareketin videosunu izler ve önemli teknik ipuçlarını not eder. Ardından hareketi güvenli bir saha ortamında uygular.",points:["Dersi sırayla takip edin.","Videoyu yavaşlatarak temas ve ayak hareketini inceleyin.","Her çalışmada tek bir teknik hedef seçin."]},
+    {title:"Sınav ve geri bildirim",text:"Konu sınavları kuralları ve teknik kararları anlamayı ölçer. Sonuçlar öğrenme eksiklerini gösterir; saha performansının tek başına yerine geçmez.",points:["Yanlış cevapların açıklamasını okuyun.","Eksik konuyu yeniden çalışın.","Antrenörden saha uygulaması hakkında geri bildirim alın."]},
+    {title:"Online eğitimin sınırı",text:"Dijital içerik öğretimi destekler; sağlık değerlendirmesi, bireysel yük planlaması ve karmaşık teknik düzeltmeler için nitelikli antrenör veya sağlık uzmanı gerekir.",points:["Ağrı sırasında çevrim içi egzersizi sürdürmeyin.","Çocuklarda uygulamayı yetişkin gözetiminde yapın.","Dijital planı kulüp antrenmanıyla uyumlu tutun."]},
+  ],
+  "voleybol-egitimine-kimler-katilabilir":[
+    {title:"Yeni başlayanlar ve çocuklar",text:"Temel hareket becerilerini geliştirmek isteyen çocuklar ve voleybola yeni başlayanlar, yaşa uygun top, file yüksekliği ve oyun alanıyla eğitime katılabilir.",points:["Oyun temelli ve kısa çalışmalar kullanın.","Başarıyı yalnız skorla ölçmeyin.","Güvenli iniş ve saha farkındalığını önceliklendirin."]},
+    {title:"Aktif sporcular",text:"Kulüp sporcuları pozisyona özgü teknik, taktik karar, video analizi ve performans destek içeriklerinden yararlanabilir.",points:["Kulüp programıyla çakışan ek yük oluşturmaktan kaçının.","Bireysel hedefleri antrenörle paylaşın.","Toparlanma ve antrenman yoğunluğunu birlikte izleyin."]},
+    {title:"Antrenörler ve ebeveynler",text:"Antrenörler eğitim içeriğini planlama desteği olarak, ebeveynler ise güvenli spor ortamını ve gelişim sürecini anlamak için kullanabilir.",points:["İçeriği sporcunun gelişim düzeyine uyarlayın.","Tıbbi içeriği teşhis yerine kullanmayın.","Uzun vadeli gelişimi kısa vadeli galibiyetin önünde tutun."]},
+  ],
+  "voleybol-yas-gruplari":[
+    {title:"6–9 yaş: Hareket ve oyun",text:"Bu dönemde amaç erken uzmanlaşma değil; koşma, sıçrama, denge, yakalama ve topa uyum gibi temel becerileri eğlenceli oyunlarla geliştirmektir.",points:["Hafif top ve alçak file kullanın.","Bekleme süresini azaltın.","Çok yönlü hareket deneyimi sunun."]},
+    {title:"10–13 yaş: Teknik temel",text:"Koordinasyon gelişirken parmak pas, manşet, servis ve yaklaşma ritmi doğru örneklerle pekiştirilir. Büyüme hızındaki değişimler dikkate alınır.",points:["Hareket kalitesini sonuçtan önce değerlendirin.","Tek pozisyona erken sınırlandırmayın.","Yüksek hacimli sıçramayı kontrollü artırın."]},
+    {title:"14 yaş ve üzeri: Rol ve performans",text:"Pozisyon görevleri, takım sistemleri, kuvvet ve kondisyon daha planlı hale gelir. Yine de biyolojik gelişim ve antrenman geçmişi bireysel olarak değerlendirilmelidir.",points:["Pozisyona özgü becerileri genel teknikle dengeleyin.","Haftalık yük ve toparlanmayı izleyin.","Yetişkin yeni başlayanlarda da kademeli ilerleyin."]},
+  ],
+  "voleybol-antrenoru-ve-uzman-secimi":[
+    {title:"Yetkinlik ve deneyim",text:"Antrenörün eğitim geçmişi, voleybol branşındaki deneyimi, çalıştığı yaş grubu ve güncel gelişim yaklaşımı açıkça görülebilmelidir.",points:["Belge ve deneyimi doğrulayın.","Çalışılan yaş grubuna özgü deneyim sorun.","Program hedeflerinin nasıl ölçüldüğünü öğrenin."]},
+    {title:"İletişim ve güvenlik",text:"Antrenör açık, saygılı ve gelişim odaklı iletişim kurmalı; fiziksel ve duygusal güvenlik için net kurallar uygulamalıdır.",points:["Aşağılayıcı ve korku temelli iletişimi kabul etmeyin.","Çocuk koruma ve acil durum yaklaşımını sorun.","Veli iletişim sürecinin şeffaf olmasını bekleyin."]},
+    {title:"Uzman desteği ne zaman gerekir?",text:"Ağrı, sakatlık, beslenme sorunu veya psikolojik güçlüklerde antrenör ilgili lisanslı uzmana yönlendirmelidir.",points:["Antrenörün uzmanlık sınırlarını gözetin.","Sağlık tanısını yalnız sağlık profesyonelinden alın.","Antrenör, fizyoterapist ve diyetisyen iletişimini destekleyin."]},
+  ],
+  "voleybol-egitimi-sik-sorulan-sorular":[
+    {title:"Voleybola kaç yaşında başlanır?",text:"Tek bir zorunlu başlangıç yaşı yoktur. Çocuk hazır olduğunda oyun temelli, güvenli ve yaşa uygun programlarla başlayabilir.",points:["Programı yaşa değil gelişim düzeyine de göre seçin.","Küçük yaşta özel ekipman kullanın.","Erken dönemde eğlence ve temel hareketi öne çıkarın."]},
+    {title:"Haftada kaç antrenman yapılmalı?",text:"Sıklık yaşa, deneyime, okul programına, maç yüküne ve toparlanmaya göre değişir. Kaliteli ve düzenli çalışma, kontrolsüz yüksek hacimden daha değerlidir.",points:["Dinlenme günlerini planlayın.","Ağrı ve sürekli yorgunluğu takip edin.","Ek çalışmaların kulüp yüküyle uyumunu kontrol edin."]},
+    {title:"Hangi ekipmanlar gerekir?",text:"Başlangıç için uygun boyutta top, kaymayan salon ayakkabısı, rahat spor kıyafeti ve su şişesi genellikle yeterlidir. Dizlik ihtiyacı çalışma ortamına göre değerlendirilir.",points:["Ayakkabının zemine uygun olmasına dikkat edin.","Hasarlı top ve güvenli olmayan file kullanmayın.","Kişisel ekipmanı temiz ve düzenli tutun."]},
+  ],
+  "uyelik-ve-egitim-sistemi":[
+    {title:"Spor okulu ve kullanıcı kaydı",text:"Spor okulu kayıt başvurusu yapar ve onaylanan kulüp kendisine verilen kodla sisteme giriş yapar. Sporcu ve antrenör profilleri ilgili kulübe bağlanır.",points:["Kulüp bilgilerini doğru girin.","Kullanıcı kodunu güvenli paylaşın.","Her sporcu için benzersiz profil kullanın."]},
+    {title:"Eğitim içeriklerine erişim",text:"Giriş yapan kullanıcı dersleri, eğitim videolarını ve sınavları rolüne uygun biçimde görüntüler. İçerikler voleybol konu başlıklarına göre düzenlenir.",points:["Ders anlatımını tamamladıktan sonra videoya geçin.","Sınav sonucuyla eksik konuyu belirleyin.","Profil üzerinden ilerlemeyi takip edin."]},
+    {title:"Kulüp kullanım modeli",text:"Üyelik spor okullarının sınırsız öğrenciyle eğitim ortamını kullanmasına göre tasarlanmıştır. Güncel ücret ve kapsam bilgisi ücretler sayfasında yer alır.",points:["Güncel üyelik koşullarını inceleyin.","Kulüp yöneticisi kullanıcı listesini düzenli kontrol etsin.","Erişim sorunlarında destek kanalıyla iletişime geçin."]},
+  ],
+  "istanbul-ilce-voleybol-okullari":[
+    {title:"İlçe bazlı voleybol okulu arama",text:"Ataşehir, Üsküdar, Ümraniye, Çekmeköy, Kartal ve diğer ilçelerde ulaşım süresi önemlidir; ancak program kalitesi ve güvenlik ölçütleriyle birlikte değerlendirilmelidir.",points:["Antrenman salonunun açık adresini doğrulayın.","Yaş ve seviye grubunun uygunluğunu sorun.","Deneme dersi ve veli bilgilendirmesi hakkında bilgi alın."]},
+    {title:"Spor okulu seçim kontrol listesi",text:"Antrenör yetkinliği, grup büyüklüğü, salon zemini, acil durum planı, ders süresi ve gelişim geri bildirimi karşılaştırılmalıdır.",points:["Antrenör başına düşen sporcu sayısını öğrenin.","Salon ve ekipman güvenliğini gözlemleyin.","Ücret, iptal ve telafi koşullarını yazılı alın."]},
+    {title:"Kayıtlı okul profilleri",text:"Platformdaki kayıtlı spor okulları isim ve logolarıyla ayrı sayfada listelenir. Profil görünürlüğü tek başına resmi federasyon onayı veya kalite garantisi anlamına gelmez; aileler bilgileri doğrudan okuldan doğrulamalıdır.",points:["Kulübün resmi bilgilerini kontrol edin.","Güncel iletişim ve program saatlerini teyit edin.","Çocuğun ihtiyaçlarına uygun ortamı yerinde değerlendirin."]},
+  ],
+  "voleybol-terimleri-sozlugu":[
+    {title:"Oyun ve saha terimleri",text:"Ralli, servisle başlayıp topun oyun dışı kalmasına kadar süren oyun dizisidir. Rotasyon, servis hakkı kazanıldığında oyuncuların saat yönünde bir pozisyon ilerlemesidir. Side-out, servis karşılayan takımın ralliyi kazanarak servis hakkını almasıdır.",points:["Ön alan: 2, 3 ve 4 numaralı bölgeler.","Arka alan: 1, 6 ve 5 numaralı bölgeler.","Anten: Topun geçiş alanının yan sınırını belirleyen çubuk."]},
+    {title:"Teknik ve hücum terimleri",text:"Set veya pas, hücumcuya vuruş imkânı hazırlayan ikinci temastır. Pipe, arka orta bölgeden yapılan hızlı hücumdur. Plase, topu güç yerine kontrolle boş alana yönlendiren vuruştur.",points:["Ace: Rakibin oyuna sokamadığı doğrudan servis sayısı.","Tool: Hücumun blok ellerine çarpıp dışarı çıkması.","Tip: Parmaklarla kontrollü kısa hücum dokunuşu."]},
+    {title:"Pozisyon ve savunma terimleri",text:"Libero arka alan savunması ve servis karşılamada uzmanlaşan farklı formalı oyuncudur. Pasör hücumu organize eder; orta oyuncu hızlı hücum ve blokta, smaçör karşılama ve kanat hücumunda, pasör çaprazı ise yüksek top hücumunda önemli rol üstlenir.",points:["Blok-out: Topun bloktan dışarı çıkması.","Dig: Güçlü hücumun savunmayla oyunda tutulması.","Cover: Hücumcunun bloktan dönen topuna yapılan destek savunması."]},
   ],
 };
 
@@ -1274,6 +1343,65 @@ function FAQ() {
       </div>
     </section>
   );
+}
+
+const detailedFaqGroups = [
+  { category:"Kayıt ve giriş", intro:"Spor okulu, sporcu ve antrenör hesaplarının oluşturulması ve kullanılması.", items:[
+    ["Spor okulu kaydı nasıl yapılır?","Kayıt sayfasında okul adı ve telefon numarasıyla başvuru yapılır. Başvuru yönetici tarafından onaylandıktan sonra okul için altı haneli kullanıcı kodu oluşturulur ve kayıtlı iletişim numarasına iletilir.",{image:"/faq/okul-kaydi.png",alt:"Spor okulu kayıt formunun ekran görüntüsü",caption:"Spor okulu başvuru ekranı",steps:["Kayıt menüsünü açın ve Okul kaydı sekmesini seçin.","Spor okulunun resmi adını ve iletişim kurulacak telefon numarasını yazın.","Başvuruyu gönderin ve yönetici onayını bekleyin.","Onaylanan 6 haneli kullanıcı kodunu güvenli biçimde saklayın."]}],
+    ["Sporcu hesabı nasıl oluşturulur?","Sporcu, kayıtlı spor okulunu logosuyla birlikte seçer; okulun altı haneli kodunu ve @ ile başlayan benzersiz kullanıcı adını girer. Ardından sunulan profil görsellerinden birini seçerek hesabını oluşturur.",{image:"/faq/sporcu-kaydi.png",alt:"Sporcu profili oluşturma ekranının görüntüsü",caption:"Sporcu kayıt ve profil seçimi ekranı",steps:["Sporcu kaydı sekmesine geçin.","Bağlı olduğunuz spor okulunu listeden seçin.","Okulun 6 haneli kodunu ve @ ile başlayan benzersiz sporcu adını girin.","Voleybolcu profil görselinizi seçip Sporcu profilini oluştur düğmesine basın."]}],
+    ["Kulüp hesabına nasıl giriş yapılır?","Kulüp girişinde kayıtlı spor okulunun adı seçilir ve yönetici onayında oluşturulan altı haneli kullanıcı kodu girilir. Bilgiler doğrulandığında kulüp profili ve bağlı kullanıcılar görüntülenir.",{image:"/faq/kulup-girisi.png",alt:"Kulüp hesabı giriş ekranının görüntüsü",caption:"Kulüp profili giriş ekranı",steps:["Giriş Yap sayfasında Kulüp sekmesini seçin.","Kulübünüzü adı veya logosuyla listeden bulun.","6 haneli kulüp kullanıcı kodunu girin.","Profile giriş yap düğmesine basın."]}],
+    ["Sporcu hesabına nasıl giriş yapılır?","Sporcu girişinde önce bağlı olunan kulüp seçilir. Ardından kayıt sırasında belirlenen @ kullanıcı adı ve kulübe ait giriş bilgileri kullanılarak sporcu profiline erişilir.",{image:"/faq/sporcu-girisi.png",alt:"Sporcu hesabı giriş ekranının görüntüsü",caption:"Sporcu profili giriş ekranı",steps:["Giriş Yap sayfasında Sporcu sekmesini açın.","Kayıtlı spor okulunuzu seçin.","Sporcu kullanıcı adınızı ve istenen kodu girin.","Profile giriş yap düğmesiyle kişisel alanınızı açın."]}],
+    ["Antrenör hesabı bir kulübe bağlı olmak zorunda mı?","Evet. Antrenör hesabı kayıtlı ve onaylı bir spor okuluna bağlanır. Bu sayede kulüp, kendi sporcu ve antrenör hesaplarını aynı yapı altında görebilir.",{image:"/faq/antrenor-girisi.png",alt:"Antrenör hesabı giriş ekranının görüntüsü",caption:"Kulübe bağlı antrenör girişi",steps:["Giriş Yap sayfasında Antrenör sekmesini seçin.","Bağlı olduğunuz onaylı kulübü listeden bulun.","Antrenör kullanıcı adınızı ve giriş kodunu yazın.","Doğrulama tamamlandığında antrenör profilinize geçin."]}],
+    ["Kullanıcı adım daha önce alınmışsa ne olur?","Sistem aynı @ kullanıcı adının ikinci kez kullanılmasına izin vermez ve adın daha önce alındığını bildirir. Farklı bir kullanıcı adı seçmeniz gerekir."],
+    ["Kodumu unutursam ne yapmalıyım?","Kulüp yöneticinizden veya platform destek hattından kodun yeniden paylaşılmasını isteyin. Güvenlik nedeniyle kullanıcı kodunuzu herkese açık alanlarda paylaşmayın."],
+  ]},
+  { category:"Dersler ve içerikler", intro:"Derslere erişim, seviyeler, konu sırası ve gelişim takibi.", items:[
+    ["Dersleri kimler görüntüleyebilir?","Dersler yalnız kayıtlı ve giriş yapmış sporcu, antrenör veya kulüp hesaplarına açıktır. Giriş yapmayan ziyaretçiler tanıtım ve demo alanlarını görebilir."],
+    ["Dersler hangi seviyelere göre hazırlanmıştır?","İçerikler başlangıç, orta ve ileri seviye olarak düzenlenir. Başlangıçta temel hareket ve temas, orta seviyede hareketli uygulama ve karar verme, ileri seviyede baskı altında teknik ve taktik kullanım ele alınır."],
+    ["Bir derse hangi sırayla çalışmalıyım?","Önce konu anlatımını okuyun, doğru teknik ve yaygın hataları inceleyin, ardından ilgili eğitim videosunu izleyin. Saha uygulamasından sonra konu sınavını çözerek eksiklerinizi belirleyin."],
+    ["Ders içerikleri telefonda kullanılabilir mi?","Evet. Ders sayfaları telefon, tablet ve masaüstüne uyumludur. Görseller, konu menüsü ve açıklamalar ekran genişliğine göre düzenlenir."],
+    ["Sağlık ve sakatlık içerikleri tıbbi tavsiye yerine geçer mi?","Hayır. İçerikler genel eğitim amaçlıdır. Ağrı, hareket kaybı veya sakatlık şüphesinde antrenmanı durdurup yetkili sağlık profesyoneline başvurun."],
+  ]},
+  { category:"Eğitim videoları", intro:"Video oynatma, bireysel çalışmalar ve konu kategorileri.", items:[
+    ["Eğitim videoları nasıl gruplandırılır?","Videolar parmak pas, manşet, servis, smaç, blok, savunma ve diğer voleybol konularına göre ayrılır. Bireysel antrenman videoları ana eğitim video arşivinden ayrı oynatma listesinde gösterilir."],
+    ["Videolar otomatik tekrar oynatılır mı?","Evet. Desteklenen videolar tamamlandığında yeniden başlar. Böylece hareketi kesintisiz izleyebilir ve uygulama sırasında tekrar takip edebilirsiniz."],
+    ["Video kartında hangi bilgiler bulunur?","Uygun videolarda sporcu sayısı, top sayısı, çalışmanın amacı ve antrenör önerisi gösterilir. Bu bilgiler çalışmayı saha ortamında doğru kurmanıza yardımcı olur."],
+    ["Video açılmıyorsa ne yapmalıyım?","İnternet bağlantınızı kontrol edin, sayfayı yenileyin ve farklı bir tarayıcıda deneyin. Sorun sürerse video başlığıyla birlikte destek ekibine bildirin."],
+  ]},
+  { category:"Sınavlar ve puanlama", intro:"Konu sınavları, geçme sistemi ve sonuç kayıtları.", items:[
+    ["Sınavlar hangi derslere göre hazırlanır?","Her sınav ilgili dersin konu anlatımı, teknik uygulaması, doğru-hata örnekleri ve temel oyun bilgisiyle uyumludur. Sorular çoktan seçmeli ve açıklamalı olarak hazırlanır."],
+    ["Bir sonraki sınav ne zaman açılır?","Sporcu veya antrenör mevcut sınavdan belirlenen geçme puanını aldığında sıradaki sınavın kilidi açılır. Kulüp hesabı kontrol amacıyla sınavları kilitsiz görüntüleyebilir."],
+    ["Sınav puanı nasıl hesaplanır?","Doğru cevapların toplam soruya oranı yüz puan üzerinden hesaplanır. Sonuç ekranında doğru ve yanlış sayısı, puan ve geçme durumu gösterilir."],
+    ["Aynı sınava tekrar girebilir miyim?","Evet. Öğrenme amacıyla sınav tekrar çözülebilir. Katılımcı geçmişinde aynı kişi tek profil altında gösterilir; sınav denemeleri ilgili sınav sonuçlarıyla ilişkilendirilir."],
+    ["Sınav sonuçlarını kulübüm görebilir mi?","Kulüp hesabı kendi okuluna bağlı sporcu ve antrenörlerin girdikleri sınavları, puanlarını ve geçme durumlarını kontrol alanında görebilir."],
+  ]},
+  { category:"Üyelik ve kullanım", intro:"Erişim süresi, cihazlar, oturum ve destek süreçleri.", items:[
+    ["Üyelik sınırsız öğrenci içeriyor mu?","Spor okulu üyelik seçenekleri sınırsız öğrenci erişimi için hazırlanmıştır. Güncel aylık ve yıllık ücretler Ücretler sayfasında gösterilir."],
+    ["Aynı hesaba farklı cihazlardan erişilebilir mi?","Platform telefon, tablet ve bilgisayarda çalışır. Hesap güvenliği için kullanıcı kodunun yalnız yetkili kişi tarafından kullanılması önerilir."],
+    ["Hareketsiz kalınca neden çıkış yapılıyor?","Hesap güvenliği için 15 dakika işlem yapılmadığında oturum sonlandırılabilir. Devam etmek için kulüp ve kullanıcı bilgilerinizle yeniden giriş yapmanız gerekir."],
+    ["Daha fazla yardım nasıl alabilirim?","Kayıt, giriş veya içerik sorunlarında İletişim sayfasındaki destek kanalını kullanabilirsiniz. Sorunu bildirirken kullandığınız cihazı, sayfa adını ve gördüğünüz hata mesajını ekleyin."],
+  ]},
+];
+
+function FAQPage({go}) {
+  const [query,setQuery]=useState("");
+  const [open,setOpen]=useState("0-0");
+  const normalized=query.trim().toLocaleLowerCase("tr-TR");
+  const groups=detailedFaqGroups.map((group)=>({...group,items:group.items.filter((item)=>!normalized||`${item[0]} ${item[1]}`.toLocaleLowerCase("tr-TR").includes(normalized))})).filter((group)=>group.items.length);
+  useEffect(()=>{
+    const schema=document.createElement("script");
+    schema.id="faq-page-schema"; schema.type="application/ld+json";
+    schema.textContent=JSON.stringify({"@context":"https://schema.org","@type":"FAQPage",mainEntity:detailedFaqGroups.flatMap((group)=>group.items).map(([name,text])=>({"@type":"Question",name,acceptedAnswer:{"@type":"Answer",text}}))});
+    document.head.appendChild(schema);
+    return()=>document.getElementById("faq-page-schema")?.remove();
+  },[]);
+  return <div className="faq-page">
+    <section className="faq-page-hero"><span className="eyebrow"><CircleHelp/> YARDIM VE BİLGİ</span><h1>Sık sorulan<br/><em>sorular.</em></h1><p>Kayıttan derslere, eğitim videolarından sınav sonuçlarına kadar akademi hakkında merak edilenleri açık ve anlaşılır biçimde yanıtladık.</p><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Sorularda ara" aria-label="Sık sorulan sorularda ara"/></label></section>
+    <section className="faq-page-content">
+      {groups.length?groups.map((group,groupIndex)=><article className="faq-group" key={group.category}><header><span>{String(groupIndex+1).padStart(2,"0")}</span><div><h2>{group.category}</h2><p>{group.intro}</p></div></header><div>{group.items.map((item,itemIndex)=>{const key=`${groupIndex}-${itemIndex}`,guide=item[2];return <section className={open===key?"open":""} key={item[0]}><button onClick={()=>setOpen(open===key?"":key)} aria-expanded={open===key}><span>{item[0]}</span><ChevronDown/></button>{open===key&&<div className="faq-answer"><p>{item[1]}</p>{guide&&<figure className="faq-guide"><div className="faq-guide-image"><img src={guide.image} alt={guide.alt} loading="lazy"/></div><figcaption><strong>{guide.caption}</strong><ol>{guide.steps.map((step,index)=><li key={step}><span>{index+1}</span><p>{step}</p></li>)}</ol></figcaption></figure>}</div>}</section>})}</div></article>):<div className="faq-no-result"><Search/><h2>Sonuç bulunamadı</h2><p>Farklı bir kelimeyle tekrar arayın.</p><button onClick={()=>setQuery("")}>Aramayı temizle</button></div>}
+    </section>
+    <section className="faq-support"><div><small>YANIT BULAMADINIZ MI?</small><h2>Size yardımcı olalım.</h2><p>Kayıt ve kullanım sorunlarınız için destek ekibimize ulaşın.</p></div><button className="btn light" onClick={()=>go("contact")}>İletişime geç <ArrowRight/></button></section>
+  </div>;
 }
 function Courses({ go }) {
   const [q, setQ] = useState(""),
@@ -6256,6 +6384,7 @@ function Footer({ go }) {
       </div>
       <div className="footer-links">
         <b>Destek</b>
+        <button onClick={() => go("faq")}>Sık Sorulan Sorular</button>
         <button onClick={() => go("help")}>Yardım merkezi</button>
         <button onClick={() => go("contact")}>İletişim</button>
         <button onClick={() => go("privacy")}>Gizlilik</button>

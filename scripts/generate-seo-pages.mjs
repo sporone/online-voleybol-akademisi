@@ -2,6 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 
 const site = "https://voleybolokullari.com.tr";
+const blogPages = [
+  ["/voleybol-blog/", "Voleybol Blog | Eğitim, Teknik ve Spor Okulları", "Voleybol eğitimi, temel teknikler, yaş grupları, spor okulları ve online dersler hakkında kapsamlı Türkçe rehberler."],
+  ["/voleybol-blog/voleybol-egitimleri-rehberi/", "Voleybol Eğitimleri: Temelden İleri Seviyeye Rehber", "Teknik, taktik, fiziksel ve zihinsel gelişimi birlikte planlayan kapsamlı voleybol eğitimi rehberi."],
+  ["/voleybol-blog/baslangic-orta-ileri-seviye-voleybol/", "Başlangıç, Orta ve İleri Seviye Voleybol Dersleri", "Voleybol seviyelerine göre öğrenme hedefleri, teknik öncelikler ve bir üst aşamaya geçiş ölçütleri."],
+  ["/voleybol-blog/parmak-pas-manset-servis-smac-blok/", "Parmak Pas, Manşet, Servis, Smaç ve Blok Rehberi", "Voleybolun beş temel tekniğini doğru uygulama sırası, yaygın hatalar ve çalışma önerileriyle öğrenin."],
+  ["/voleybol-blog/online-voleybol-egitimi-nasil-calisir/", "Online Voleybol Eğitimi Nasıl Çalışır?", "Ders, video, sınav ve saha uygulamasını birleştiren online voleybol eğitim sistemini keşfedin."],
+  ["/voleybol-blog/voleybol-egitimine-kimler-katilabilir/", "Voleybol Eğitimine Kimler Katılabilir?", "Çocuklar, yeni başlayanlar, aktif sporcular ve antrenörler için uygun voleybol eğitim yolları."],
+  ["/voleybol-blog/voleybol-yas-gruplari/", "Voleybol Yaş Grupları ve Yaşa Uygun Eğitim", "Çocukluk, ergenlik ve yetişkinlik dönemlerinde güvenli ve etkili voleybol eğitimi yaklaşımı."],
+  ["/voleybol-blog/voleybol-antrenoru-ve-uzman-secimi/", "Voleybol Antrenörü ve Uzman Seçimi", "Eğitim, deneyim, iletişim ve güvenlik açısından doğru voleybol antrenörünü değerlendirme rehberi."],
+  ["/voleybol-blog/voleybol-egitimi-sik-sorulan-sorular/", "Voleybol Eğitimi Sık Sorulan Sorular", "Başlama yaşı, ekipman, antrenman sıklığı ve online eğitim hakkında sık sorulan soruların yanıtları."],
+  ["/voleybol-blog/uyelik-ve-egitim-sistemi/", "Online Voleybol Akademisi Üyelik ve Eğitim Sistemi", "Spor okulu kaydı, kullanıcı erişimi, dersler, videolar ve sınav sisteminin işleyişi."],
+  ["/voleybol-blog/istanbul-ilce-voleybol-okullari/", "İstanbul ve İlçe Bazlı Voleybol Spor Okulları", "Ataşehir ve İstanbul ilçelerinde voleybol spor okulu seçerken değerlendirilecek önemli ölçütler."],
+  ["/voleybol-blog/voleybol-terimleri-sozlugu/", "Voleybol Terimleri Sözlüğü", "Rotasyon, ralli, side-out, libero, pipe ve sık kullanılan diğer voleybol kavramlarının anlamları."],
+];
 const pages = [
   ["/", "Online Voleybol Akademisi | Voleybol Okulları", "Voleybolcular ve spor okulları için çevrim içi voleybol eğitim platformu.", true],
   ["/voleybol-dersleri/", "Voleybol Dersleri ve Eğitim Programları", "Başlangıçtan ileri seviyeye teknik, taktik ve performans odaklı voleybol dersleri.", false],
@@ -13,6 +27,8 @@ const pages = [
   ["/hakkimizda/", "Hakkımızda | Online Voleybol Akademisi", "Online Voleybol Akademisinin amacı ve eğitim yaklaşımı."],
   ["/iletisim/", "İletişim | Online Voleybol Akademisi", "Online Voleybol Akademisi ile iletişime geçin."],
   ["/gizlilik-politikasi/", "Gizlilik Politikası | Voleybol Akademisi", "Online Voleybol Akademisi gizlilik politikası."],
+  ["/sik-sorulan-sorular/", "Sık Sorulan Sorular | Online Voleybol Akademisi", "Spor okulu ve sporcu kaydı, giriş, voleybol dersleri, eğitim videoları, sınavlar ve üyelik hakkında ayrıntılı yanıtlar."],
+  ...blogPages,
 ];
 const dist = path.resolve("dist");
 const baseHtml = fs.readFileSync(path.join(dist, "index.html"), "utf8");
