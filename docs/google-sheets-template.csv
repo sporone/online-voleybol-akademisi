@@ -9,3 +9,4 @@ Announcements,"id,title,content,type,startDate,endDate,targetRole,published | a1
 Assessments,"id,userId,metric,value,unit,assessmentDate,coachNote | as1,demo1,Servis başarısı,78,percent,2026-07-18,Hedef bölge istikrarı gelişiyor"
 Quizzes,"id,lessonId,question,options,correctAnswer,explanation | q1,l1,Manşette temas noktası neresidir?,Ön kol;Bilek;Dirsek,Ön kol,Platform geniş ve sabit tutulur"
 Reviews,"id,userId,courseId,rating,comment,approved,createdAt | r1,demo1,c1,5,Anlatım net ve uygulanabilir,TRUE,2026-07-19"
+Antrenor Kayitlari,"Antrenör ID,Okul Kayıt ID,Okul Adı,Okul Kodu,Antrenör Adı,Görev,Takım Logosu (Manuel),Durum,Kayıt Tarihi | ANT-0001,OKL-0001,Örnek Voleybol Okulu,123456,@antrenor,Antrenör,https://...,AKTİF,2026-07-29"
