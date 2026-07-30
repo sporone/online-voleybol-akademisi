@@ -14,8 +14,22 @@ function doPost(e){
     const body=JSON.parse((e.postData&&e.postData.contents)||'{}');
     if(body.action==='registerSchool') return registerSchool_(body);
     if(body.action==='registerAthlete') return registerAthlete_(body);
+    if(body.action==='updateAthletePresence') return updateAthletePresence_(body);
     return json_({ok:false,error:'Geçersiz işlem'});
   }catch(error){return json_({ok:false,error:'Kayıt işlenemedi: '+error.message})}
+}
+
+function updateAthletePresence_(body){
+  const id=clean_(body.id,40), online=body.online===true||String(body.online).toLowerCase()==='true';
+  if(!id) return json_({ok:false,error:'Sporcu kimliği gerekli.'});
+  const sh=getOrCreate_('Sporcu Kayitlari',['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi']);
+  if(sh.getLastRow()<2) return json_({ok:false,error:'Sporcu bulunamadı.'});
+  const ids=sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat();
+  const index=ids.indexOf(id);
+  if(index<0) return json_({ok:false,error:'Sporcu bulunamadı.'});
+  const row=index+2;
+  sh.getRange(row,9,1,2).setValues([[online,new Date()]]);
+  return json_({ok:true,id:id,online:online});
 }
 
 function registerSchool_(body){

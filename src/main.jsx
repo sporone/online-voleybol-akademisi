@@ -39,6 +39,7 @@ import {
   ClipboardCheck,
   RotateCcw,
   CircleDot,
+  Newspaper,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
@@ -50,6 +51,7 @@ import "./pricing.css";
 import "./demo.css";
 import "./registered-schools.css";
 import "./junior-referee.css";
+import "./blog.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
@@ -177,13 +179,13 @@ const nav = [
   ["videos", "Eğitim Videoları", Video],
   ["exams", "Sınavlar", CheckCircle2],
   ["junior-referee", "Junior Hakem", Flag],
+  ["blog", "Blog", Newspaper],
   ["demo", "Demo", Play],
   ["pricing", "Ücretler", BadgeTurkishLira],
   ["register", "Kayıt", UserPlus],
   ["profiles", "Giriş Yap", UserRound],
 ];
 
-const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 const readAthletes = () => {
   try { return JSON.parse(localStorage.getItem("volleyballAthletes") || "[]"); }
   catch { return []; }
@@ -196,8 +198,56 @@ const readTrainers = () => {
   try { return JSON.parse(localStorage.getItem("volleyballTrainers") || "[]"); }
   catch { return []; }
 };
-const isAthleteActive = (athlete) => athlete.online === true && Date.now() - new Date(athlete.lastSeen || 0).getTime() < ACTIVE_WINDOW_MS;
-const readActiveAthletes = () => readAthletes().filter(isAthleteActive);
+const readLoggedOutAthleteIds = () => {
+  try { return new Set(JSON.parse(localStorage.getItem("volleyballLoggedOutAthleteIds") || "[]")); }
+  catch { return new Set(); }
+};
+const setAthleteLoggedOut = (id, loggedOut) => {
+  if (!id) return;
+  const ids = readLoggedOutAthleteIds();
+  if (loggedOut) ids.add(id); else ids.delete(id);
+  localStorage.setItem("volleyballLoggedOutAthleteIds", JSON.stringify([...ids]));
+};
+const SESSION_ACTIVITY_KEY = "volleyballSessionLastActivity";
+const SESSION_IDLE_LIMIT = 15 * 60 * 1000;
+const PRESENCE_HEARTBEAT_INTERVAL = 15000;
+const markSessionActivity = () => localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
+const clearSessionActivity = () => localStorage.removeItem(SESSION_ACTIVITY_KEY);
+// Sporcu, açık oturumdan çıkış yapana kadar çevrim içi kabul edilir. Son
+// görülme süresine bağlı otomatik gizleme, yenilemeler arasında yanıp sönmeye
+// neden olduğu için çevrim içi bayrağı tek doğruluk kaynağıdır.
+const isAthleteActive = (athlete) => athlete.online === true;
+const activeAthleteKey = (athlete) => {
+  const school = String(athlete.schoolName || "").trim().toLocaleLowerCase("tr-TR");
+  const name = String(athlete.name || "")
+    .trim()
+    .replace(/^@+/, "")
+    .toLocaleLowerCase("tr-TR");
+  return `${school}::${name}`;
+};
+const dedupeActiveAthletes = (athletes) => {
+  const currentId = localStorage.getItem("volleyballCurrentAthleteId");
+  const unique = new Map();
+  athletes.filter(isAthleteActive).forEach((athlete) => {
+    const key = activeAthleteKey(athlete);
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, athlete);
+      return;
+    }
+    const athleteIsCurrent = athlete.id === currentId;
+    const existingIsCurrent = existing.id === currentId;
+    const athleteTime = new Date(athlete.lastSeen || 0).getTime() || 0;
+    const existingTime = new Date(existing.lastSeen || 0).getTime() || 0;
+    if (
+      athleteIsCurrent ||
+      (!existingIsCurrent && athleteTime > existingTime) ||
+      (!existingIsCurrent && athleteTime === existingTime && String(athlete.name || "").startsWith("@"))
+    ) unique.set(key, athlete);
+  });
+  return [...unique.values()];
+};
+const readActiveAthletes = () => dedupeActiveAthletes(readAthletes());
 
 const registrationValue = (row, key) => String(row?.[key] ?? "").trim();
 const registrationBoolean = (value) => ["true", "evet", "1", "aktif"].includes(String(value || "").trim().toLocaleLowerCase("tr"));
@@ -216,6 +266,8 @@ async function fetchRegistrationSheet(sheet) {
 function syncRegistrationStorage(schoolRows, athleteRows) {
   const localSchools = readSchools();
   const localAthletes = readAthletes();
+  const currentAthleteId = localStorage.getItem("volleyballCurrentAthleteId");
+  const loggedOutAthleteIds = readLoggedOutAthleteIds();
   const schoolKey = (value) => String(value || "").trim().toLocaleLowerCase("tr");
   const teamLogoBySchool = new Map();
   schoolRows.forEach((row) => {
@@ -252,6 +304,7 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
   const athletes = athleteRows.map((row) => {
     const id = registrationValue(row, "Sporcu ID");
     const local = localAthletes.find((item) => item.id === id) || {};
+    const hasActiveLocalSession = id === currentAthleteId && local.online === true;
     return {
       ...local,
       id,
@@ -261,8 +314,8 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
       name: registrationValue(row, "Sporcu Adı"),
       avatar: registrationValue(row, "Profil Kodu") || local.avatar || profileChoices[0].id,
       teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || teamLogoBySchool.get(schoolKey(registrationValue(row, "Okul Adı"))) || local.teamLogo || "",
-      online: registrationBoolean(registrationValue(row, "Çevrim İçi")),
-      lastSeen: registrationValue(row, "Son Görülme"),
+      online: !loggedOutAthleteIds.has(id) && (hasActiveLocalSession || registrationBoolean(registrationValue(row, "Çevrim İçi"))),
+      lastSeen: hasActiveLocalSession ? local.lastSeen : registrationValue(row, "Son Görülme"),
       createdAt: registrationValue(row, "Kayıt Tarihi"),
       source: "google-sheets",
     };
@@ -332,6 +385,7 @@ function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   useEffect(() => {
+    if (page === "blog" && /^\/voleybol-blog\/[^/]+\/?$/.test(window.location.pathname)) return;
     const seo = seoFor(page, selectedCourse);
     const setMeta = (selector, attribute, value) => {
       const element = document.head.querySelector(selector);
@@ -373,7 +427,7 @@ function App() {
         const currentAthleteId = localStorage.getItem("volleyballCurrentAthleteId");
         const syncedAthlete = synced.athletes.find((item) => item.id === currentAthleteId) || null;
         if (currentAthleteId) setCurrentAthlete(syncedAthlete);
-        setOnlineAthletes(synced.athletes.filter(isAthleteActive));
+        setOnlineAthletes(dedupeActiveAthletes(synced.athletes));
         setCurrentClub((current) => current ? synced.schools.find((item) => item.id === current.id) || current : current);
         setRegistrationRevision((value) => value + 1);
       } catch (error) {
@@ -395,22 +449,76 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    const refreshActivity = () => {
-      const currentId = localStorage.getItem("volleyballCurrentAthleteId");
-      const athletes = readAthletes().map((athlete) => currentId === athlete.id ? { ...athlete, online:true, lastSeen:new Date().toISOString() } : athlete);
-      localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
-      setOnlineAthletes(athletes.filter(isAthleteActive));
-    };
-    refreshActivity();
-    const timer = setInterval(refreshActivity, 30000);
-    const leave = () => {
-      const currentId = localStorage.getItem("volleyballCurrentAthleteId");
+    const hasSession = Boolean(currentAthlete || currentClub || currentTrainer);
+    if (!hasSession) return undefined;
+    let idleTimer;
+    const currentId = localStorage.getItem("volleyballCurrentAthleteId");
+    const setLocalPresence = (online) => {
       if (!currentId) return;
-      localStorage.setItem("volleyballAthletes", JSON.stringify(readAthletes().map((athlete) => athlete.id === currentId ? { ...athlete, online:false } : athlete)));
+      setAthleteLoggedOut(currentId, !online);
+      const athletes = readAthletes().map((athlete) => athlete.id === currentId
+        ? { ...athlete, online, lastSeen:new Date().toISOString() }
+        : athlete);
+      localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
+      setOnlineAthletes(dedupeActiveAthletes(athletes));
     };
-    addEventListener("beforeunload", leave);
-    return () => { clearInterval(timer); removeEventListener("beforeunload", leave); };
-  }, []);
+    const expireSession = () => {
+      setLocalPresence(false);
+      sendAthletePresenceBeacon(currentId, false);
+      localStorage.removeItem("volleyballCurrentAthleteId");
+      localStorage.removeItem("volleyballCurrentClub");
+      localStorage.removeItem("volleyballCurrentTrainerId");
+      clearSessionActivity();
+      setCurrentAthlete(null);
+      setCurrentClub(null);
+      setCurrentTrainer(null);
+      setAuthNotice("15 dakika işlem yapılmadığı için oturumunuz kapatıldı. Lütfen tekrar giriş yapın.");
+      go("profiles");
+    };
+    const scheduleExpiry = () => {
+      window.clearTimeout(idleTimer);
+      const lastActivity = Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || Date.now();
+      const remaining = SESSION_IDLE_LIMIT - (Date.now() - lastActivity);
+      if (remaining <= 0) expireSession();
+      else idleTimer = window.setTimeout(expireSession, remaining);
+    };
+    const registerActivity = () => {
+      markSessionActivity();
+      scheduleExpiry();
+    };
+    const heartbeat = () => {
+      if (Date.now() - (Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || 0) >= SESSION_IDLE_LIMIT) {
+        expireSession();
+        return;
+      }
+      setLocalPresence(true);
+      sendAthletePresence(currentId, true);
+    };
+    const leave = () => {
+      setLocalPresence(false);
+      sendAthletePresenceBeacon(currentId, false);
+    };
+    const returnToPage = () => {
+      if (document.visibilityState !== "visible") return;
+      scheduleExpiry();
+      if (Date.now() - (Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || 0) < SESSION_IDLE_LIMIT) heartbeat();
+    };
+    if (!localStorage.getItem(SESSION_ACTIVITY_KEY)) markSessionActivity();
+    scheduleExpiry();
+    heartbeat();
+    const heartbeatTimer = window.setInterval(heartbeat, PRESENCE_HEARTBEAT_INTERVAL);
+    const activityEvents = ["pointerdown", "keydown", "touchstart", "scroll"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, registerActivity, { passive:true }));
+    window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", returnToPage);
+    return () => {
+      window.clearInterval(heartbeatTimer);
+      window.clearTimeout(idleTimer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, registerActivity));
+      window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", returnToPage);
+    };
+  }, [currentAthlete?.id, currentClub?.id, currentTrainer?.id]);
   const go = (p, course) => {
     if (["dashboard", "training", "performance"].includes(p)) p = "courses";
     if (["courses", "course", "lesson", "videos", "exams"].includes(p) && !currentAthlete && !currentClub && !currentTrainer) {
@@ -429,13 +537,16 @@ function App() {
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     localStorage.removeItem("volleyballCurrentAthleteId");
     if (currentId) {
+      setAthleteLoggedOut(currentId, true);
       localStorage.setItem("volleyballAthletes", JSON.stringify(readAthletes().map((athlete) => athlete.id === currentId ? { ...athlete, online:false } : athlete)));
+      sendAthletePresence(currentId, false);
     }
     setCurrentAthlete(null);
     setCurrentClub(null);
     setCurrentTrainer(null);
     localStorage.removeItem("volleyballCurrentClub");
     localStorage.removeItem("volleyballCurrentTrainerId");
+    clearSessionActivity();
     setOnlineAthletes(readActiveAthletes());
     go("home");
   };
@@ -470,10 +581,12 @@ function App() {
           />
         ) : page === "junior-referee" ? (
           <JuniorRefereePage />
+        ) : page === "blog" ? (
+          <BlogPage />
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
-          <RegistrationPage go={go} onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => [...items.filter((x) => x.id !== athlete.id), athlete]); go("profiles"); }} />
+          <RegistrationPage go={go} onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => dedupeActiveAthletes([...items.filter((x) => x.id !== athlete.id), athlete])); go("profiles"); }} />
         ) : page === "registered-schools" ? (
           <RegisteredSchoolsPage go={go} />
         ) : page === "pricing" ? (
@@ -548,9 +661,20 @@ async function sendRegistration(payload) {
 
 function OnlineTeamStrip({ athletes }) {
   return <section className="online-team" aria-label="Derste olan sporcular">
-    <div className="online-team-title"><i /> <span><b>Derste olanlar</b><small>{athletes.length} sporcu çevrim içi</small></span></div>
-    <div className="online-athletes">{athletes.slice(0, 8).map((athlete) => <div className="online-athlete-chip" key={athlete.id} title={athlete.name}><TeamLogo src={athlete.teamLogo} name={athlete.schoolName} className="team-logo-mini"/><AthleteAvatar id={athlete.avatar}/><span className="online-athlete-copy"><b>{athlete.name.split(" ")[0]}</b></span></div>)}</div>
+    <div className="online-athletes">{athletes.slice(0, 8).map((athlete) => <div className="online-athlete-chip" key={athlete.id} title={athlete.name}><span className="online-avatar-wrap"><AthleteAvatar id={athlete.avatar}/><TeamLogo src={athlete.teamLogo} name={athlete.schoolName} className="team-logo-mini"/></span><span className="online-athlete-copy"><b><i className="online-state" aria-label="Çevrim içi" />{athlete.name.split(" ")[0]}</b></span></div>)}</div>
   </section>;
+}
+async function sendAthletePresence(id, online) {
+  if (!registrationApi || !id) return;
+  try { await sendRegistration({ action:"updateAthletePresence", id, online, lastSeen:new Date().toISOString() }); }
+  catch (error) { console.warn("Sporcu çevrim içi durumu güncellenemedi:", error); }
+}
+function sendAthletePresenceBeacon(id, online) {
+  if (!registrationApi || !id) return;
+  const body = JSON.stringify({ action:"updateAthletePresence", id, online, lastSeen:new Date().toISOString() });
+  const payload = new Blob([body], { type:"text/plain;charset=UTF-8" });
+  if (navigator.sendBeacon?.(registrationApi, payload)) return;
+  fetch(registrationApi, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body, keepalive:true }).catch(() => {});
 }
 
 function RegistrationPage({ go, onAthleteOnline }) {
@@ -605,6 +729,9 @@ function RegistrationPage({ go, onAthleteOnline }) {
       const athletes = [...readAthletes().filter((item) => item.id !== savedAthlete.id), savedAthlete];
       localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
       localStorage.setItem("volleyballCurrentAthleteId", savedAthlete.id);
+      markSessionActivity();
+      setAthleteLoggedOut(savedAthlete.id, false);
+      sendAthletePresence(savedAthlete.id, true);
       onAthleteOnline(savedAthlete);
       setNotice("Sporcu profili oluşturuldu ve derste olanlar alanına eklendi."); form.reset();
     } catch (error) { setNotice(error.message); } finally { setBusy(false); }
@@ -738,10 +865,95 @@ function DemoPage({ go }) {
   </div>;
 }
 
+const blogCategories = ["Tümü", "Teknik", "Taktik", "Pozisyonlar", "Atletik Performans", "Sağlık", "Beslenme", "Mental Gelişim", "Plaj Voleybolu"];
+const blogPosts = [
+  { id:"servis-karsilama", category:"Teknik", title:"Servis karşılamada platform açısını nasıl kontrol edersin?", excerpt:"Manşet platformu, ayak yerleşimi ve hedef çizgisini bir araya getiren uygulamalı bir teknik rehber.", date:"28 Temmuz 2026", read:"8 dk", image:"/blog/servis-karsilama.webp", featured:true, keywords:["servis karşılama", "manşet tekniği", "platform açısı"], body:"Servis karşılamanın temeli topa yalnız kollarla uzanmak değil, erken okuyup dengeli bir platform oluşturmaktır. Omuzlar hedefe yönelirken dirsekler kilitlenmeden uzatılır; temas iki ön kolun düz yüzeyinde gerçekleşir." },
+  { id:"hucum-temposu", category:"Taktik", title:"Hücum temposu: Pasör ile hücumcu arasındaki zamanlama", excerpt:"Birinci, ikinci ve yüksek top temposunda yaklaşma başlangıcını doğru planla.", date:"25 Temmuz 2026", read:"9 dk", image:"/blog/hucum-temposu.webp", keywords:["voleybol hücum temposu", "pasör zamanlaması", "smaç yaklaşması"], body:"Etkili hücum organizasyonu pasörün topa temas anı ile hücumcunun yaklaşma ritmini eşleştirir. Hücumcu karşılama kalitesini okuyarak rotasını ayarlar; pasör ise blok yerleşimine göre hız ve yüksekliği seçer." },
+  { id:"libero-alan-savunmasi", category:"Pozisyonlar", title:"Liberonun alan savunmasında doğru başlangıç konumu", excerpt:"Blok yönüne göre açı kapatma, hücumcuyu okuma ve ikinci top sorumluluğu.", date:"22 Temmuz 2026", read:"8 dk", image:"/blog/libero-alan-savunmasi.webp", keywords:["libero eğitimi", "alan savunması", "voleybol savunma pozisyonu"], body:"Libero sabit bir noktayı değil, blok ve hücum yönünün oluşturduğu olası top koridorunu savunur. Hazır pozisyonda ağırlık ayakların ön bölümündedir." },
+  { id:"sicrama-yuku", category:"Atletik Performans", title:"Sıçrama antrenmanında kaliteyi koruyan yük planlaması", excerpt:"Tekrar sayısından önce iniş kalitesini ve patlayıcı kuvvet üretimini takip et.", date:"19 Temmuz 2026", read:"10 dk", image:"/blog/sicrama-yuku.webp", keywords:["voleybol sıçrama antrenmanı", "pliometrik çalışma", "güvenli iniş"], body:"Pliometrik çalışmalarda amaç yalnız çok sıçramak değil, her tekrarda hızlı kuvvet üretirken güvenli inişi korumaktır. Diz-kalça-ayak hizası ve tekrar kalitesi yük planının merkezindedir." },
+  { id:"omuz-koruma", category:"Sağlık", title:"Voleybolcularda omuz sağlığını koruyan temel alışkanlıklar", excerpt:"Servis ve smaç yükünü dengeleyen hareketlilik, kuvvet ve toparlanma ilkeleri.", date:"16 Temmuz 2026", read:"9 dk", image:"/blog/omuz-koruma.webp", keywords:["voleybol omuz sağlığı", "smaç sakatlığı önleme", "rotator manşet"], body:"Omuz sağlığı yalnız rotator manşet egzersizleriyle korunmaz. Göğüs omurgası hareketliliği, kürek kemiği kontrolü ve toplam vuruş yükü birlikte değerlendirilir." },
+  { id:"mac-gunu-beslenme", category:"Beslenme", title:"Maç günü enerji ve sıvı planı nasıl hazırlanır?", excerpt:"Maç öncesi öğünden set aralarındaki sıvı alımına kadar uygulanabilir öneriler.", date:"13 Temmuz 2026", read:"8 dk", image:"/blog/mac-gunu-beslenme.webp", keywords:["voleybolcu beslenmesi", "maç öncesi beslenme", "sporcu sıvı planı"], body:"Maç günü planı ilk kez maç sabahı denenmemelidir. Sporcunun alışık olduğu, sindirimi kolay karbonhidrat kaynakları seçilir; protein ve sıvı planı maç saatine göre düzenlenir." },
+  { id:"baski-altinda-odak", category:"Mental Gelişim", title:"Baskı altında bir sonraki sayıya odaklanmak", excerpt:"Hata sonrası kısa rutinlerle dikkati geçmiş sayıdan yeni göreve taşı.", date:"10 Temmuz 2026", read:"7 dk", image:"/blog/baski-altinda-odak.webp", keywords:["voleybolda mental hazırlık", "maç odağı", "hata sonrası rutin"], body:"Mental dayanıklılık hatasız oynamak değil, hatadan sonra doğru göreve hızla dönebilmektir. Kısa bir nefes, net bir anahtar kelime ve bir sonraki pozisyon görevi dikkati yeniden düzenler." },
+  { id:"kumda-hareket", category:"Plaj Voleybolu", title:"Kumda dengeli hareket ve ikili takım iletişimi", excerpt:"Kum zemine uyum sağlayan adımlar, savunma paylaşımı ve çağrı sistemi.", date:"7 Temmuz 2026", read:"9 dk", image:"/blog/kumda-hareket.webp", keywords:["plaj voleybolu teknikleri", "kumda hareket", "ikili takım iletişimi"], body:"Kum zeminde uzun ve sert adımlar enerji kaybettirir. Sporcu ağırlık merkezini kontrollü tutup kısa ayarlama adımları kullanır; ikili düzende görevler her ralliden önce paylaşılır." },
+];
+
+const blogArticleDetails = {
+  "servis-karsilama":[
+    {title:"Servis karşılamada doğru hazır pozisyon",text:"Ayaklar omuz genişliğine yakın, dizler yumuşak ve gövde hafif önde olmalıdır. Ağırlık topuklara değil ayakların ön bölümüne dağıtılır. Sporcu servis atan oyuncunun top atışını, omuz yönünü ve vuruş kolunu izleyerek ilk hareket ipucunu yakalar.",points:["Topun uçuşunu erken oku.","Kolları birleştirmeden önce ayaklarla topun arkasına geç.","Temas sırasında başı ve gövdeyi dengede tut."]},
+    {title:"Manşet platform açısı ve hedef kontrolü",text:"Topun çıkış yönü büyük ölçüde ön kolların oluşturduğu platform açısıyla belirlenir. Omuzlar hedefe döner, bilekler yan yana tutulur ve temas vücudun önünde yapılır. Kolları yukarı savurmak yerine bacaklardan gelen kontrollü yükselme kullanılır.",points:["Platformu son anda çevirmeyin.","Topu dirseğe veya ellere değil iki ön kolun düz yüzeyine alın.","Pas yüksekliğini hedef bölgeye göre ayarlayın."]},
+    {title:"Sık yapılan servis karşılama hataları",text:"Geç hareket etmek, kolları erken kilitlemek ve topa doğru kontrolsüz sallanmak en sık görülen sorunlardır. Antrenmanda kısa servis, derin servis ve yüzen servis ayrı senaryolarla çalışılmalıdır.",points:["Tekrarları yalnız başarı sayısıyla değil hedef isabetiyle değerlendirin.","Sağ-sol hareketlerde önce dengeyi koruyun.","Zor toplarda mükemmel pas yerine oynanabilir top hedefleyin."]},
+  ],
+  "hucum-temposu":[
+    {title:"Voleybolda hücum temposu nedir?",text:"Hücum temposu, pasörün topa temas anı ile hücumcunun sıçrama ve vuruş penceresi arasındaki zaman ilişkisidir. Tempo ne kadar hızlanırsa pasör ile hücumcunun ortak referansları o kadar net olmalıdır.",points:["Birinci tempo orta oyuncu için hızlı ve alçak pası ifade eder.","İkinci tempo hızlı kanat hücumunda kullanılır.","Yüksek top bozuk karşılama ve zorunlu hücumlarda güvenli seçenektir."]},
+    {title:"Pasör ve smaçör zamanlaması nasıl çalışılır?",text:"Hücumcu topa değil, pasörün top altına girişine ve takımın belirlediği tempo çağrısına göre yaklaşmayı başlatır. Pasör karşılama kalitesi ile rakip bloğun yerleşimini birlikte değerlendirir.",points:["Aynı başlangıç noktası ve yaklaşma rotasını kullanın.","Önce topsuz ritim, sonra kontrollü pasla çalışın.","Pas yüksekliği değiştiğinde hücumcunun son iki adımı uyarlanmalıdır."]},
+    {title:"Tempo antrenmanında ölçülebilir hedefler",text:"Başarı yalnız topun yere düşmesi değildir. Pas konumu, hücumcunun vuruş yüksekliği, blok karşısındaki seçenek ve top kaybı oranı birlikte izlenmelidir.",points:["10 tekrar içinde vuruş penceresine gelen pas sayısını kaydedin.","Çapraz, paralel ve blok aut seçeneklerini dönüşümlü uygulayın.","Yorgunlukta ritim bozuluyorsa çalışma yoğunluğunu azaltın."]},
+  ],
+  "libero-alan-savunmasi":[
+    {title:"Libero başlangıç pozisyonunu neye göre seçer?",text:"Başlangıç noktası blok planı, rakip hücumcunun yaklaşma açısı, pasın fileye uzaklığı ve takım savunma sistemiyle belirlenir. Libero her hücumda aynı noktada beklemez.",points:["Blok çizgiyi kapatıyorsa çapraz koridoru önceliklendirin.","Pas fileden açıldığında derin hücum ihtimalini okuyun.","Plase ve blok arkası için öne hareket etmeye hazır olun."]},
+    {title:"Hücumcuyu okuma ve ayarlama adımları",text:"Omuz çizgisi, kol salınımı ve topun vuruş omzuna göre konumu hücum yönü hakkında ipucu verir. Büyük çapraz adımlar yerine kısa ve dengeli ayarlama adımları kullanılır.",points:["Temas anında hareket hâlinde kalmayın.","Ağırlığı iki ayağa dengeli dağıtın.","Savunma sonrası ikinci hareketi hemen başlatın."]},
+    {title:"Libero iletişimi ve ikinci top sorumluluğu",text:"Libero blokçuların göremediği arka alanı yönetir. Kısa top, çizgi, çapraz ve serbest top çağrıları erken ve anlaşılır yapılmalıdır.",points:["Pasör ilk topu savunduğunda ikinci top sorumluluğunu önceden belirleyin.","Çakışan toplarda tek ve güçlü çağrı kullanın.","Her ralli sonrası savunma yerleşimini kısa biçimde değerlendirin."]},
+  ],
+  "sicrama-yuku":[
+    {title:"Voleybol sıçrama antrenmanında temel ilke",text:"Sıçrama geliştirme çalışmaları kuvvet, hız ve teknik kalitenin birleşimidir. Çok tekrar yapmak yerine yüksek kaliteli kuvvet üretimi ve kontrollü iniş hedeflenmelidir.",points:["Isınmadan maksimum sıçramaya geçmeyin.","İnişte diz, kalça ve ayak hizasını koruyun.","Setler arasında yeterli dinlenme verin."]},
+    {title:"Pliometrik yük nasıl artırılır?",text:"Önce düşük şiddetli çift ayak sıçramaları, ardından yön değiştirme ve tek ayak varyasyonları kullanılır. Yük; temas sayısı, yükseklik, hız ve haftalık sıklıkla birlikte değerlendirilir.",points:["Yeni başlayanlarda düşük hacimle başlayın.","Maç yoğun haftalarda sıçrama hacmini azaltın.","Yüksekliğin belirgin düştüğü sette çalışmayı durdurun."]},
+    {title:"Güvenli iniş ve performans takibi",text:"Sessiz ve dengeli iniş, kuvvetin eklemler arasında paylaşılmasına yardım eder. Ağrı veya asimetri görülürse çalışma ilerletilmemeli ve uzman değerlendirmesi alınmalıdır.",points:["Video ile sağ-sol farkını izleyin.","Sıçrama yüksekliği kadar iniş kontrolünü de kaydedin.","Kuvvet antrenmanı ile saha yükünü aynı haftada planlayın."]},
+  ],
+  "omuz-koruma":[
+    {title:"Servis ve smaçta omuz yükü",text:"Tekrarlayan baş üstü vuruşlar omuz çevresindeki dokulara yüksek hızda yük bindirir. Risk yalnız tekniğe değil toplam vuruş sayısına, toparlanmaya ve gövde kuvvetine bağlıdır.",points:["Antrenman ve maç vuruşlarını birlikte takip edin.","Ani hacim artışından kaçının.","Ağrıyla servis veya smaç çalışmasına devam etmeyin."]},
+    {title:"Kürek kemiği kontrolü ve hareketlilik",text:"Kürek kemiğinin kontrollü yukarı rotasyonu kolun güvenli biçimde yükselmesine yardım eder. Göğüs omurgası hareketliliği ve gövde rotasyonu vuruş yükünü yalnız omuza bırakmaz.",points:["Bantla dış rotasyonu düşük dirençle uygulayın.","Hareket boyunca omzu kulağa çekmeyin.","Isınmada kontrollü omuz ve gövde hareketleri kullanın."]},
+    {title:"Ne zaman sağlık uzmanına başvurulmalı?",text:"Gece ağrısı, güç kaybı, tekrarlayan sıkışma hissi veya hareket kısıtlılığı normal antrenman yorgunluğu değildir. Tanı ve tedavi bireysel sağlık değerlendirmesi gerektirir.",points:["Belirtiyi saklamayın ve erken bildirin.","İnternetteki egzersizleri tedavi yerine kullanmayın.","Sahaya dönüşü basamaklı ve uzman onaylı planlayın."]},
+  ],
+  "mac-gunu-beslenme":[
+    {title:"Maç öncesi öğün nasıl olmalı?",text:"Ana öğün maç saatinden yaklaşık 3–4 saat önce, sporcunun alışık olduğu ve sindirimi kolay yiyeceklerden oluşturulur. Karbonhidrat enerji desteği sağlar; protein dengeli tutulur.",points:["Yeni yiyecekleri maç gününde denemeyin.","Aşırı yağlı ve çok lifli öğünlerden kaçının.","Porsiyonu sporcunun yaşı ve ihtiyacına göre belirleyin."]},
+    {title:"Voleybol maçında sıvı planı",text:"Sıvı ihtiyacı terleme hızı, salon sıcaklığı, maç süresi ve kişisel toleransa göre değişir. Susamayı beklemek yerine küçük ve düzenli aralıklarla sıvı alınır.",points:["Maça iyi hidrate başlayın.","Set aralarında küçük miktarlar tercih edin.","Uzun ve sıcak etkinliklerde uzman önerisiyle elektrolit planlayın."]},
+    {title:"Maç sonrası toparlanma",text:"Toparlanma öğünü karbonhidrat, kaliteli protein ve sıvıyı birlikte içermelidir. Amaç enerji depolarını yenilemek ve kas onarımını desteklemektir.",points:["Takip eden maç varsa toparlanmayı geciktirmeyin.","İdrar rengi ve vücut ağırlığı değişimini takip edin.","Genç sporcularda takviye yerine dengeli beslenmeyi temel alın."]},
+  ],
+  "baski-altinda-odak":[
+    {title:"Hata sonrası dikkat neden dağılır?",text:"Sporcu geçmiş sayıyı zihninde tekrar ettiğinde çevredeki yeni oyun ipuçlarını kaçırabilir. Amaç duyguyu bastırmak değil, dikkati kontrol edilebilir bir sonraki göreve taşımaktır.",points:["Hatanın ardından tek ve yavaş nefes alın.","Kısa bir anahtar kelime kullanın.","Yeni pozisyon görevinizi sesli veya zihinsel olarak belirleyin."]},
+    {title:"Voleybolda kısa odak rutini",text:"Etkili rutin birkaç saniye sürer ve her rallide uygulanabilir. Sporcu servis hedefi, blok görevi veya savunma başlangıç konumu gibi somut bir işarete yönelir.",points:["Rutini önce antrenmanda prova edin.","Olumsuz sonuç cümlesi yerine görev cümlesi kurun.","Takım arkadaşlarıyla destekleyici iletişim kullanın."]},
+    {title:"Baskı antrenmanda nasıl çalışılır?",text:"Puan hedefi, süre sınırı veya servis baskısı gibi kontrollü senaryolar sporcunun rutinini gerçekçi ortamda denemesini sağlar. Ceza odaklı aşırı baskı öğrenmeyi zayıflatabilir.",points:["Zorluk seviyesini kademeli artırın.","Sonuç kadar karar kalitesini değerlendirin.","Antrenman sonrası hangi rutinin işe yaradığını kaydedin."]},
+  ],
+  "kumda-hareket":[
+    {title:"Plaj voleybolunda kumda hareket tekniği",text:"Kum, zemine uygulanan kuvvetin bir bölümünü emer. Bu nedenle kısa, ritmik ve dengeli adımlar enerji kaybını azaltır. Sporcu gereksiz dikleşmeden merkezini kontrol eder.",points:["İlk adımı kısa ve yönlü kullanın.","Topa yaklaşırken son adımları ayarlayın.","Çıplak ayakta güvenli ve temiz saha koşullarını kontrol edin."]},
+    {title:"İkili takımda görev paylaşımı",text:"İki oyunculu düzende her sporcu geniş alan savunur. Servis hedefi, blok yönü, kısa top ve serbest top sorumlulukları ralliden önce netleştirilir.",points:["Blok işaretlerini iki oyuncu da doğrulasın.","Top arası iletişimi kısa ve erken yapın.","Savunmadan hücuma geçiş rotasını önceden belirleyin."]},
+    {title:"Kumda kondisyon ve yük yönetimi",text:"Kumda hareket enerji maliyetini artırabilir. Çalışma süresi, sıcaklık ve güneş koşulları dikkate alınmalı; teknik kalite düşmeden dinlenme verilmelidir.",points:["Günün serin saatlerini tercih edin.","Sıvı ve güneşten korunma planı oluşturun.","Salon temposunu doğrudan kuma taşımayın; uyum süresi verin."]},
+  ],
+};
+
+function BlogPage() {
+  const [category, setCategory] = useState("Tümü");
+  const [query, setQuery] = useState("");
+  const postFromPath = () => blogPosts.find((post)=>window.location.pathname.replace(/\/+$/,"").endsWith(`/voleybol-blog/${post.id}`)) || null;
+  const [selectedPost, setSelectedPost] = useState(postFromPath);
+  const featured = blogPosts.find((post) => post.featured) || blogPosts[0];
+  const normalizedQuery = query.trim().toLocaleLowerCase("tr");
+  const filteredPosts = blogPosts.filter((post) => (category === "Tümü" || post.category === category)
+    && (!normalizedQuery || `${post.title} ${post.excerpt} ${post.category}`.toLocaleLowerCase("tr").includes(normalizedQuery)));
+  const openPost = (post) => { window.history.pushState({page:"blog",post:post.id},"",`/voleybol-blog/${post.id}/`); setSelectedPost(post); window.scrollTo(0,0); };
+  const closePost = () => { window.history.pushState({page:"blog"},"","/voleybol-blog/"); setSelectedPost(null); window.scrollTo(0,0); };
+  useEffect(()=>{const onPop=()=>setSelectedPost(postFromPath());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop)},[]);
+  useEffect(()=>{
+    if(!selectedPost)return;
+    document.title=`${selectedPost.title} | Voleybol Blog`;
+    const description=document.head.querySelector('meta[name="description"]');
+    const canonical=document.head.querySelector('link[rel="canonical"]');
+    if(description)description.setAttribute("content",selectedPost.excerpt);
+    if(canonical)canonical.setAttribute("href",`${SITE_URL}/voleybol-blog/${selectedPost.id}/`);
+    const schema=document.createElement("script");schema.id="blog-article-schema";schema.type="application/ld+json";schema.textContent=JSON.stringify({"@context":"https://schema.org","@type":"Article",headline:selectedPost.title,description:selectedPost.excerpt,image:`${SITE_URL}${selectedPost.image}`,datePublished:"2026-07-29",author:{"@type":"Organization",name:"Online Voleybol Akademisi"},publisher:{"@type":"Organization",name:"Online Voleybol Akademisi"},mainEntityOfPage:`${SITE_URL}/voleybol-blog/${selectedPost.id}/`,keywords:selectedPost.keywords?.join(", ")});document.head.appendChild(schema);
+    return()=>schema.remove();
+  },[selectedPost]);
+  if (selectedPost) return <div className="blog-page blog-article-page"><button className="blog-back" onClick={closePost}>← Blog yazılarına dön</button><article className="blog-article"><div className="blog-article-cover"><img src={selectedPost.image} alt={`${selectedPost.title} konulu gerçekçi voleybol fotoğrafı`}/><span>{selectedPost.category}</span></div><header><small>{selectedPost.date} • {selectedPost.read} okuma</small><h1>{selectedPost.title}</h1><p>{selectedPost.excerpt}</p><div className="blog-keywords">{selectedPost.keywords?.map((keyword)=><span key={keyword}>{keyword}</span>)}</div></header><div className="blog-article-body"><p className="blog-lead">{selectedPost.body}</p>{blogArticleDetails[selectedPost.id]?.map((section)=><section key={section.title}><h2>{section.title}</h2><p>{section.text}</p><ul>{section.points.map((point)=><li key={point}><CheckCircle2/>{point}</li>)}</ul></section>)}<aside><Target/><span><b>Sahaya taşı</b><small>Konuyu okuduktan sonra tek bir teknik hedef seç ve antrenmanda kontrollü tekrarlarla uygula.</small></span></aside></div></article></div>;
+  return <div className="blog-page">
+    <section className="blog-hero"><div><span className="eyebrow"><Newspaper/> VOLEYBOL BİLGİ MERKEZİ</span><h1>Sahayı daha iyi oku,<br/><em>oyununu geliştir.</em></h1><p>Teknik, taktik, performans ve sporcu sağlığına dair uygulanabilir voleybol içerikleri.</p></div><div className="blog-hero-mark"><span>V</span><i/><small>AKADEMİ BLOG</small></div></section>
+    <section className="blog-featured"><div className="blog-featured-image"><img src={featured.image} alt={`${featured.title} kapak görseli`}/><span>ÖNE ÇIKAN YAZI</span></div><div><small>{featured.category} • {featured.read} okuma</small><h2>{featured.title}</h2><p>{featured.excerpt}</p><button className="btn" onClick={()=>openPost(featured)}>Yazıyı oku <ArrowRight/></button></div></section>
+    <section className="blog-library"><header><div><small>GÜNCEL İÇERİKLER</small><h2>Voleybol blog yazıları</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Blogda ara" aria-label="Blog yazılarında ara"/></label></header><nav className="blog-categories" aria-label="Blog kategorileri">{blogCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</nav>{filteredPosts.length?<div className="blog-grid">{filteredPosts.map((post)=><article className="blog-card" key={post.id}><div><img loading="lazy" src={post.image} alt={`${post.title} konulu gerçekçi voleybol fotoğrafı`}/><span>{post.category}</span></div><section><small><CalendarDays/> {post.date}<i>•</i><Clock/> {post.read}</small><h3>{post.title}</h3><p>{post.excerpt}</p><button onClick={()=>openPost(post)}>Devamını oku <ArrowRight/></button></section></article>)}</div>:<div className="blog-empty"><Search/><h3>Yazı bulunamadı</h3><p>Arama kelimesini değiştir veya başka bir kategori seç.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
+  </div>;
+}
+
 function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout }) {
   const visibleNav = isAuthenticated
     ? nav.filter(([key]) => !["profiles", "demo", "pricing", "register"].includes(key))
-    : nav.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
+    : nav.filter(([key]) => ["home", "junior-referee", "blog", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
       || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
@@ -872,7 +1084,15 @@ function Title({ eyebrow, title, text }) {
   );
 }
 function CourseCard({ c, go }) {
-  const isPreparing = !sheetBackedCourses.has(c[1]);
+  const hasSheet = sheetBackedCourses.has(c[1]);
+  const sheet = useLessonSheet(c[1], hasSheet);
+  const baseLessons = useMemo(() => makeLessonSteps(c), [c]);
+  const currentLessons = useMemo(() => {
+    if (!hasSheet || sheet.status !== "ready") return baseLessons;
+    return mergeSheetLessons(baseLessons, sheet.rows, c[1], c[10]);
+  }, [baseLessons, c, hasSheet, sheet.rows, sheet.status]);
+  const sectionCount = currentLessons.length;
+  const isPreparing = sheet.status === "ready" && sectionCount === 0;
   return (
     <article className="course-card">
       <div className="cover">
@@ -892,11 +1112,11 @@ function CourseCard({ c, go }) {
         <span className="tag">{c[3]}</span>
         <h3>{c[1]}</h3>
         <p>{c[2]}</p>
-        <div className="meta">
+        {!isPreparing && <div className="meta">
           <span>
-            <BookOpen /> {c[7]} bölüm
+            <BookOpen /> {sectionCount} bölüm
           </span>
-        </div>
+        </div>}
         {c[8] > 0 && (
           <div className="mini-progress">
             <span style={{ width: c[8] + "%" }} />
@@ -4578,6 +4798,18 @@ function ExamPage({ initialCourse, account }) {
     groups.get(item.userId).exams.push(item);
     return groups;
   }, new Map()).values());
+  const participantProfileFor = (group) => {
+    const participant = group.userType === "Antrenör"
+      ? readTrainers().find((item) => item.id === group.userId)
+      : readAthletes().find((item) => item.id === group.userId);
+    const participantSchool = readSchools().find((school) => school.id === participant?.schoolId
+      || String(school.schoolName || "").toLocaleLowerCase("tr") === String(participant?.schoolName || schoolName).toLocaleLowerCase("tr"));
+    return {
+      avatar: participant?.avatar || (group.userId === account?.id ? account?.avatar : ""),
+      teamLogo: participant?.teamLogo || participantSchool?.teamLogo || matchingSchool?.teamLogo || "",
+      schoolName: participant?.schoolName || participantSchool?.schoolName || schoolName,
+    };
+  };
   const passedIds = new Set(userAttempts.filter((item) => item.passed).map((item) => item.examId));
   const firstPending = courseCategories.findIndex((item) => !passedIds.has(examIdFor(item)));
   const unlockedIndex = firstPending < 0 ? courseCategories.length - 1 : firstPending;
@@ -4680,7 +4912,7 @@ function ExamPage({ initialCourse, account }) {
           </div>
         </div>
       )}
-      <section className="exam-history"><div className="exam-section-head"><span><small>SINAV GEÇMİŞİ</small><h2>{accountType === "club" ? "Okula bağlı katılımcılar ve sınavları" : "Girdiğin sınavlar"}</h2></span><em>{schoolId}</em></div>{historyGroups.length ? <div className="exam-participant-list">{historyGroups.map((group)=><article className="exam-participant" key={group.userId}><header><span className="exam-participant-avatar"><UserRound/></span><span><b>{group.userName}</b><small>{group.userId}</small></span><em>{group.userType}</em><strong>{group.exams.length} sınav</strong></header><div className="exam-taken-list"><div className="exam-taken-row header"><span>Girdiği Sınav</span><span>Puan</span><span>Durum</span></div>{group.exams.map((item)=><div className="exam-taken-row" key={`${group.userId}-${item.examId}`}><span><b>{item.examTitle}</b><small>{new Date(item.completedAt).toLocaleDateString("tr-TR")} • En iyi sonuç</small></span><strong>{item.score}</strong><em className={item.passed?"passed":"failed"}>{item.passed?"Geçti":"Kaldı"}</em></div>)}</div></article>)}</div> : <div className="exam-empty"><ClipboardCheck/><h3>Henüz sınav kaydı yok</h3><p>İlk sınav tamamlandığında okul kimliği, kullanıcı ve puan bilgisi burada görünecek.</p></div>}</section>
+      <section className="exam-history"><div className="exam-section-head"><span><small>SINAV GEÇMİŞİ</small><h2>{accountType === "club" ? "Okula bağlı katılımcılar ve sınavları" : "Girdiğin sınavlar"}</h2></span><em>{schoolId}</em></div>{historyGroups.length ? <div className="exam-participant-list">{historyGroups.map((group)=>{const profile=participantProfileFor(group);return <article className="exam-participant" key={group.userId}><header><span className="exam-participant-avatar">{group.userType === "Sporcu" && profile.avatar ? <AthleteAvatar id={profile.avatar}/> : <UserRound/>}{profile.teamLogo&&<TeamLogo src={profile.teamLogo} name={profile.schoolName} className="exam-participant-team-logo"/>}</span><span className="exam-participant-identity"><small>{group.userType} PROFİLİ</small><b>{group.userName}</b><em>{profile.schoolName}</em></span><span className="exam-participant-summary"><strong>{group.exams.length}</strong><small>Tamamlanan sınav</small></span></header><div className="exam-taken-list"><div className="exam-taken-row header"><span>Girdiği Sınav</span><span>Puan</span><span>Durum</span></div>{group.exams.map((item,index)=><div className="exam-taken-row" key={`${group.userId}-${item.examId}`}><i className="exam-taken-index">{String(index+1).padStart(2,"0")}</i><span><b>{item.examTitle}</b><small>{new Date(item.completedAt).toLocaleDateString("tr-TR")} • En iyi sonuç</small></span><strong>{item.score}<small>/100</small></strong><em className={item.passed?"passed":"failed"}>{item.passed?<><CheckCircle2/> Geçti</>:<>Kaldı</>}</em></div>)}</div></article>})}</div> : <div className="exam-empty"><ClipboardCheck/><h3>Henüz sınav kaydı yok</h3><p>İlk sınav tamamlandığında okul kimliği, kullanıcı ve puan bilgisi burada görünecek.</p></div>}</section>
       <section className="exam-reminder"><span><Award/></span><div><small>İÇERİK HATIRLATMASI</small><h2>Her ders konusu için özgün sınav hazırlanmalı.</h2><p>Toplam {courseCategories.length} konu bulunuyor. Sorular; ders anlatımı, teknik doğrular ve yaygın hatalarla bire bir eşleştirilerek sırayla hazırlanacak.</p></div><b>{courseCategories.length} KONU</b></section>
     </div>
   );
@@ -5656,6 +5888,7 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       const school = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
       if (!school) { setNotice("Kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentClub", JSON.stringify(school));
+      markSessionActivity();
       localStorage.removeItem("volleyballCurrentAthleteId");
       localStorage.removeItem("volleyballCurrentTrainerId");
       const clubSession = { type:"club", school };
@@ -5665,17 +5898,21 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       const athlete = readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && item.schoolCode === schoolCode && item.name.toLocaleLowerCase("tr") === athleteName.toLocaleLowerCase("tr"));
       if (!athlete) { setNotice("Sporcu adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentAthleteId", athlete.id);
+      markSessionActivity();
+      setAthleteLoggedOut(athlete.id, false);
       localStorage.removeItem("volleyballCurrentClub");
       localStorage.removeItem("volleyballCurrentTrainerId");
       const active = { ...athlete, online:true, lastSeen:new Date().toISOString() };
       localStorage.setItem("volleyballAthletes", JSON.stringify(readAthletes().map((item) => item.id === active.id ? active : item)));
       const athleteSession = { type:"athlete", athlete:active };
+      sendAthletePresence(active.id, true);
       setSession(athleteSession); onSessionChange(athleteSession); onActivityChange();
     } else {
       const trainerName = String(data.get("trainerName") || "").trim();
       const trainer = trainers.find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.schoolCode) === schoolCode && item.name.toLocaleLowerCase("tr") === trainerName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
       if (!trainer) { setNotice("Antrenör adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentTrainerId", trainer.id);
+      markSessionActivity();
       localStorage.removeItem("volleyballCurrentAthleteId");
       localStorage.removeItem("volleyballCurrentClub");
       const trainerSession = { type:"trainer", trainer };
@@ -5686,11 +5923,14 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     if (session?.type === "athlete") {
       const id=session.athlete.id;
       localStorage.removeItem("volleyballCurrentAthleteId");
+      setAthleteLoggedOut(id, true);
       localStorage.setItem("volleyballAthletes", JSON.stringify(readAthletes().map((item) => item.id === id ? { ...item, online:false } : item)));
+      sendAthletePresence(id, false);
       onActivityChange();
     }
     localStorage.removeItem("volleyballCurrentClub");
     localStorage.removeItem("volleyballCurrentTrainerId");
+    clearSessionActivity();
     onSessionChange(null); setSession(null); setNotice("");
   };
   if (session?.type === "club") {
@@ -5821,12 +6061,13 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["videos", Video, "Videolar"],
     ["exams", CheckCircle2, "Sınavlar"],
     ["junior-referee", Flag, "Junior Hakem"],
+    ["blog", Newspaper, "Blog"],
     ["demo", Play, "Demo"],
     ["pricing", BadgeTurkishLira, "Ücretler"],
     ["register", UserPlus, "Kayıt"],
     ["profiles", Users, isAuthenticated ? "Hesabım" : "Giriş Yap"],
   ];
-  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "demo", "pricing", "register", "profiles"].includes(key));
+  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   return (
     <nav className="mobile-nav">

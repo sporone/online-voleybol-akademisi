@@ -3,6 +3,7 @@ export const SITE_URL = "https://voleybolokullari.com.tr";
 export const pageRoutes = {
   home: "/", courses: "/voleybol-dersleri/", videos: "/egitim-videolari/",
   exams: "/sinavlar/", "junior-referee": "/junior-hakem/", demo: "/demo/",
+  blog: "/voleybol-blog/",
   pricing: "/ucretler/", register: "/kayit/", "registered-schools": "/kayitli-spor-okullari/",
   profiles: "/giris/", about: "/hakkimizda/", contact: "/iletisim/",
   privacy: "/gizlilik-politikasi/", help: "/yardim-merkezi/",
@@ -24,6 +25,7 @@ export const routeFor = (page, course) => {
 
 export const resolveRoute = (pathname, courses) => {
   const path = (pathname || "/").replace(/\/+$/, "") || "/";
+  if (/^\/voleybol-blog(?:\/[^/]+)?$/.test(path)) return { page: "blog", course: null };
   const lessonMatch = path.match(/^\/voleybol-dersleri\/([^/]+)\/egitim$/);
   const courseMatch = path.match(/^\/voleybol-dersleri\/([^/]+)$/);
   const match = lessonMatch || courseMatch;
@@ -40,6 +42,7 @@ const metaByPage = {
   videos: ["Voleybol Eğitim Videoları", "Voleybol tekniklerini hareket örnekleriyle öğrenebileceğiniz mobil uyumlu eğitim video kütüphanesi."],
   exams: ["Voleybol Sınavları ve Değerlendirmeler", "Voleybol derslerine göre hazırlanmış çoktan seçmeli sınavlarla bilgilerinizi ölçün."],
   "junior-referee": ["Junior Hakem Akademisi | Voleybol Hakemliği", "Gençler için voleybol kuralları, örnek olaylar, hakem kararları ve gözlemci görevleri eğitim alanı."],
+  blog: ["Voleybol Blog | Teknik, Taktik ve Sporcu Gelişimi", "Voleybol teknikleri, taktik, pozisyon eğitimi, atletik performans, beslenme, sağlık ve mental gelişim yazıları."],
   pricing: ["Voleybol Akademisi Üyelik Ücretleri", "Sınırsız öğrenci erişimli aylık ve yıllık üyelik seçeneklerini inceleyin."],
   register: ["Spor Okulu ve Sporcu Kaydı", "Voleybol spor okulunuzu akademiye kaydedin veya onaylı okul kodunuzla sporcu profilinizi oluşturun."],
   "registered-schools": ["Kayıtlı Voleybol Spor Okulları", "Online Voleybol Akademisine kayıtlı spor okullarını isimleri ve kulüp logolarıyla inceleyin."],
