@@ -5,6 +5,7 @@ export const pageRoutes = {
   exams: "/sinavlar/", "junior-referee": "/junior-hakem/", demo: "/demo/",
   blog: "/voleybol-blog/",
   "volleyball-ai": "/voleybol-ai/",
+  admin: "/yonetici/",
   faq: "/sik-sorulan-sorular/",
   pricing: "/ucretler/", register: "/kayit/", "registered-schools": "/kayitli-spor-okullari/",
   profiles: "/giris/", about: "/hakkimizda/", contact: "/iletisim/",
@@ -52,6 +53,7 @@ const metaByPage = {
   "registered-schools": ["Kayıtlı Voleybol Spor Okulları", "Online Voleybol Akademisine kayıtlı spor okullarını isimleri ve kulüp logolarıyla inceleyin."],
   profiles: ["Voleybol Akademisi Giriş", "Kayıtlı spor okulu veya sporcu hesabınızla Online Voleybol Akademisine giriş yapın."],
   demo: ["Online Voleybol Akademisi Demo", "Ders, eğitim videosu ve sınav modüllerinin örnek kullanımını inceleyin."],
+  admin: ["Yönetici Alanı | Online Voleybol Akademisi", "Voleybol Akademisi güvenli içerik yönetimi alanı."],
 };
 
 export function seoFor(page, course) {
@@ -61,5 +63,5 @@ export function seoFor(page, course) {
     path: routeFor(page, course), noindex: true,
   };
   const [title, description] = metaByPage[page] || [`${String(page).replace(/-/g, " ")} | Voleybol Akademisi`, "Online Voleybol Akademisi bilgi sayfası."];
-  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses"].includes(page) };
+  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "admin"].includes(page) };
 }
