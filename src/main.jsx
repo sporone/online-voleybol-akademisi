@@ -6022,6 +6022,11 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       || readAthletes().find((athlete) => String(athlete.schoolName || "").trim().toLocaleLowerCase("tr") === key && athlete.teamLogo)?.teamLogo
       || "";
   };
+  const matchesSchool = (person, school) => {
+    if (!person || !school) return false;
+    if (person.schoolId && school.id) return String(person.schoolId) === String(school.id) && String(person.schoolCode) === String(school.code);
+    return String(person.schoolName || "").trim().toLocaleLowerCase("tr") === String(school.schoolName || "").trim().toLocaleLowerCase("tr") && String(person.schoolCode) === String(school.code);
+  };
   const submit = (event) => {
     event.preventDefault(); setNotice("");
     const data = new FormData(event.currentTarget);
@@ -6039,7 +6044,8 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       setSession(clubSession); onSessionChange(clubSession);
     } else if (type === "athlete") {
       const athleteName = String(data.get("athleteName") || "").trim();
-      const athlete = readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && item.schoolCode === schoolCode && item.name.toLocaleLowerCase("tr") === athleteName.toLocaleLowerCase("tr"));
+      const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
+      const athlete = readAthletes().find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === athleteName.toLocaleLowerCase("tr"));
       if (!athlete) { setNotice("Sporcu adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentAthleteId", athlete.id);
       markSessionActivity();
@@ -6053,7 +6059,8 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
       setSession(athleteSession); onSessionChange(athleteSession); onActivityChange();
     } else {
       const trainerName = String(data.get("trainerName") || "").trim();
-      const trainer = trainers.find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.schoolCode) === schoolCode && item.name.toLocaleLowerCase("tr") === trainerName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
+      const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
+      const trainer = trainers.find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === trainerName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
       if (!trainer) { setNotice("Antrenör adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
       localStorage.setItem("volleyballCurrentTrainerId", trainer.id);
       markSessionActivity();
@@ -6078,13 +6085,15 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     onSessionChange(null); setSession(null); setNotice("");
   };
   if (session?.type === "club") {
-    const members = readAthletes().filter((athlete) => athlete.schoolName.toLocaleLowerCase("tr") === session.school.schoolName.toLocaleLowerCase("tr") && athlete.schoolCode === String(session.school.code));
+    const members = readAthletes().filter((athlete) => matchesSchool(athlete, session.school));
+    const clubTrainers = trainers.filter((trainer) => matchesSchool(trainer, session.school));
     const teamLogo = session.school.teamLogo || members.find((athlete) => athlete.teamLogo)?.teamLogo || "";
     return <div className="page profile-area">
       <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={session.school.schoolName}/> : <School/>}</div><span><small>KULÜP PROFİLİ</small><h1>{session.school.schoolName}</h1><p>Kullanıcı kodu: <b>{session.school.code}</b></p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
-      <div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><WifiOff/><span><b>{members.filter(isAthleteActive).length}</b><small>Şu anda aktif</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div>
+      <div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><GraduationCap/><span><b>{clubTrainers.length}</b><small>Kayıtlı antrenör</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div>
       <ClubCodeShare school={session.school}/>
       <section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
+      <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=><article key={trainer.id}><span className="member-role-icon"><GraduationCap/></span><span><b>{trainer.name}</b><small>{trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{trainer.status || "AKTİF"}</em></article>)}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler bu okulun kayıt kimliği ve koduyla eşleştiğinde yalnızca burada listelenir.</p></div>}</section>
     </div>;
   }
   if (session?.type === "trainer") {

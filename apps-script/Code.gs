@@ -36,6 +36,7 @@ function updateAthletePresence_(body){
   if(index<0) return json_({ok:false,error:'Sporcu bulunamadı.'});
   const row=index+2;
   sh.getRange(row,9,1,2).setValues([[online,new Date()]]);
+  rebuildSchoolRosterById_(sh.getRange(row,2).getDisplayValue());
   return json_({ok:true,id:id,online:online});
 }
 
@@ -52,6 +53,7 @@ function registerSchool_(body){
     if(duplicate) return json_({ok:false,error:'Bu okul veya telefon numarası daha önce kaydedilmiş.'});
     const code=uniqueSchoolCode_(sh), id='OKL-'+Utilities.getUuid().slice(0,8).toUpperCase();
     sh.appendRow([id,schoolName,phone,code,'BEKLİYOR',new Date(),'','','','','']);
+    getSchoolRosterSheet_(schoolName,id);
     return json_({ok:true,id:id,code:code,status:'BEKLİYOR'});
   }finally{lock.releaseLock()}
 }
@@ -75,17 +77,52 @@ function registerAthlete_(body){
     if(!/^(kadin|erkek)-voleybolcu-[1-6]$/.test(avatarId)) return json_({ok:false,error:'Profil seçimi geçersiz.'});
     const inheritedLogo=school[10]||(athleteRows.find(r=>normalize_(r[2])===normalize_(school[1])&&/^https?:\/\//.test(r[7]))||[])[7]||'';
     sh.appendRow([id,school[0],school[1],code,athleteName,avatarId,avatarName||avatarId,inheritedLogo,false,'',new Date()]);
+    rebuildSchoolRosterById_(school[0]);
     return json_({ok:true,id:id,teamLogo:inheritedLogo});
   }finally{lock.releaseLock()}
 }
 
 function onEdit(e){
-  const sh=e.range.getSheet(); if(sh.getName()!=='Okul Kayitlari'||e.range.getColumn()!==5||e.range.getRow()<2) return;
-  const row=e.range.getRow(), status=String(e.value||'');
-  if(status!=='ONAYLANDI') return;
-  const school=sh.getRange(row,2).getDisplayValue(), phone=sh.getRange(row,3).getDisplayValue().replace(/\D/g,''), code=sh.getRange(row,4).getDisplayValue();
-  const message='Okul kaydınız onaylandı. Kullanıcı: '+school+' | 6 haneli giriş kodunuz: '+code;
-  sh.getRange(row,7).setValue(new Date()); sh.getRange(row,8).setValue(message); sh.getRange(row,9).setFormula('=HYPERLINK("https://wa.me/'+phone+'?text='+encodeURIComponent(message)+'","WhatsApp ile gönder")');
+  const sh=e.range.getSheet(), name=sh.getName(), row=e.range.getRow();
+  if(row<2) return;
+  if(name==='Okul Kayitlari'){
+    if(e.range.getColumn()===5&&String(e.value||'')==='ONAYLANDI'){
+      const school=sh.getRange(row,2).getDisplayValue(), phone=sh.getRange(row,3).getDisplayValue().replace(/\D/g,''), code=sh.getRange(row,4).getDisplayValue();
+      const message='Okul kaydınız onaylandı. Kullanıcı: '+school+' | 6 haneli giriş kodunuz: '+code;
+      sh.getRange(row,7).setValue(new Date()); sh.getRange(row,8).setValue(message); sh.getRange(row,9).setFormula('=HYPERLINK("https://wa.me/'+phone+'?text='+encodeURIComponent(message)+'","WhatsApp ile gönder")');
+    }
+    rebuildSchoolRosterById_(sh.getRange(row,1).getDisplayValue());
+    return;
+  }
+  if(name==='Sporcu Kayitlari'||name==='Antrenor Kayitlari') rebuildSchoolRosterById_(sh.getRange(row,2).getDisplayValue());
+}
+
+const SCHOOL_ROSTER_HEADERS=['Kayıt Türü','Kullanıcı ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Kullanıcı Adı','Görev','Profil Kodu','Profil Görseli','Takım Logosu','Durum','Çevrim İçi','Son Görülme','Kayıt Tarihi'];
+function schoolRosterSheetName_(schoolName,schoolId){
+  const safe=clean_(schoolName,70).replace(/[\\\/?*\[\]:]/g,' ').replace(/\s+/g,' ').trim()||'Okul';
+  const suffix=String(schoolId||'').replace(/^OKL-/,'').slice(-6);
+  return ('OKUL - '+safe+(suffix?' - '+suffix:'')).slice(0,99);
+}
+function getSchoolRosterSheet_(schoolName,schoolId){return getOrCreate_(schoolRosterSheetName_(schoolName,schoolId),SCHOOL_ROSTER_HEADERS)}
+function rebuildSchoolRosterById_(schoolId){
+  if(!schoolId) return;
+  const ss=SpreadsheetApp.getActive(), schools=ss.getSheetByName('Okul Kayitlari');
+  if(!schools||schools.getLastRow()<2) return;
+  const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>r[0]===schoolId);
+  if(!school) return;
+  const target=getSchoolRosterSheet_(school[1],school[0]);
+  if(target.getLastRow()>1) target.getRange(2,1,target.getLastRow()-1,SCHOOL_ROSTER_HEADERS.length).clearContent();
+  const output=[], athletes=ss.getSheetByName('Sporcu Kayitlari'), trainers=ss.getSheetByName('Antrenor Kayitlari');
+  if(athletes&&athletes.getLastRow()>1) athletes.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Sporcu',r[0],r[1],r[2],r[3],r[4],'Sporcu',r[5],r[6],r[7],'AKTİF',r[8],r[9],r[10]]));
+  if(trainers&&trainers.getLastRow()>1) trainers.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Antrenör',r[0],r[1],r[2],r[3],r[4],r[5],'','',r[6],r[7],'','',r[8]]));
+  if(output.length) target.getRange(2,1,output.length,SCHOOL_ROSTER_HEADERS.length).setValues(output);
+  target.setFrozenRows(1); target.autoResizeColumns(1,SCHOOL_ROSTER_HEADERS.length);
+}
+function syncSchoolRosterSheets(){
+  const sh=SpreadsheetApp.getActive().getSheetByName('Okul Kayitlari');
+  if(!sh||sh.getLastRow()<2) return 0;
+  const ids=sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat().filter(Boolean);
+  ids.forEach(rebuildSchoolRosterById_); return ids.length;
 }
 
 function getOrCreate_(name,headers){
