@@ -138,7 +138,10 @@ export const individualTrainingVideos = rows.map(([groupKey, videoNo, title, id]
     groupKey,
     fallback: group.cover,
     thumbnail: `https://drive.google.com/thumbnail?id=${id}&sz=w900`,
-    source: `http://www.bewegungskompetenzen.at/2020/images/videos/${videoNo}.mp4#t=1`,
+    // The original host is HTTP-only and mobile browsers block it on the
+    // HTTPS production site. Playback therefore uses the secure Drive embed.
+    source: null,
+    originalSource: `http://www.bewegungskompetenzen.at/2020/images/videos/${videoNo}.mp4#t=1`,
     preview: `https://drive.google.com/file/d/${id}/preview?autoplay=1&loop=1`,
     view: `https://drive.google.com/file/d/${id}/view`,
     practice: practiceDetails(videoNo, translatedTitle, group.name),

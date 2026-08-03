@@ -6211,10 +6211,10 @@ function TrainingVideosPage() {
         <div className="video-player-panel">
           <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
           <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
-            {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen" allowFullScreen />}
+            {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen loading="eager" referrerPolicy="strict-origin-when-cross-origin" />}
             {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}>{selected.source ? <video src={selected.source} muted playsInline preload="metadata" aria-label={`${selected.title} video ön izlemesi`}/> : <img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/>}<span><Play/> Videoyu başlat</span></button>}
           </div>
-          <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır.</p>
+          <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. <a className="video-mobile-fallback" href={selected.view} target="_blank" rel="noreferrer">Video açılmazsa güvenli oynatıcıda aç</a></p>
           {selected.practice && <div className="video-practice-info"><article><Users/><span><small>SPORCU SAYISI</small><b>{selected.practice.athletes} sporcu</b></span></article><article><CircleDot/><span><small>TOP SAYISI</small><b>{selected.practice.balls} top</b></span></article><article><Target/><span><small>ÇALIŞMA AMACI</small><b>{selected.practice.goal}</b></span></article><article className="practice-advice"><Dumbbell/><span><small>ANTRENÖR ÖNERİSİ</small><b>{selected.practice.advice}</b></span></article></div>}
         </div>
         <aside className="video-playlist-panel" aria-label="Video oynatma listesi">
