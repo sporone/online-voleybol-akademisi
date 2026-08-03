@@ -19,6 +19,12 @@ export const technicalCards = [
   ["1Zbqvrt2j1AQTeSf5gU62S6HTTlVQlTiNUxHUQrva8ZU","Ayak Çalışması","Temel Teknik"],
   ["1rHjwjiGKLaVL72GOcOVHkBODGkGeQl89TiWUM-1Iv6U","Arka Alan Savunması","Savunma"],
   ["1-Xwj196_5zRs1hH1LyYpjUKLnzUuP3wRPB0D82JDTcg","Alttan Servis","Servis"],
-].map(([id,title,category],index)=>({id,title,category,number:index+1}));
+].map(([id,title,category],index)=>({
+  id,
+  title,
+  category,
+  number:index+1,
+  image:`/technical-cards/${String(index+1).padStart(2,"0")}.png`,
+}));
 
 export const technicalCardCategories = ["Tümü","Temel Teknik","Pas","Servis","Hücum","Blok","Savunma","Taktik"];
