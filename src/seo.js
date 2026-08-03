@@ -2,6 +2,7 @@ export const SITE_URL = "https://voleybolokullari.com.tr";
 
 export const pageRoutes = {
   home: "/", courses: "/voleybol-dersleri/", videos: "/egitim-videolari/",
+  "technical-cards": "/voleybol-teknik-kartlari/",
   exams: "/sinavlar/", "junior-referee": "/junior-hakem/", demo: "/demo/",
   blog: "/voleybol-blog/",
   "volleyball-ai": "/voleybol-ai/",
@@ -42,6 +43,7 @@ export const resolveRoute = (pathname, courses) => {
 const metaByPage = {
   home: ["Online Voleybol Akademisi | Voleybol Okulları", "Voleybolcular ve spor okulları için teknik, taktik, mental hazırlık ve performans odaklı çevrim içi eğitim platformu."],
   courses: ["Voleybol Dersleri ve Eğitim Programları", "Parmak pas, manşet, servis, smaç, blok, pozisyon ve performans konularında başlangıçtan ileri seviyeye voleybol dersleri."],
+  "technical-cards": ["Voleybol Teknik Kartları | A4 Eğitim Belgeleri", "Parmak pas, manşet, servis, smaç, blok ve savunma teknikleri için A4 voleybol eğitim kartlarını görüntüleyin; Word veya PDF olarak indirin."],
   videos: ["Voleybol Eğitim Videoları", "Voleybol tekniklerini hareket örnekleriyle öğrenebileceğiniz mobil uyumlu eğitim video kütüphanesi."],
   exams: ["Voleybol Sınavları ve Değerlendirmeler", "Voleybol derslerine göre hazırlanmış çoktan seçmeli sınavlarla bilgilerinizi ölçün."],
   "junior-referee": ["Junior Hakem Akademisi | Voleybol Hakemliği", "Gençler için voleybol kuralları, örnek olaylar, hakem kararları ve gözlemci görevleri eğitim alanı."],
@@ -54,6 +56,8 @@ const metaByPage = {
   profiles: ["Voleybol Akademisi Giriş", "Kayıtlı spor okulu veya sporcu hesabınızla Online Voleybol Akademisine giriş yapın."],
   demo: ["Online Voleybol Akademisi Demo", "Ders, eğitim videosu ve sınav modüllerinin örnek kullanımını inceleyin."],
   admin: ["Yönetici Alanı | Online Voleybol Akademisi", "Voleybol Akademisi güvenli içerik yönetimi alanı."],
+  privacy: ["Gizlilik ve Kişisel Verilerin Korunması | Voleybol Akademisi", "Online Voleybol Akademisi okul, sporcu ve antrenör verilerinin işlenmesi, güvenliği, saklanması ve KVKK kapsamındaki haklar hakkında ayrıntılı gizlilik politikası."],
+  coaches: ["Eğitmenlerimiz | Online Voleybol Akademisi", "Online Voleybol Akademisi beden eğitimi, spor, dijital geliştirme ve içerik alanlarında görev alan eğitmen ve uzman profilleri."],
 };
 
 export function seoFor(page, course) {
@@ -63,5 +67,5 @@ export function seoFor(page, course) {
     path: routeFor(page, course), noindex: true,
   };
   const [title, description] = metaByPage[page] || [`${String(page).replace(/-/g, " ")} | Voleybol Akademisi`, "Online Voleybol Akademisi bilgi sayfası."];
-  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "admin"].includes(page) };
+  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "technical-cards", "admin"].includes(page) };
 }

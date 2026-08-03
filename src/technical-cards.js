@@ -1,0 +1,24 @@
+export const technicalCards = [
+  ["15KEBNISdKwYcyMUFResZd5-OLm5FJT8LQ4AALnk7dFI","Hazır Duruş","Temel Teknik"],
+  ["18jyir_1uTB_fSpvcXSv2uFcxy0J0y380Ud1rRAE2bwg","Üstten Servis","Servis"],
+  ["179B3FDsI6wHArDfjZCONXEjI6Co3kCzb5Ok9IJQfyxg","Tip Vuruşu","Hücum"],
+  ["1EgDFHKdRqyJzCAhzRt5V07pgZxQkLyhHVnM2nxRPLMY","Tekli Blok","Blok"],
+  ["1aEHAfrWCWqoxG7ZBPyDFL5i6QTe7Njnq58nLJCYvTUM","Smaç Vuruş Tekniği","Hücum"],
+  ["1mJfQyYQL_opKEyzvchutEACRKNmLPMAQBa5TV_FQyFs","Smaç Servis","Servis"],
+  ["13tyPgRNdo_pYxlV-eYpNDorBN8PrVBqzsycOkROpyJg","Smaç Adımlaması","Hücum"],
+  ["1ZOKlx_K2Aq7YlYLQvpQdlT8JuR8t4T7m0-6kDuDVrp0","Servis Karşılama","Savunma"],
+  ["1ki0CKwyfIhoSTC9yav2m5Ls99B8yAPEUGvudVrMrRi4","Serbest Top Karşılama","Savunma"],
+  ["1z1ohhExJjSdJ1EZwMMpZkMC3JwdG8LJKcAOLWeE9MWM","Plase","Hücum"],
+  ["1dmaWqOn0Q5qu8pCkpwAMr5N8oqwU5bDNpW7QnueIcoM","Parmak Pas","Pas"],
+  ["1JMQfQG2sb_xDEoYEP5L2ki3Z6TxaOLuhHkGkmQp9exo","Manşet Pas","Pas"],
+  ["1QWFiRyfvCdRo-U-rUPk7XdaQoFgcfXgBuNKKGOzY3Q4","İkili Blok","Blok"],
+  ["1npfYAPM0lgGWMI7O5yf1-QQy0LzFrn99bjaZZ5CsEcM","Geçiş Oyunu","Taktik"],
+  ["1b8dGgJhWcd1sn-zdBbvxJU9uakdupFSOTE2YFNnVir4","Float Servis","Servis"],
+  ["1zTyjOg_7sou9tUXFldzO9S7eh2phrgFP87LNP17KQZE","Düşerek Savunma","Savunma"],
+  ["1RVRSqZx9NUoMTBMv0qr3np8r6MYxQv3qpX-nM17K4rI","Blok Hazırlık Pozisyonu","Blok"],
+  ["1Zbqvrt2j1AQTeSf5gU62S6HTTlVQlTiNUxHUQrva8ZU","Ayak Çalışması","Temel Teknik"],
+  ["1rHjwjiGKLaVL72GOcOVHkBODGkGeQl89TiWUM-1Iv6U","Arka Alan Savunması","Savunma"],
+  ["1-Xwj196_5zRs1hH1LyYpjUKLnzUuP3wRPB0D82JDTcg","Alttan Servis","Servis"],
+].map(([id,title,category],index)=>({id,title,category,number:index+1}));
+
+export const technicalCardCategories = ["Tümü","Temel Teknik","Pas","Servis","Hücum","Blok","Savunma","Taktik"];

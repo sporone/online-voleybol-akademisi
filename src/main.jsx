@@ -46,6 +46,8 @@ import {
   Settings,
   Save,
   KeyRound,
+  Download,
+  FileText,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
@@ -59,11 +61,15 @@ import "./registered-schools.css";
 import "./junior-referee.css";
 import "./blog.css";
 import "./admin.css";
+import "./privacy.css";
+import "./coaches.css";
+import "./technical-cards.css";
 import VolleyballAIPage from "./volleyball-ai.jsx";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
 import { individualTrainingVideos, individualVideoTopics } from "./individual-video-library.js";
+import { technicalCards, technicalCardCategories } from "./technical-cards.js";
 import { SITE_URL, resolveRoute, routeFor, seoFor } from "./seo.js";
 import { initAnalytics } from "./analytics.js";
 const Instagram = Heart,
@@ -425,7 +431,7 @@ function App() {
     setMeta('link[rel="canonical"]', "href", `${SITE_URL}${seo.path}`);
   }, [page, selectedCourse]);
   useEffect(() => {
-    const protectedPages = ["courses", "course", "lesson", "videos", "exams"];
+    const protectedPages = ["courses", "course", "lesson", "videos", "exams", "technical-cards"];
     if (protectedPages.includes(page) && !currentAthlete && !currentClub && !currentTrainer) {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       setPage("profiles");
@@ -580,6 +586,8 @@ function App() {
           <HomePage go={go} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} />
         ) : page === "courses" ? (
           <Courses go={go} />
+        ) : page === "technical-cards" ? (
+          <TechnicalCardsPage account={currentAthlete || currentTrainer || currentClub} />
         ) : page === "course" ? (
           <CourseDetail course={selectedCourse} go={go} />
         ) : page === "lesson" ? (
@@ -605,6 +613,10 @@ function App() {
           <AdminPage />
         ) : page === "faq" ? (
           <FAQPage go={go} />
+        ) : page === "privacy" ? (
+          <PrivacyPage go={go} />
+        ) : page === "coaches" ? (
+          <CoachesPage />
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
@@ -1036,6 +1048,10 @@ function BlogPage() {
 }
 
 function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout }) {
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [courseMenuOpen, setCourseMenuOpen] = useState(false);
+  const accountMenuRef = useRef(null);
+  const courseMenuRef = useRef(null);
   const visibleNav = isAuthenticated
     ? nav.filter(([key]) => !["profiles", "demo", "pricing", "register"].includes(key))
     : nav.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
@@ -1043,6 +1059,22 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
       || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
     : "";
+  const accountSchool = account?.id?.startsWith?.("OKL-")
+    ? account
+    : readSchools().find((school) => school.id === account?.schoolId || (school.schoolName === account?.schoolName && String(school.code) === String(account?.schoolCode)));
+  const belongsToAccountSchool = (person) => accountSchool && (person.schoolId && accountSchool.id
+    ? String(person.schoolId) === String(accountSchool.id)
+    : person.schoolName === accountSchool.schoolName && String(person.schoolCode) === String(accountSchool.code));
+  const accountAthleteCount = readAthletes().filter(belongsToAccountSchool).length;
+  const accountTrainerCount = readTrainers().filter(belongsToAccountSchool).length;
+  useEffect(() => {
+    const close = (event) => {
+      if (!accountMenuRef.current?.contains(event.target)) setAccountOpen(false);
+      if (!courseMenuRef.current?.contains(event.target)) setCourseMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
   return (
     <header className="header">
       <button
@@ -1058,18 +1090,17 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
         </span>
       </button>
       <nav className={menu ? "nav open" : "nav"} aria-label="Ana menü">
-        {visibleNav.map(([k, v, Icon]) => (
-          <button
-            className={page === k ? "active" : ""}
-            onClick={() => go(k)}
-            key={k}
-          >
-            <Icon aria-hidden="true" /> <span>{v}</span>
-          </button>
+        {visibleNav.map(([k, v, Icon]) => k === "courses" ? <div className={`course-nav-menu ${courseMenuOpen ? "open" : ""}`} ref={courseMenuRef} key={k}><button className={["courses","course","lesson","technical-cards"].includes(page)?"active":""} onClick={()=>setCourseMenuOpen((value)=>!value)} aria-expanded={courseMenuOpen}><Icon aria-hidden="true"/><span>{v}</span><ChevronDown/></button>{courseMenuOpen&&<div className="course-nav-dropdown"><button onClick={()=>{setCourseMenuOpen(false);go("courses")}}><BookOpen/><span><b>Tüm Dersler</b><small>Voleybol eğitim kütüphanesi</small></span></button><button onClick={()=>{setCourseMenuOpen(false);go("technical-cards")}}><FileText/><span><b>Teknik Kartlar</b><small>A4 eğitim belgeleri</small></span></button></div>}</div> : (
+          <button className={page === k ? "active" : ""} onClick={() => go(k)} key={k}><Icon aria-hidden="true"/><span>{v}</span></button>
         ))}
-        {isAuthenticated && account && <div className="header-account">
-          <button className="account-profile" onClick={() => go("profiles")} aria-label="Hesap profilini aç"><span className="account-visual">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span><small>HESABIM</small>{account.name || account.schoolName}</span></button>
-          <button className="account-logout" onClick={onLogout} aria-label="Web sitesinden çıkış yap"><LogOut/><span>Çıkış Yap</span></button>
+        {isAuthenticated && account && <div className={`header-account ${accountOpen ? "open" : ""}`} ref={accountMenuRef}>
+          <button className="account-profile" onClick={() => setAccountOpen((value) => !value)} aria-label="Hesap menüsünü aç" aria-expanded={accountOpen}><span className="account-visual">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span className="account-label"><small>HESABIM</small></span><ChevronDown className="account-chevron"/></button>
+          {accountOpen && <div className="account-dropdown">
+            <header><span className="account-dropdown-logo">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span><small>AKTİF HESAP</small><b>{account.name || account.schoolName}</b><em>{accountSchool?.schoolName || account.schoolName || "Voleybol Akademisi"}</em></span></header>
+            <div className="account-dropdown-stats"><span><Users/><b>{accountAthleteCount}</b><small>Sporcu</small></span><span><GraduationCap/><b>{accountTrainerCount}</b><small>Antrenör</small></span></div>
+            <button className="account-dropdown-profile" onClick={() => { setAccountOpen(false); go("profiles"); }}><UserRound/><span><b>Profil</b><small>Hesap ve kulüp bilgilerini aç</small></span><ArrowRight/></button>
+            <button className="account-dropdown-logout" onClick={() => { setAccountOpen(false); onLogout(); }}><LogOut/> Çıkış Yap</button>
+          </div>}
         </div>}
       </nav>
       <button
@@ -6252,6 +6283,72 @@ function InfoPage() {
       </button>
     </div>
   );
+}
+
+const privacySections = [
+  { id:"kapsam", title:"1. Politikanın kapsamı", icon:<ShieldCheck/>, content:<><p>Bu Gizlilik ve Kişisel Verilerin Korunması Politikası; <b>voleybolokullari.com.tr</b> alan adlı Online Voleybol Akademisi’nde okul, sporcu ve antrenör hesaplarının kullanımı sırasında işlenen verileri açıklar.</p><p>Platform yalnızca voleybol eğitim hizmeti sunar. Bu metin; kayıt, giriş, ders, eğitim videosu, sınav, kulüp profili, çevrim içi görünürlük ve iletişim işlemlerini kapsar.</p></> },
+  { id:"veriler", title:"2. İşlenen kişisel veriler", icon:<Users/>, content:<><p>Hizmetin kullanılan bölümüne göre aşağıdaki sınırlı veriler işlenebilir:</p><ul><li><b>Spor okulu bilgileri:</b> okul adı, telefon numarası, okul kayıt kimliği, 6 haneli giriş kodu, onay durumu ve takım logosu.</li><li><b>Sporcu bilgileri:</b> kullanıcı adı, bağlı okul, profil görseli seçimi, profil kimliği, çevrim içi durumu ve son görülme zamanı.</li><li><b>Antrenör bilgileri:</b> ad veya kullanıcı adı, görev, bağlı okul, hesap durumu ve profil kimliği.</li><li><b>Eğitim kayıtları:</b> girilen sınavlar, puanlar, geçme durumu ve tamamlanma zamanı.</li><li><b>Teknik bilgiler:</b> oturumun devamını sağlayan tarayıcı kayıtları, güvenlik kontrolleri ve hata bilgileri.</li></ul><p>Platform, kayıt için gerekli olmayan sağlık verisi, ödeme kartı bilgisi veya hassas kimlik belgesi talep etmez.</p></> },
+  { id:"amac", title:"3. Verilerin işlenme amaçları", icon:<Target/>, content:<><ul><li>Okul kayıt talebini almak ve yönetici onayını yürütmek.</li><li>Sporcu ve antrenörü doğru okul hesabıyla eşleştirmek.</li><li>Kulüp profilinde yalnızca o kulübe bağlı kişileri göstermek.</li><li>Ders, video ve sınav erişimini kayıtlı kullanıcılara sunmak.</li><li>Sınav sonuçlarını ve eğitim ilerlemesini ilgili kullanıcı ve okul bazında göstermek.</li><li>Oturum güvenliğini, kötüye kullanım önlemlerini ve sistem sürekliliğini sağlamak.</li><li>Kullanıcının başlattığı WhatsApp iletişimi için hazır mesaj oluşturmak.</li></ul></> },
+  { id:"hukuk", title:"4. Hukuki sebepler ve toplama yöntemi", icon:<ClipboardCheck/>, content:<><p>Veriler; web formları, kullanıcı işlemleri, okul yöneticisinin veri güncellemeleri ve platformun teknik kayıt mekanizmaları aracılığıyla elektronik ortamda elde edilir.</p><p>İşleme faaliyetleri, 6698 sayılı Kişisel Verilerin Korunması Kanunu’nun 5. maddesinde yer alan <b>bir sözleşmenin kurulması veya ifası, hukuki yükümlülük, bir hakkın tesisi veya korunması ve temel haklara zarar vermemek kaydıyla meşru menfaat</b> şartlarına dayanabilir. Açık rıza gereken ayrı bir işlem oluşursa rıza, aydınlatma metninden ayrı olarak alınır.</p></> },
+  { id:"cocuklar", title:"5. Çocuk ve genç sporcuların verileri", icon:<Heart/>, content:<><p>Platformda çocuk veya genç sporcuların kullanıcı adı ve profil görseli bulunabilir. Sporcu kaydı, onaylı spor okulunun 6 haneli koduyla yapılır. Spor okulu; yaşa göre gerekli veli bilgilendirmesini ve iznini almaktan sorumludur.</p><p>Gerçek fotoğraf yerine sistem tarafından sunulan avatarların kullanılması önerilir. Çocuklardan açık adres, kimlik numarası, sağlık raporu veya okul dışı özel iletişim bilgileri istenmez. Veli veya yasal temsilci, çocuğa ait kaydın düzeltilmesini ya da kaldırılmasını talep edebilir.</p></> },
+  { id:"aktarim", title:"6. Hizmet sağlayıcılar ve veri aktarımı", icon:<Share2/>, content:<><p>Veriler, hizmetin çalışması için gerekli olduğu ölçüde barındırma, veri tablosu ve otomasyon hizmeti sağlayıcılarının teknik altyapısında işlenebilir. Bu sağlayıcılara yalnızca hizmetin sunulması için gereken kapsamda erişim verilir.</p><p>WhatsApp bağlantısı, kullanıcı düğmeye bastığında açılır; mesajın alıcısını ve gönderimini kullanıcı kendisi belirler. Platform mesajı kullanıcı adına otomatik olarak göndermez. Yasal zorunluluk bulunmadıkça kişisel veriler reklam amacıyla satılmaz veya ilgisiz üçüncü kişilerle paylaşılmaz.</p></> },
+  { id:"saklama", title:"7. Saklama, güvenlik ve silme", icon:<LockKeyhole/>, content:<><p>Kayıt verileri üyelik veya okul ilişkisi devam ettiği sürece; sınav ve işlem kayıtları hizmetin yürütülmesi ve olası uyuşmazlıkların yönetilmesi için gerekli makul süre boyunca saklanır. Süre sonunda veriler silinir, yok edilir veya kimliği belirlenemeyecek hale getirilir.</p><ul><li>Okullar birbirinden benzersiz okul kayıt kimliği ve koduyla ayrılır.</li><li>Sporcu ve antrenörler yalnızca bağlı oldukları okul sayfasında listelenir.</li><li>Yönetim işlemleri yetki kontrolüyle sınırlandırılır.</li><li>İstemci tarafında servis hesabı anahtarı veya özel sunucu parolası tutulmaz.</li></ul><p>İnternet üzerinden yapılan hiçbir aktarım yüzde yüz risksiz değildir; buna rağmen makul teknik ve idari tedbirler uygulanır.</p></> },
+  { id:"oturum", title:"8. Çerezler ve tarayıcı depolaması", icon:<CircleDot/>, content:<><p>Platform; giriş oturumunu sürdürmek, seçilen profili hatırlamak, çevrim içi durumu yönetmek ve kullanıcı tercihlerini korumak için tarayıcının yerel ve oturum depolama alanlarını kullanabilir.</p><p>Bu kayıtlar ağırlıklı olarak zorunlu işlevler içindir. Tarayıcı ayarlarından silinebilir; ancak silinmeleri kullanıcının yeniden giriş yapmasını gerektirebilir. Üçüncü taraf ölçüm veya pazarlama çerezleri etkinleştirilirse kullanıcıya ayrıca bilgi verilir.</p></> },
+  { id:"haklar", title:"9. KVKK kapsamındaki haklarınız", icon:<CheckCircle2/>, content:<><p>KVKK’nın 11. maddesi kapsamında kişisel verinizin işlenip işlenmediğini öğrenme; işlenmişse bilgi isteme; amacına uygun kullanılıp kullanılmadığını öğrenme; aktarılan üçüncü kişileri bilme; eksik veya yanlış verinin düzeltilmesini, şartları oluştuğunda silinmesini ya da yok edilmesini ve bu işlemlerin aktarım yapılan kişilere bildirilmesini isteme haklarına sahipsiniz.</p><p>Ayrıca verilerin yalnızca otomatik sistemlerle analiz edilmesi sonucunda aleyhinize bir durum oluşmasına itiraz edebilir ve hukuka aykırı işleme nedeniyle zarara uğramanız halinde giderim talep edebilirsiniz.</p></> },
+  { id:"basvuru", title:"10. Başvuru ve iletişim", icon:<MessageCircle/>, content:<><p>Gizlilik, düzeltme veya silme taleplerinizde; ilgili okul adını, profil kimliğini ve talebinizi açıkça belirterek platform yönetimine ulaşabilirsiniz.</p><div className="privacy-contact"><span><small>VERİ SORUMLUSU / PLATFORM</small><b>Voleybol Okulları – Online Voleybol Akademisi</b></span><a href="https://wa.me/905557924758" target="_blank" rel="noreferrer"><MessageCircle/> 0555 792 47 58</a></div><p>Kimliğin doğrulanması için yalnızca talebi sonuçlandırmak üzere gerekli ek bilgiler istenebilir. Başvurular, yasal süreler içinde ücretsiz olarak değerlendirilir; işlemin ayrıca bir maliyet doğurması halinde mevzuattaki tarife uygulanabilir.</p></> },
+  { id:"guncelleme", title:"11. Politika güncellemeleri", icon:<RotateCcw/>, content:<><p>Platformun özellikleri veya mevzuat değiştiğinde bu politika güncellenebilir. Güncel metin her zaman bu sayfada yayımlanır. Önemli değişiklikler, uygun olduğu ölçüde site içinde ayrıca duyurulur.</p><p><b>Son güncelleme:</b> 3 Ağustos 2026</p></> },
+];
+
+function PrivacyPage({ go }) {
+  return <div className="privacy-page">
+    <section className="privacy-hero"><div><span className="eyebrow"><ShieldCheck/> GİZLİLİK VE VERİ GÜVENLİĞİ</span><h1>Verileriniz sahadaki güven kadar önemlidir.</h1><p>Hangi bilgileri neden kullandığımızı, nasıl koruduğumuzu ve haklarınızı açık bir dille anlatıyoruz.</p><div className="privacy-hero-meta"><span><LockKeyhole/><b>KVKK odaklı</b></span><span><Users/><b>Okul bazlı ayrım</b></span><span><CheckCircle2/><b>Şeffaf kullanım</b></span></div></div><div className="privacy-shield"><ShieldCheck/><span>GÜVENLİ<br/>AKADEMİ</span></div></section>
+    <div className="privacy-layout"><aside><small>İÇİNDEKİLER</small><nav>{privacySections.map((section)=><a key={section.id} href={`#${section.id}`}>{section.title}</a>)}</nav><div><CircleHelp/><p>Verilerinizle ilgili bir sorunuz mu var?</p><button onClick={()=>go("contact")}>İletişime geç</button></div></aside><article className="privacy-content"><header><small>AYDINLATMA METNİ</small><h2>Gizlilik Politikası</h2><p>Bu metin, veri işleme faaliyetlerini anlaşılır ve erişilebilir biçimde açıklamak amacıyla hazırlanmıştır.</p></header>{privacySections.map((section)=><section id={section.id} key={section.id}><div className="privacy-section-icon">{section.icon}</div><div><h2>{section.title}</h2>{section.content}</div></section>)}</article></div>
+  </div>;
+}
+
+const instructorProfiles = [
+  {
+    id:"kursat-bugra-karaoglan",
+    name:"Kürşat Buğra Karaoğlan",
+    image:"/instructors/kursat-bugra-karaoglan.png",
+    roles:["Beden Eğitimi ve Spor Öğretmeni","Vibe Coder","Sosyal Medya İçerik Sorumlusu"],
+    summary:"Spor eğitimi, dijital içerik üretimi ve teknoloji odaklı geliştirme çalışmalarını aynı çatı altında buluşturur. Online Voleybol Akademisi’nin eğitim deneyimi ve dijital içerik süreçlerinde görev alır.",
+    phone:"0555 792 47 58",
+    whatsapp:"905557924758",
+    linkedin:"https://www.linkedin.com/in/kursatbugrakaraoglan/",
+    instagram:"https://www.instagram.com/spor.one1/",
+  },
+];
+
+function CoachesPage() {
+  return <div className="coaches-page">
+    <section className="coaches-hero"><div><span className="eyebrow"><GraduationCap/> EĞİTMENLERİMİZ</span><h1>Bilgiyi, sporu ve teknolojiyi buluşturan ekip.</h1><p>Online Voleybol Akademisi’nin eğitim içeriklerini, dijital deneyimini ve iletişim çalışmalarını geliştiren uzmanlarla tanışın.</p><div className="coaches-hero-stats"><span><b>{instructorProfiles.length}</b><small>Aktif ekip üyesi</small></span><span><b>3</b><small>Uzmanlık alanı</small></span></div></div><div className="coaches-hero-mark"><GraduationCap/><span>UZMAN<br/>KADRO</span></div></section>
+    <section className="coaches-directory"><header><div><small>AKADEMİ EKİBİ</small><h2>Eğitmen ve uzman profilleri</h2></div><p>Yeni ekip üyeleri eklendikçe bu alanda kendi uzmanlıkları ve iletişim bilgileriyle listelenecektir.</p></header>
+      <div className="coach-grid">{instructorProfiles.map((coach)=><article className="coach-profile-card" key={coach.id}><div className="coach-photo"><img src={coach.image} alt={`${coach.name} profil fotoğrafı`}/><span><CircleDot/> Aktif ekip üyesi</span></div><div className="coach-profile-body"><small>BEDEN EĞİTİMİ · DİJİTAL GELİŞTİRME</small><h2>{coach.name}</h2><div className="coach-role-list">{coach.roles.map((role)=><span key={role}><CheckCircle2/>{role}</span>)}</div><p>{coach.summary}</p><div className="coach-contact"><a className="coach-whatsapp" href={`https://wa.me/${coach.whatsapp}`} target="_blank" rel="noreferrer"><MessageCircle/><span><small>İLETİŞİM</small><b>{coach.phone}</b></span></a><a href={coach.linkedin} target="_blank" rel="noreferrer" aria-label={`${coach.name} LinkedIn profili`}><Linkedin/><span>LinkedIn</span><ArrowRight/></a><a href={coach.instagram} target="_blank" rel="noreferrer" aria-label={`${coach.name} Instagram profili`}><Instagram/><span>Instagram</span><ArrowRight/></a></div></div></article>)}</div>
+    </section>
+  </div>;
+}
+
+function TechnicalCardsPage({ account }) {
+  const [selected, setSelected] = useState(null);
+  const [category, setCategory] = useState("Tümü");
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const term=query.trim().toLocaleLowerCase("tr");
+    return technicalCards.filter((card)=>(category==="Tümü"||card.category===category)&&(!term||card.title.toLocaleLowerCase("tr").includes(term)||card.category.toLocaleLowerCase("tr").includes(term)));
+  },[category,query]);
+  const docUrl=(id,mode="preview")=>`https://docs.google.com/document/d/${id}/${mode}`;
+  const schoolName = account?.schoolName || account?.name || "Voleybol Akademisi";
+  const shareCard = (card) => {
+    const pdfUrl = `${docUrl(card.id,"export")}?format=pdf`;
+    const message = `${schoolName} teknik kart paylaşımı\n\n${card.title}\nKategori: ${card.category}\n\nPDF dosyasını doğrudan indir:\n${pdfUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
+  return <div className="technical-cards-page">
+    <section className="technical-cards-hero"><div><span className="eyebrow"><FileText/> TEKNİK KART KÜTÜPHANESİ</span><h1>Tekniği incele,<br/><em>sahaya taşı.</em></h1><p>Voleybol hareketlerini tek sayfalık A4 eğitim kartlarıyla inceleyin; Word veya PDF biçiminde doğrudan indirin.</p><div><span><b>{technicalCards.length}</b><small>Teknik kart</small></span><span><b>A4</b><small>Tek sayfa düzeni</small></span><span><b>2</b><small>İndirme biçimi</small></span></div></div><div className="technical-paper-mark"><FileText/><b>A4</b><span>TEKNİK<br/>EĞİTİM KARTI</span></div></section>
+    <section className="technical-library"><header><div><small>BELGE ARŞİVİ</small><h2>Tüm teknik kartlar</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Teknik kart ara" aria-label="Teknik kartlarda ara"/></label></header><nav>{technicalCardCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}<b>{item==="Tümü"?technicalCards.length:technicalCards.filter((card)=>card.category===item).length}</b></button>)}</nav>{filtered.length?<div className="technical-card-grid">{filtered.map((card)=><article key={card.id}><button className="technical-card-select" onClick={()=>setSelected(card)}><span className="technical-card-page"><FileText/><img src={`https://drive.google.com/thumbnail?id=${card.id}&sz=w900`} alt={`${card.title} teknik kart çalışma görseli`} loading="lazy" onError={(event)=>{event.currentTarget.style.display="none"}}/><i>{String(card.number).padStart(2,"0")}</i></span><span><small>{card.category}</small><h3>{card.title}</h3><em>Ön izlemeyi aç <Eye/></em></span></button><div className="technical-card-actions"><a href={`${docUrl(card.id,"export")}?format=docx`} aria-label={`${card.title} Word belgesini indir`}><Download/> Word</a><a href={`${docUrl(card.id,"export")}?format=pdf`} aria-label={`${card.title} PDF belgesini indir`}><Download/> PDF</a><button type="button" onClick={()=>shareCard(card)} aria-label={`${card.title} kartını WhatsApp ile paylaş`}><MessageCircle/> WhatsApp</button></div></article>)}</div>:<div className="technical-empty"><Search/><h3>Teknik kart bulunamadı</h3><p>Arama kelimesini veya kategoriyi değiştirin.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
+    {selected&&<div className="technical-preview-modal" role="dialog" aria-modal="true" aria-label={`${selected.title} ön izlemesi`} onMouseDown={(event)=>{if(event.target===event.currentTarget)setSelected(null)}}><section><header><span><small>TEKNİK KART ÖN İZLEMESİ</small><h2>{selected.title}</h2><p>{selected.category} · Kart {String(selected.number).padStart(2,"0")}</p></span><button type="button" onClick={()=>setSelected(null)} aria-label="Ön izlemeyi kapat"><X/></button></header><div className="technical-modal-document"><iframe key={selected.id} src={docUrl(selected.id)} title={`${selected.title} teknik kart ön izlemesi`}/></div><footer><a href={`${docUrl(selected.id,"export")}?format=docx`}><Download/> Word İndir</a><a href={`${docUrl(selected.id,"export")}?format=pdf`}><Download/> PDF İndir</a><button type="button" onClick={()=>shareCard(selected)}><MessageCircle/> WhatsApp ile Paylaş</button></footer></section></div>}
+  </div>;
 }
 function Empty() {
   return (
