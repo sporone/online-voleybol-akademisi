@@ -6360,6 +6360,7 @@ function Empty() {
   );
 }
 function MobileNav({ page, go, isAuthenticated, isAthlete }) {
+  const [courseOpen, setCourseOpen] = useState(false);
   let xs = [
     ["home", Home, "Ana Sayfa"],
     ["courses", BookOpen, "Dersler"],
@@ -6376,18 +6377,23 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
   if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   return (
-    <nav className="mobile-nav">
+    <>
+      {courseOpen&&<button className="mobile-course-backdrop" type="button" aria-label="Dersler alt menüsünü kapat" onClick={()=>setCourseOpen(false)}/>}
+      {courseOpen&&<section className="mobile-course-menu" aria-label="Dersler alt menüsü"><header><span><small>DERSLER</small><b>Eğitim alanını seç</b></span><button type="button" onClick={()=>setCourseOpen(false)} aria-label="Dersler alt menüsünü kapat"><X/></button></header><button type="button" onClick={()=>{setCourseOpen(false);go("courses")}}><BookOpen/><span><b>Tüm Dersler</b><small>Voleybol eğitim kütüphanesi</small></span><ArrowRight/></button><button type="button" onClick={()=>{setCourseOpen(false);go("technical-cards")}}><FileText/><span><b>Teknik Kartlar</b><small>Görsel, Word ve PDF çalışma kartları</small></span><ArrowRight/></button></section>}
+      <nav className="mobile-nav">
       {xs.map(([k, I, t]) => (
         <button
-          className={page === k ? "active" : ""}
-          onClick={() => go(k)}
+          className={(page === k || (k==="courses"&&["course","lesson","technical-cards"].includes(page))) ? "active" : ""}
+          onClick={() => k === "courses" ? setCourseOpen((value)=>!value) : go(k)}
           key={k}
+          aria-expanded={k === "courses" ? courseOpen : undefined}
         >
           <I />
           <span>{t}</span>
         </button>
       ))}
-    </nav>
+      </nav>
+    </>
   );
 }
 const refereeDocumentId = "1ZqSdQGsJ8tXVjq5tgf53tb0drCZ4GdGjWI9IOjcWQtA";
