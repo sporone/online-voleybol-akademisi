@@ -52,6 +52,7 @@ import {
 import "./styles.css";
 import "./lesson-images.css";
 import "./video-library.css";
+import "./video-native-player.css";
 import "./video-layout-fix.css";
 import "./video-topics.css";
 import "./profile-area.css";
@@ -6159,6 +6160,7 @@ function TrainingVideosPage() {
   const [topic, setTopic] = useState("Tümü");
   const [selected, setSelected] = useState(trainingVideos[0]);
   const [playerStarted, setPlayerStarted] = useState(false);
+  const [nativePlaybackFailed, setNativePlaybackFailed] = useState(false);
   const [visible, setVisible] = useState(12);
   const [managedVideos, setManagedVideos] = useState(()=>applyManagedVideoOrder(trainingVideos));
   const videos = library === "individual" ? individualTrainingVideos : managedVideos;
@@ -6187,16 +6189,17 @@ function TrainingVideosPage() {
     const nextVideos = nextLibrary === "individual" ? individualTrainingVideos : trainingVideos;
     const nextTopic = nextLibrary === "individual" ? individualVideoTopics[0].name : "Tümü";
     setLibrary(nextLibrary); setTopic(nextTopic); setQuery(""); setVisible(12);
-    setSelected(nextVideos[0]); setPlayerStarted(false);
+    setSelected(nextVideos[0]); setPlayerStarted(false); setNativePlaybackFailed(false);
   };
   const selectPlaylistTopic = (nextTopic) => {
     const nextVideo = videos.find((video) => nextTopic === "Tümü" || video.topic === nextTopic);
-    setTopic(nextTopic); setVisible(12); setPlayerStarted(false);
+    setTopic(nextTopic); setVisible(12); setPlayerStarted(false); setNativePlaybackFailed(false);
     if (nextVideo) setSelected(nextVideo);
   };
   const choose = (video) => {
     setSelected(video);
     setPlayerStarted(false);
+    setNativePlaybackFailed(false);
     requestAnimationFrame(() => document.querySelector(".video-player-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   const playlistVideos = (topic === "Tümü" ? videos : filtered).slice(0, 40);
@@ -6211,7 +6214,8 @@ function TrainingVideosPage() {
         <div className="video-player-panel">
           <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
           <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
-            {playerStarted && <iframe key={selected.id} src={selected.preview} title={selected.title} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen loading="eager" referrerPolicy="strict-origin-when-cross-origin" />}
+            {playerStarted && selected.streamUrl && !nativePlaybackFailed && <video key={selected.id} className="video-native-player" src={selected.streamUrl} poster={selected.thumbnail || selected.fallback} controls autoPlay playsInline loop preload="metadata" onError={()=>setNativePlaybackFailed(true)}>Tarayıcınız video oynatmayı desteklemiyor.</video>}
+            {playerStarted && (!selected.streamUrl || nativePlaybackFailed) && <iframe key={`${selected.id}-fallback`} src={selected.preview} title={selected.title} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen loading="eager" referrerPolicy="strict-origin-when-cross-origin" />}
             {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}>{selected.source ? <video src={selected.source} muted playsInline preload="metadata" aria-label={`${selected.title} video ön izlemesi`}/> : <img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/>}<span><Play/> Videoyu başlat</span></button>}
           </div>
           <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. <a className="video-mobile-fallback" href={selected.view} target="_blank" rel="noreferrer">Video açılmazsa güvenli oynatıcıda aç</a></p>

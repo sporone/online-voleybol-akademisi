@@ -80,6 +80,7 @@ export const trainingVideos = ids.map((id, index) => {
   title,
   topic:topic.name,
   fallback:topic.cover,
+  streamUrl: `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`,
   preview: `https://drive.google.com/file/d/${id}/preview?autoplay=1&loop=1`,
   thumbnail: `/video-thumbs/${String(number).padStart(2,"0")}.jpg`,
   view: `https://drive.google.com/file/d/${id}/view`,
