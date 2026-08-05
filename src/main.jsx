@@ -48,6 +48,7 @@ import {
   KeyRound,
   Download,
   FileText,
+  Library,
 } from "lucide-react";
 import "./styles.css";
 import "./lesson-images.css";
@@ -65,7 +66,11 @@ import "./admin.css";
 import "./privacy.css";
 import "./coaches.css";
 import "./technical-cards.css";
+import "./bulletins.css";
+import "./ready365-library.css";
 import VolleyballAIPage from "./volleyball-ai.jsx";
+import BulletinsPage from "./bulletins.jsx";
+import Ready365LibraryPage from "./ready365-library.jsx";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
@@ -433,6 +438,18 @@ function App() {
   }, [page, selectedCourse]);
   useEffect(() => {
     const protectedPages = ["courses", "course", "lesson", "videos", "exams", "technical-cards"];
+    if (page === "bulletins" && !currentClub) {
+      setAuthNotice("Eğitim bültenleri yalnızca spor okulu hesabıyla kullanılabilir.");
+      setPage("profiles");
+      window.history.replaceState({ page: "profiles" }, "", routeFor("profiles"));
+      return;
+    }
+    if (page === "ready365-library" && !currentClub && !currentTrainer) {
+      setAuthNotice("Bu eğitim kütüphanesi yalnızca spor okulu ve antrenör hesaplarına açıktır.");
+      setPage("profiles");
+      window.history.replaceState({ page: "profiles" }, "", routeFor("profiles"));
+      return;
+    }
     if (protectedPages.includes(page) && !currentAthlete && !currentClub && !currentTrainer) {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       setPage("profiles");
@@ -548,6 +565,14 @@ function App() {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       p = "profiles";
     }
+    if (p === "bulletins" && !currentClub) {
+      setAuthNotice("Eğitim bültenleri yalnızca spor okulu hesabıyla kullanılabilir.");
+      p = "profiles";
+    }
+    if (p === "ready365-library" && !currentClub && !currentTrainer) {
+      setAuthNotice("Bu eğitim kütüphanesi yalnızca spor okulu ve antrenör hesaplarına açıktır.");
+      p = "profiles";
+    }
     if (course) setSelectedCourse(course);
     const nextCourse = course || selectedCourse;
     const nextPath = routeFor(p, nextCourse);
@@ -589,6 +614,10 @@ function App() {
           <Courses go={go} />
         ) : page === "technical-cards" ? (
           <TechnicalCardsPage account={currentAthlete || currentTrainer || currentClub} />
+        ) : page === "bulletins" ? (
+          <BulletinsPage club={currentClub} go={go} />
+        ) : page === "ready365-library" ? (
+          <Ready365LibraryPage account={currentClub || currentTrainer} go={go} />
         ) : page === "course" ? (
           <CourseDetail course={selectedCourse} go={go} />
         ) : page === "lesson" ? (
@@ -629,7 +658,7 @@ function App() {
         ) : page === "demo" ? (
           <DemoPage go={go} />
         ) : page === "profiles" ? (
-          <ProfilesPage initialNotice={authNotice} onActivityChange={() => setOnlineAthletes(readActiveAthletes())} onSessionChange={(session) => { setAuthNotice(""); if (session?.type === "club") { setCurrentClub(session.school); setCurrentAthlete(null); setCurrentTrainer(null); } else if (session?.type === "trainer") { setCurrentTrainer(session.trainer); setCurrentAthlete(null); setCurrentClub(null); } else { setCurrentAthlete(session?.athlete || null); setCurrentTrainer(null); setCurrentClub(null); } }} />
+          <ProfilesPage go={go} initialNotice={authNotice} onActivityChange={() => setOnlineAthletes(readActiveAthletes())} onSessionChange={(session) => { setAuthNotice(""); if (session?.type === "club") { setCurrentClub(session.school); setCurrentAthlete(null); setCurrentTrainer(null); } else if (session?.type === "trainer") { setCurrentTrainer(session.trainer); setCurrentAthlete(null); setCurrentClub(null); } else { setCurrentAthlete(session?.athlete || null); setCurrentTrainer(null); setCurrentClub(null); } }} />
         ) : (
           <InfoPage title={page} />
         )}
@@ -6004,7 +6033,7 @@ function ClubCodeShare({ school }) {
   </section>;
 }
 
-function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
+function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange }) {
   const [type, setType] = useState("club");
   const [selectedClub, setSelectedClub] = useState("");
   const [schools, setSchools] = useState(() => readSchools());
@@ -6123,6 +6152,8 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     return <div className="page profile-area">
       <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={session.school.schoolName}/> : <School/>}</div><span><small>KULÜP PROFİLİ</small><h1>{session.school.schoolName}</h1><p>Kullanıcı kodu: <b>{session.school.code}</b></p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
       <div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><GraduationCap/><span><b>{clubTrainers.length}</b><small>Kayıtlı antrenör</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div>
+      <section className="club-bulletin-entry"><span className="club-bulletin-icon"><Newspaper/></span><span><small>SPORCU İLETİŞİMİ</small><h2>Haftalık eğitim bültenleri</h2><p>52 cuma için hazırlanan bültenleri kulüp logonla PDF oluşturup WhatsApp üzerinden paylaş.</p></span><button className="btn" onClick={()=>go("bulletins")}>Bültenleri yönet <ArrowRight/></button></section>
+      <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>21 profesyonel PDF kaynağını ve tüm çalışma bölümlerini sayfa içinde görüntüle.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
       <ClubCodeShare school={session.school}/>
       <section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
       <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=><article key={trainer.id}><span className="member-role-icon"><GraduationCap/></span><span><b>{trainer.name}</b><small>{trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{trainer.status || "AKTİF"}</em></article>)}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler bu okulun kayıt kimliği ve koduyla eşleştiğinde yalnızca burada listelenir.</p></div>}</section>
@@ -6135,6 +6166,7 @@ function ProfilesPage({ initialNotice="", onActivityChange, onSessionChange }) {
     return <div className="page profile-area trainer-profile">
       <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={trainer.schoolName}/> : <GraduationCap/>}</div><span><small>ANTRENÖR PROFİLİ</small><h1>{trainer.name}</h1><p>{trainer.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
       <div className="athlete-profile-grid"><article><small>GÖREV</small><b>{trainer.title || "Antrenör"}</b></article><article><small>KULÜP KODU</small><b>{trainer.schoolCode}</b></article><article><small>PROFİL KİMLİĞİ</small><b>{trainer.id}</b></article></div>
+      <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>Antrenman, beceri gelişimi, takım sistemleri ve sezon planlama PDF kütüphanesi.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
       <div className="profile-info-note"><ShieldCheck/><span><b>Kulübe bağlı antrenör hesabı</b><p>Bu profil yalnızca bağlı olduğu kulübün adı ve 6 haneli kullanıcı koduyla kullanılabilir.</p></span></div>
     </div>;
   }
