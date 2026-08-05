@@ -3,6 +3,8 @@ export const SITE_URL = "https://voleybolokullari.com.tr";
 export const pageRoutes = {
   home: "/", courses: "/voleybol-dersleri/", videos: "/egitim-videolari/",
   "technical-cards": "/voleybol-teknik-kartlari/",
+  bulletins: "/spor-okulu-egitim-bultenleri/",
+  "ready365-library": "/antrenor-egitim-kutuphanesi/",
   exams: "/sinavlar/", "junior-referee": "/junior-hakem/", demo: "/demo/",
   blog: "/voleybol-blog/",
   "volleyball-ai": "/voleybol-ai/",
@@ -41,6 +43,8 @@ export const resolveRoute = (pathname, courses) => {
 };
 
 const metaByPage = {
+  "ready365-library": ["Antrenör Eğitim Kütüphanesi", "Spor okulları ve antrenörlere özel voleybol antrenman PDF kütüphanesi."],
+  bulletins: ["Spor Okulu Eğitim Bültenleri", "Spor okullarının sporcularına yönelik haftalık eğitim bülteni yönetim alanı."],
   home: ["Online Voleybol Akademisi | Voleybol Okulları", "Voleybolcular ve spor okulları için teknik, taktik, mental hazırlık ve performans odaklı çevrim içi eğitim platformu."],
   courses: ["Voleybol Dersleri ve Eğitim Programları", "Parmak pas, manşet, servis, smaç, blok, pozisyon ve performans konularında başlangıçtan ileri seviyeye voleybol dersleri."],
   "technical-cards": ["Voleybol Teknik Kartları | A4 Eğitim Belgeleri", "Parmak pas, manşet, servis, smaç, blok ve savunma teknikleri için A4 voleybol eğitim kartlarını görüntüleyin; Word veya PDF olarak indirin."],
@@ -67,5 +71,5 @@ export function seoFor(page, course) {
     path: routeFor(page, course), noindex: true,
   };
   const [title, description] = metaByPage[page] || [`${String(page).replace(/-/g, " ")} | Voleybol Akademisi`, "Online Voleybol Akademisi bilgi sayfası."];
-  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "technical-cards", "admin"].includes(page) };
+  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "technical-cards", "bulletins", "ready365-library", "admin"].includes(page) };
 }
