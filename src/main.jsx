@@ -59,6 +59,7 @@ import "./video-topics.css";
 import "./profile-area.css";
 import "./pricing.css";
 import "./demo.css";
+import "./demo-access.css";
 import "./registered-schools.css";
 import "./junior-referee.css";
 import "./blog.css";
@@ -68,16 +69,22 @@ import "./coaches.css";
 import "./technical-cards.css";
 import "./bulletins.css";
 import "./ready365-library.css";
-import VolleyballAIPage from "./volleyball-ai.jsx";
-import BulletinsPage from "./bulletins.jsx";
-import Ready365LibraryPage from "./ready365-library.jsx";
+import "./quality-fixes.css";
+import "./home-modern.css";
+import "./contact-messenger.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
 import { individualTrainingVideos, individualVideoTopics } from "./individual-video-library.js";
 import { technicalCards, technicalCardCategories } from "./technical-cards.js";
+import { applyBulletinManagement } from "./bulletins.js";
 import { SITE_URL, resolveRoute, routeFor, seoFor } from "./seo.js";
 import { initAnalytics } from "./analytics.js";
+import { registerPwa } from "./pwa.js";
+const totalVideoCount = trainingVideos.length + individualTrainingVideos.length;
+const VolleyballAIPage = React.lazy(() => import("./volleyball-ai.jsx"));
+const BulletinsPage = React.lazy(() => import("./bulletins.jsx"));
+const Ready365LibraryPage = React.lazy(() => import("./ready365-library.jsx"));
 const Instagram = Heart,
   Youtube = Play,
   Linkedin = Users;
@@ -121,7 +128,7 @@ const courseCategories = [
 const courseImages = courseCategories.map((_, i) =>
   i === 1
     ? "/course-covers/course-02.webp"
-    : `/course-covers/course-${String(i + 1).padStart(2, "0")}.png`,
+    : `/course-covers/course-${String(i + 1).padStart(2, "0")}.webp`,
 );
 const courseDescriptions = {
   "Voleybola giriş ve temel kurallar":
@@ -387,6 +394,7 @@ function App() {
     if (restored) sessionStorage.removeItem("spaPath");
     return resolveRoute(restored || window.location.pathname, courses);
   }, []);
+  const allowStoredSession = import.meta.env.DEV || Boolean(sessionStorage.getItem("volleyballProfileToken"));
   const [page, setPage] = useState(initialRoute.page);
   const [menu, setMenu] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(initialRoute.course || courses[0]);
@@ -394,19 +402,50 @@ function App() {
     return readActiveAthletes();
   });
   const [currentAthlete, setCurrentAthlete] = useState(() => {
+    if (!allowStoredSession) return null;
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     return readAthletes().find((athlete) => athlete.id === currentId) || null;
   });
   const [currentClub, setCurrentClub] = useState(() => {
+    if (!allowStoredSession) return null;
     try { return JSON.parse(localStorage.getItem("volleyballCurrentClub") || "null"); }
     catch { return null; }
   });
   const [currentTrainer, setCurrentTrainer] = useState(() => {
+    if (!allowStoredSession) return null;
     const currentId = localStorage.getItem("volleyballCurrentTrainerId");
     return readTrainers().find((trainer) => trainer.id === currentId) || null;
   });
   const [authNotice, setAuthNotice] = useState("");
   const [, setRegistrationRevision] = useState(0);
+  useEffect(() => {
+    const token = sessionStorage.getItem(PROFILE_TOKEN_KEY);
+    if (!token) {
+      if (!import.meta.env.DEV) {
+        localStorage.removeItem("volleyballCurrentAthleteId");
+        localStorage.removeItem("volleyballCurrentClub");
+        localStorage.removeItem("volleyballCurrentTrainerId");
+      }
+      return;
+    }
+    let disposed = false;
+    sendRegistration({ action:"validateProfileSession", token }).then((result) => {
+      if (disposed || !result.account) return;
+      const account = result.account;
+      if (account.type === "athlete") setCurrentAthlete((current) => ({ ...current, ...account }));
+      if (account.type === "trainer") setCurrentTrainer((current) => ({ ...current, ...account }));
+      if (account.type === "club") setCurrentClub((current) => ({ ...current, ...account }));
+    }).catch(() => {
+      if (disposed) return;
+      sessionStorage.removeItem(PROFILE_TOKEN_KEY);
+      localStorage.removeItem("volleyballCurrentAthleteId");
+      localStorage.removeItem("volleyballCurrentClub");
+      localStorage.removeItem("volleyballCurrentTrainerId");
+      setCurrentAthlete(null); setCurrentTrainer(null); setCurrentClub(null);
+      setAuthNotice("Güvenli profil oturumunuz sona erdi. Lütfen tekrar giriş yapın.");
+    });
+    return () => { disposed = true; };
+  }, []);
   useEffect(() => {
     const onPopState = () => {
       const next = resolveRoute(window.location.pathname, courses);
@@ -484,7 +523,8 @@ function App() {
     };
     const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshRegistrations(); };
     refreshRegistrations();
-    const timer = window.setInterval(refreshRegistrations, 8000);
+    const refreshInterval = currentAthlete || currentClub || currentTrainer ? 15000 : 60000;
+    const timer = window.setInterval(refreshRegistrations, refreshInterval);
     window.addEventListener("focus", refreshRegistrations);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
@@ -493,7 +533,7 @@ function App() {
       window.removeEventListener("focus", refreshRegistrations);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, []);
+  }, [currentAthlete?.id, currentClub?.id, currentTrainer?.id]);
   useEffect(() => {
     const hasSession = Boolean(currentAthlete || currentClub || currentTrainer);
     if (!hasSession) return undefined;
@@ -511,6 +551,7 @@ function App() {
     const expireSession = () => {
       setLocalPresence(false);
       sendAthletePresenceBeacon(currentId, false);
+      closeProfileServerSession();
       localStorage.removeItem("volleyballCurrentAthleteId");
       localStorage.removeItem("volleyballCurrentClub");
       localStorage.removeItem("volleyballCurrentTrainerId");
@@ -545,6 +586,9 @@ function App() {
       scheduleExpiry();
       if (Date.now() - (Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || 0) < SESSION_IDLE_LIMIT) heartbeat();
     };
+    const leavePage = () => {
+      if (currentId) sendAthletePresenceBeacon(currentId, false);
+    };
     if (!localStorage.getItem(SESSION_ACTIVITY_KEY)) markSessionActivity();
     scheduleExpiry();
     heartbeat();
@@ -552,11 +596,13 @@ function App() {
     const activityEvents = ["pointerdown", "keydown", "touchstart", "scroll"];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, registerActivity, { passive:true }));
     document.addEventListener("visibilitychange", returnToPage);
+    window.addEventListener("pagehide", leavePage);
     return () => {
       window.clearInterval(heartbeatTimer);
       window.clearTimeout(idleTimer);
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, registerActivity));
       document.removeEventListener("visibilitychange", returnToPage);
+      window.removeEventListener("pagehide", leavePage);
     };
   }, [currentAthlete?.id, currentClub?.id, currentTrainer?.id]);
   const go = (p, course) => {
@@ -582,6 +628,7 @@ function App() {
     scrollTo(0, 0);
   };
   const logoutAthlete = () => {
+    closeProfileServerSession();
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     localStorage.removeItem("volleyballCurrentAthleteId");
     if (currentId) {
@@ -608,6 +655,7 @@ function App() {
       <Header page={page} go={go} menu={menu} setMenu={setMenu} account={currentAthlete || currentTrainer || currentClub} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} onLogout={logoutAthlete} />
       {onlineAthletes.length > 0 && <OnlineTeamStrip athletes={onlineAthletes} />}
       <main onClick={handleMainClick}>
+        <React.Suspense fallback={<div className="page route-loading" role="status" aria-live="polite"><span/><p>İçerik hazırlanıyor…</p></div>}>
         {page === "home" ? (
           <HomePage go={go} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} />
         ) : page === "courses" ? (
@@ -662,57 +710,179 @@ function App() {
         ) : (
           <InfoPage title={page} />
         )}
+        </React.Suspense>
       </main>
       <MobileNav page={page} go={go} isAuthenticated={Boolean(currentAthlete || currentTrainer || currentClub)} isAthlete={Boolean(currentAthlete)} />
+      <ContactMessenger />
       <Footer go={go} />
     </>
   );
 }
 
 const registrationApi = import.meta.env.VITE_REGISTRATION_API_URL || appConfig.registrationApiUrl || import.meta.env.VITE_SHEETS_API_URL || "";
+const PROFILE_TOKEN_KEY = "volleyballProfileToken";
+const ADMIN_CLIENT_KEY = "volleyballAdminClientId";
+const getStableClientId = () => {
+  let value = sessionStorage.getItem(ADMIN_CLIENT_KEY);
+  if (!value) {
+    value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(ADMIN_CLIENT_KEY, value);
+  }
+  return value;
+};
 const profileChoices = [
-  { id:"kadin-voleybolcu-1", name:"Topla hazır kadın voleybolcu", image:"/profile-volleyball-women.png", x:"0%", y:"0%" },
-  { id:"kadin-voleybolcu-2", name:"Savunmaya hazır kadın voleybolcu", image:"/profile-volleyball-women.png", x:"50%", y:"0%" },
-  { id:"kadin-voleybolcu-3", name:"Kadın pasör", image:"/profile-volleyball-women.png", x:"100%", y:"0%" },
-  { id:"kadin-voleybolcu-4", name:"Kadın libero", image:"/profile-volleyball-women.png", x:"0%", y:"100%" },
-  { id:"kadin-voleybolcu-5", name:"Manşet pozisyonunda kadın voleybolcu", image:"/profile-volleyball-women.png", x:"50%", y:"100%" },
-  { id:"kadin-voleybolcu-6", name:"Kadın takım kaptanı", image:"/profile-volleyball-women.png", x:"100%", y:"100%" },
-  { id:"erkek-voleybolcu-1", name:"Topla hazır erkek voleybolcu", image:"/profile-volleyball-men.png", x:"0%", y:"0%" },
-  { id:"erkek-voleybolcu-2", name:"Savunmaya hazır erkek voleybolcu", image:"/profile-volleyball-men.png", x:"50%", y:"0%" },
-  { id:"erkek-voleybolcu-3", name:"Erkek pasör", image:"/profile-volleyball-men.png", x:"100%", y:"0%" },
-  { id:"erkek-voleybolcu-4", name:"Erkek smaçör", image:"/profile-volleyball-men.png", x:"0%", y:"100%" },
-  { id:"erkek-voleybolcu-5", name:"Erkek libero", image:"/profile-volleyball-men.png", x:"50%", y:"100%" },
-  { id:"erkek-voleybolcu-6", name:"Erkek takım kaptanı", image:"/profile-volleyball-men.png", x:"100%", y:"100%" },
+  { id:"kadin-voleybolcu-1", name:"Topla hazır kadın voleybolcu", image:"/profile-volleyball-women.webp", x:"0%", y:"0%" },
+  { id:"kadin-voleybolcu-2", name:"Savunmaya hazır kadın voleybolcu", image:"/profile-volleyball-women.webp", x:"50%", y:"0%" },
+  { id:"kadin-voleybolcu-3", name:"Kadın pasör", image:"/profile-volleyball-women.webp", x:"100%", y:"0%" },
+  { id:"kadin-voleybolcu-4", name:"Kadın libero", image:"/profile-volleyball-women.webp", x:"0%", y:"100%" },
+  { id:"kadin-voleybolcu-5", name:"Manşet pozisyonunda kadın voleybolcu", image:"/profile-volleyball-women.webp", x:"50%", y:"100%" },
+  { id:"kadin-voleybolcu-6", name:"Kadın takım kaptanı", image:"/profile-volleyball-women.webp", x:"100%", y:"100%" },
+  { id:"erkek-voleybolcu-1", name:"Topla hazır erkek voleybolcu", image:"/profile-volleyball-men.webp", x:"0%", y:"0%" },
+  { id:"erkek-voleybolcu-2", name:"Savunmaya hazır erkek voleybolcu", image:"/profile-volleyball-men.webp", x:"50%", y:"0%" },
+  { id:"erkek-voleybolcu-3", name:"Erkek pasör", image:"/profile-volleyball-men.webp", x:"100%", y:"0%" },
+  { id:"erkek-voleybolcu-4", name:"Erkek smaçör", image:"/profile-volleyball-men.webp", x:"0%", y:"100%" },
+  { id:"erkek-voleybolcu-5", name:"Erkek libero", image:"/profile-volleyball-men.webp", x:"50%", y:"100%" },
+  { id:"erkek-voleybolcu-6", name:"Erkek takım kaptanı", image:"/profile-volleyball-men.webp", x:"100%", y:"100%" },
 ];
 const profileById = (id) => profileChoices.find((item) => item.id === id) || profileChoices[0];
-function AthleteAvatar({ id, className="" }) { const item=profileById(id); return <i className={`athlete-avatar ${className}`} style={{"--avatar-image":`url(${item.image})`,"--avatar-x":item.x,"--avatar-y":item.y}} aria-label={item.name} />; }
+function AthleteAvatar({ id, className="" }) { const item=profileById(id); return <i className={`athlete-avatar ${className}`} style={{"--avatar-image":`url(${item.image})`,"--avatar-x":item.x,"--avatar-y":item.y}} role="img" aria-label={item.name} />; }
 function TeamLogo({ src, name, className="" }) {
   if (!src) return null;
   return <img className={`team-logo ${className}`} src={src} alt={`${name || "Takım"} logosu`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />;
 }
 
+const transparentLogoCache = new Map();
+function transparentLogoFallback(name="Spor Okulu") {
+  const canvas = document.createElement("canvas");
+  canvas.width = 180; canvas.height = 180;
+  const context = canvas.getContext("2d");
+  const initials = name.split(/\s+/).filter(Boolean).slice(0,3).map((word)=>word[0]).join("").toLocaleUpperCase("tr");
+  context.fillStyle = "#b9c4ce";
+  context.font = "800 52px Arial";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(initials || "VO", 90, 92);
+  return canvas.toDataURL("image/png");
+}
+function TransparentTeamLogo({ src, name }) {
+  const [pngSrc, setPngSrc] = useState(() => transparentLogoCache.get(src) || src);
+  useEffect(() => {
+    if (!src || transparentLogoCache.has(src)) return;
+    let cancelled = false;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      try {
+        const size = 180;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d", { willReadFrequently:true });
+        context.clearRect(0, 0, size, size);
+        const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const offsetX = Math.round((size - width) / 2);
+        const offsetY = Math.round((size - height) / 2);
+        context.drawImage(image, offsetX, offsetY, width, height);
+        const pixels = context.getImageData(0, 0, size, size);
+        const data = pixels.data;
+        const border = [];
+        const right = offsetX + width - 1;
+        const bottom = offsetY + height - 1;
+        const corners = [offsetY * size + offsetX, offsetY * size + right, bottom * size + offsetX, bottom * size + right];
+        const hasTransparency = corners.filter((index) => data[index * 4 + 3] < 40).length >= 3;
+        for (let x = offsetX; x <= right; x += 1) border.push(offsetY * size + x, bottom * size + x);
+        for (let y = offsetY + 1; y < bottom; y += 1) border.push(y * size + offsetX, y * size + right);
+        const buckets = new Map();
+        border.forEach((index) => {
+          if (hasTransparency) return;
+          const point = index * 4;
+          if (data[point + 3] < 20) return;
+          const key = `${data[point] >> 4}-${data[point + 1] >> 4}-${data[point + 2] >> 4}`;
+          const item = buckets.get(key) || { count:0, r:0, g:0, b:0 };
+          item.count += 1; item.r += data[point]; item.g += data[point + 1]; item.b += data[point + 2];
+          buckets.set(key, item);
+        });
+        const background = [...buckets.values()].sort((a,b) => b.count - a.count)[0];
+        if (background) {
+          const base = [background.r / background.count, background.g / background.count, background.b / background.count];
+          const visited = new Uint8Array(size * size);
+          const queue = [...border];
+          let cursor = 0;
+          while (cursor < queue.length) {
+            const index = queue[cursor++];
+            if (visited[index]) continue;
+            visited[index] = 1;
+            const point = index * 4;
+            const distance = Math.hypot(data[point] - base[0], data[point + 1] - base[1], data[point + 2] - base[2]);
+            if (distance > 72) continue;
+            const matte = Math.max(0, Math.min(1, (distance - 18) / 54));
+            data[point + 3] = Math.round(data[point + 3] * matte);
+            const x = index % size;
+            const y = Math.floor(index / size);
+            if (x > 0) queue.push(index - 1);
+            if (x < size - 1) queue.push(index + 1);
+            if (y > 0) queue.push(index - size);
+            if (y < size - 1) queue.push(index + size);
+          }
+          context.putImageData(pixels, 0, 0);
+        }
+        const transparentPng = canvas.toDataURL("image/png");
+        transparentLogoCache.set(src, transparentPng);
+        if (!cancelled) setPngSrc(transparentPng);
+      } catch {
+        if (!cancelled) setPngSrc(src);
+      }
+    };
+    image.onerror = () => { if (!cancelled) setPngSrc(transparentLogoFallback(name)); };
+    image.src = src;
+    return () => { cancelled = true; };
+  }, [src]);
+  return <TeamLogo key={pngSrc} src={pngSrc} name={name} className="transparent-team-logo"/>;
+}
+
 function SearchableSchoolPicker({ value, onChange, options, logoFor, label="Kulüp adı", placeholder="Okul adını yazın veya listeden seçin" }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listId = useRef(`school-picker-${Math.random().toString(36).slice(2)}`).current;
   const normalized = String(value || "").trim().toLocaleLowerCase("tr");
   const filtered = options.filter((school) => !normalized || school.toLocaleLowerCase("tr").includes(normalized));
-  return <label className="club-picker-label">{label}<div className={`club-picker searchable ${open ? "open" : ""}`}>
+  useEffect(()=>setActiveIndex(-1),[normalized]);
+  const chooseSchool = (school) => { onChange(school); setOpen(false); setActiveIndex(-1); };
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") { setOpen(false); setActiveIndex(-1); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault(); setOpen(true);
+      setActiveIndex((current) => event.key === "ArrowDown" ? Math.min(current + 1, filtered.length - 1) : Math.max(current - 1, 0));
+    }
+    if (event.key === "Enter" && open && activeIndex >= 0 && filtered[activeIndex]) {
+      event.preventDefault(); chooseSchool(filtered[activeIndex]);
+    }
+  };
+  return <label className="club-picker-label">{label}<div className={`club-picker searchable ${open ? "open" : ""}`} onBlur={(event)=>{if(!event.currentTarget.contains(event.relatedTarget))setOpen(false)}}>
     <div className="club-picker-input">
       <span className="club-option-logo">{logoFor(value) ? <TeamLogo src={logoFor(value)} name={value}/> : <School/>}</span>
-      <input name="schoolName" value={value} required autoComplete="off" placeholder={placeholder} aria-expanded={open} aria-controls="school-picker-options" onFocus={()=>setOpen(true)} onChange={(event)=>{onChange(event.target.value);setOpen(true)}}/>
+      <input name="schoolName" value={value} required autoComplete="off" placeholder={placeholder} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={activeIndex>=0?`${listId}-option-${activeIndex}`:undefined} onKeyDown={handleKeyDown} onFocus={()=>setOpen(true)} onChange={(event)=>{onChange(event.target.value);setOpen(true)}}/>
       <button type="button" aria-label={open ? "Okul listesini kapat" : "Tüm okulları göster"} onClick={()=>setOpen((current)=>!current)}><ChevronDown/></button>
     </div>
-    {open&&<div id="school-picker-options" className="club-picker-menu" role="listbox" aria-label="Kayıtlı spor okulları">
-      {filtered.length ? filtered.map((school)=><button type="button" role="option" aria-selected={value===school} className={value===school?"selected":""} key={school} onClick={()=>{onChange(school);setOpen(false)}}><span className="club-option-logo">{logoFor(school)?<TeamLogo src={logoFor(school)} name={school}/>:<School/>}</span><span><b>{school}</b><small>{logoFor(school)?"Kulüp logosu mevcut":"Kayıtlı spor okulu"}</small></span>{value===school&&<CheckCircle2/>}</button>) : <div className="club-picker-no-result">Eşleşen okul bulunamadı. Okul adını elle yazmaya devam edebilirsiniz.</div>}
+    {open&&<div id={listId} className="club-picker-menu" role="listbox" aria-label="Kayıtlı spor okulları">
+      {filtered.length ? filtered.map((school,index)=><button id={`${listId}-option-${index}`} type="button" role="option" aria-selected={value===school} className={`${value===school?"selected":""} ${activeIndex===index?"keyboard-active":""}`} key={school} onMouseEnter={()=>setActiveIndex(index)} onClick={()=>chooseSchool(school)}><span className="club-option-logo">{logoFor(school)?<TeamLogo src={logoFor(school)} name={school}/>:<School/>}</span><span><b>{school}</b><small>{logoFor(school)?"Kulüp logosu mevcut":"Kayıtlı spor okulu"}</small></span>{value===school&&<CheckCircle2/>}</button>) : <div className="club-picker-no-result">Eşleşen okul bulunamadı. Okul adını elle yazmaya devam edebilirsiniz.</div>}
     </div>}
   </div></label>;
 }
 async function sendRegistration(payload) {
-  if (!registrationApi) return { ok: true, demo: true };
+  if (!registrationApi) throw new Error("Kayıt servisi yapılandırılmamış. İşlem kaydedilmedi.");
   const response = await fetch(registrationApi, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
   if (!response.ok) throw new Error("Kayıt servisine ulaşılamadı.");
   const result = await response.json();
   if (result?.ok === false) throw new Error(result.error || "Kayıt işlemi tamamlanamadı.");
   return result;
+}
+function closeProfileServerSession() {
+  const token = sessionStorage.getItem(PROFILE_TOKEN_KEY);
+  sessionStorage.removeItem(PROFILE_TOKEN_KEY);
+  if (token && registrationApi) sendRegistration({ action:"logoutProfile", token }).catch(() => {});
 }
 
 function OnlineTeamStrip({ athletes }) {
@@ -722,12 +892,16 @@ function OnlineTeamStrip({ athletes }) {
 }
 async function sendAthletePresence(id, online) {
   if (!registrationApi || !id) return;
-  try { await sendRegistration({ action:"updateAthletePresence", id, online, lastSeen:new Date().toISOString() }); }
+  const token = sessionStorage.getItem(PROFILE_TOKEN_KEY);
+  if (!token && import.meta.env.PROD) return;
+  try { await sendRegistration({ action:"updateAthletePresence", id, online, token, lastSeen:new Date().toISOString() }); }
   catch (error) { console.warn("Sporcu çevrim içi durumu güncellenemedi:", error); }
 }
 function sendAthletePresenceBeacon(id, online) {
   if (!registrationApi || !id) return;
-  const body = JSON.stringify({ action:"updateAthletePresence", id, online, lastSeen:new Date().toISOString() });
+  const token = sessionStorage.getItem(PROFILE_TOKEN_KEY);
+  if (!token && import.meta.env.PROD) return;
+  const body = JSON.stringify({ action:"updateAthletePresence", id, online, token, lastSeen:new Date().toISOString() });
   const payload = new Blob([body], { type:"text/plain;charset=UTF-8" });
   if (navigator.sendBeacon?.(registrationApi, payload)) return;
   fetch(registrationApi, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body, keepalive:true }).catch(() => {});
@@ -781,7 +955,8 @@ function RegistrationPage({ go, onAthleteOnline }) {
       const inheritedTeamLogo = readSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === athlete.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo
         || readAthletes().find((item) => item.schoolName.toLocaleLowerCase("tr") === athlete.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo
         || "";
-      const savedAthlete = { ...athlete, id: result.id || athlete.id, teamLogo: result.teamLogo || inheritedTeamLogo };
+      const savedAthlete = { ...athlete, id: result.id || athlete.id, teamLogo: result.teamLogo || inheritedTeamLogo, online:true, lastSeen:new Date().toISOString() };
+      if (result.profileToken) sessionStorage.setItem(PROFILE_TOKEN_KEY, result.profileToken);
       const athletes = [...readAthletes().filter((item) => item.id !== savedAthlete.id), savedAthlete];
       localStorage.setItem("volleyballAthletes", JSON.stringify(athletes));
       localStorage.setItem("volleyballCurrentAthleteId", savedAthlete.id);
@@ -887,34 +1062,43 @@ function PricingPage() {
 function DemoPage({ go }) {
   const [section, setSection] = useState("lesson");
   const [answer, setAnswer] = useState(null);
+  const sampleCourse = courses[0];
+  const sampleLesson = makeLessonSteps(sampleCourse)[0];
   const sampleVideo = trainingVideos[0];
+  const sampleQuestion = questionsFor(sampleCourse[1])[0];
+  const isCorrect = answer === sampleQuestion.a;
   const demoTabs = [
-    ["lesson", BookOpen, "Örnek Ders"],
-    ["video", Video, "Örnek Video"],
-    ["exam", CheckCircle2, "Örnek Sınav"],
+    ["lesson", BookOpen, "Dersler"],
+    ["video", Video, "Eğitim Videoları"],
+    ["exam", CheckCircle2, "Sınavlar"],
   ];
   return <div className="demo-page">
     <section className="demo-hero">
       <span className="eyebrow"><Play/> ÜCRETSİZ AKADEMİ DEMOSU</span>
       <h1>Akademiyi<br/><em>yakından incele.</em></h1>
-      <p>Bir ders anlatımını oku, eğitim videosunu izle ve örnek sınav sorusunu cevapla.</p>
+      <p>Gerçek kullanıcı ekranlarını deneyin. Her bölümde yalnızca ilk çalışma ücretsiz olarak açıktır.</p>
     </section>
     <nav className="demo-tabs" aria-label="Demo bölümleri">
-      {demoTabs.map(([key, Icon, label])=><button key={key} className={section===key?"active":""} onClick={()=>setSection(key)}><Icon/><span>{label}</span></button>)}
+      {demoTabs.map(([key, Icon, label])=><button key={key} className={section===key?"active":""} onClick={()=>{setSection(key);setAnswer(null)}}><Icon/><span>{label}</span></button>)}
     </nav>
+    <div className="demo-access-bar">
+      <span><UserRound/><i><small>GERÇEK KULLANICI GÖRÜNÜMÜ</small><b>İlk çalışma ücretsiz açık</b></i></span>
+      <em><LockKeyhole/> Devam içerikleri gizli</em>
+    </div>
     <section className="demo-stage">
       {section === "lesson" && <article className="demo-lesson">
-        <div className="demo-media"><img src="/lesson-images/parmak-pas-01.webp" alt="Parmak pas hazır pozisyonu teknik anlatımı"/><span>ÜCRETSİZ ÖRNEK</span></div>
-        <div className="demo-content"><small>DERS 01 • PARMAK PAS</small><h2>Parmak pasın temel mantığı</h2><p>Parmak pasın amacı topa vurmak değil, topun hızını parmaklarla kontrol ederek onu istenilen hedefe yönlendirmektir.</p><ul><li><CheckCircle2/> Topun geliş yönünü takip et.</li><li><CheckCircle2/> Ayaklarını omuz genişliğinde aç.</li><li><CheckCircle2/> Topla alnının önünde kısa süreli temas kur.</li><li><CheckCircle2/> Hareketi bacaklardan başlayarak tamamla.</li></ul></div>
+        <div className="demo-media"><img src={sampleCourse[10]} alt={`${sampleCourse[1]} ders kapağı`}/><span>1. ÇALIŞMA AÇIK</span></div>
+        <div className="demo-content"><small>DERS 01 • {sampleCourse[1].toLocaleUpperCase("tr-TR")}</small><h2>{sampleLesson.title}</h2><p>{sampleLesson.body}</p><div className="demo-locked-continuation"><LockKeyhole/><span><b>Sonraki çalışmalar gizli</b><small>Devam etmek için kayıtlı hesabınızla giriş yapın.</small></span></div></div>
       </article>}
       {section === "video" && <article className="demo-video">
         <div className="demo-video-frame"><iframe src={sampleVideo.preview} title={`Demo video: ${sampleVideo.title}`} allow="autoplay; fullscreen" allowFullScreen/></div>
-        <div className="demo-video-info"><span><Video/> ÖRNEK EĞİTİM VİDEOSU</span><h2>{sampleVideo.title}</h2><p>{sampleVideo.topic} kategorisindeki bu kısa çalışmayı izleyerek video kütüphanesinin kullanımını deneyebilirsin.</p></div>
+        <div className="demo-video-info"><span><Video/> 1. VİDEO AÇIK</span><h2>{sampleVideo.title}</h2><p>{sampleVideo.topic} kategorisindeki bu çalışmayı gerçek kullanıcı oynatıcısıyla izleyebilirsiniz.</p><div className="demo-locked-continuation"><LockKeyhole/><span><b>Diğer videolar gizli</b><small>Oynatma listesinin devamı yalnızca kayıtlı kullanıcılara açıktır.</small></span></div></div>
       </article>}
       {section === "exam" && <article className="demo-exam">
-        <span><Target/> ÖRNEK SINAV SORUSU</span><h2>Parmak pasta topa temas noktası nerede olmalıdır?</h2>
-        <div className="demo-options">{["Göğüs hizasında", "Alnın önünde", "Bel hizasında", "Başın arkasında"].map((option,index)=><button key={option} className={answer===index?(index===1?"correct":"wrong"):""} onClick={()=>setAnswer(index)}><i>{String.fromCharCode(65+index)}</i>{option}{answer===index&&(index===1?<CheckCircle2/>:<X/>)}</button>)}</div>
-        {answer!==null&&<div className={`demo-answer ${answer===1?"correct":"wrong"}`}>{answer===1?<><CheckCircle2/><span><b>Doğru cevap!</b><p>Topla temas, kontrol ve yönlendirme için alnın hemen önünde yapılır.</p></span></>:<><X/><span><b>Tekrar düşün.</b><p>Doğru temas noktası alnın hemen önüdür.</p></span></>}</div>}
+        <span><Target/> 1. SINAV ÇALIŞMASI AÇIK</span><h2>{sampleQuestion.q}</h2>
+        <div className="demo-options">{sampleQuestion.o.map((option,index)=><button key={option} className={answer===index?(index===sampleQuestion.a?"correct":"wrong"):""} onClick={()=>setAnswer(index)}><i>{String.fromCharCode(65+index)}</i>{option}{answer===index&&(index===sampleQuestion.a?<CheckCircle2/>:<X/>)}</button>)}</div>
+        {answer!==null&&<div className={`demo-answer ${isCorrect?"correct":"wrong"}`}>{isCorrect?<><CheckCircle2/><span><b>Doğru cevap!</b><p>{sampleQuestion.e}</p></span></>:<><X/><span><b>Tekrar düşün.</b><p>{sampleQuestion.e}</p></span></>}</div>}
+        <div className="demo-locked-continuation"><LockKeyhole/><span><b>Sonraki sorular gizli</b><small>Sınavın devamı kayıtlı kullanıcı hesabında açılır.</small></span></div>
       </article>}
     </section>
     <section className="demo-cta"><span><small>DEVAM ETMEYE HAZIR MISIN?</small><h2>Tüm akademinin kilidini aç.</h2></span><button className="btn" onClick={()=>go("register")}>Spor okulunu kaydet <ArrowRight/></button></section>
@@ -1112,7 +1296,7 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
         onClick={() => go("home")}
         aria-label="Ana sayfa"
       >
-        <img className="ball" src="/brand-logo.png" alt="" aria-hidden="true" />
+        <img className="ball" src="/brand-logo-transparent.png" alt="" aria-hidden="true" />
         <span>
           VOLEYBOL
           <br />
@@ -1144,52 +1328,55 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
   );
 }
 function HomePage({ go, isAuthenticated }) {
-  const schoolCount = new Set(readSchools().map((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr")).filter(Boolean)).size;
+  const referenceScrollRef = useRef(null);
+  const referenceDragRef = useRef({ active:false, startX:0, scrollLeft:0 });
+  const registeredSchools = readSchools();
+  const schoolCount = new Set(registeredSchools.map((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr")).filter(Boolean)).size;
+  const referenceSchools = [...new Map(registeredSchools.filter((school)=>school.teamLogo).map((school)=>[String(school.schoolName||"").trim().toLocaleLowerCase("tr"),school])).values()];
+  const referenceLogoPng = (source) => /^https?:\/\//i.test(source||"") ? `https://images.weserv.nl/?url=${encodeURIComponent(source)}&w=160&h=160&fit=contain&output=png` : source;
+  const startReferenceDrag = (event) => { const area=referenceScrollRef.current; if(!area)return; referenceDragRef.current={active:true,startX:event.clientX,scrollLeft:area.scrollLeft}; area.setPointerCapture?.(event.pointerId); area.classList.add("dragging"); };
+  const moveReferenceDrag = (event) => { const area=referenceScrollRef.current; if(!area||!referenceDragRef.current.active)return; area.scrollLeft=referenceDragRef.current.scrollLeft-(event.clientX-referenceDragRef.current.startX); };
+  const stopReferenceDrag = () => { referenceDragRef.current.active=false; referenceScrollRef.current?.classList.remove("dragging"); };
   const athleteCount = readAthletes().length;
   const lessonCount = courses.reduce((total, course) => total + Number(course[7] || 0), 0);
+  const quickLinks = isAuthenticated
+    ? [[BookOpen,"Dersler","courses"],[Video,"Videolar","videos"],[ClipboardCheck,"Sınavlar","exams"]]
+    : [[Play,"Demoyu İncele","demo"],[BadgeTurkishLira,"Ücretler","pricing"],[UserRound,"Giriş Yap","profiles"]];
   return (
     <>
-      <section className="hero">
-        <div className="court-lines" />
-        <div className="hero-copy">
-          <span className="eyebrow">
-            <Zap size={15} /> ONLINE VOLEYBOL AKADEMİSİ
-          </span>
-          <h1>
-            Voleybol ailesi
-            <br />
-            <em>birlikte gelişir.</em>
-          </h1>
-          <p>
-            Spor okulunu akademiye kaydet veya sporcu hesabınla giriş yap.
-            Derslere, eğitim videolarına ve sınavlara tek noktadan ulaş.
-          </p>
-          <div className="actions">
-            <button className="btn" onClick={() => go(isAuthenticated ? "courses" : "register")}>
-              {isAuthenticated ? "Derslere Başla" : "Spor Okulu Kaydı"} <ArrowRight size={18} />
-            </button>
-            {!isAuthenticated && <button className="btn ghost" onClick={() => go("profiles")}>
-              <UserRound size={18} /> Sporcu Girişi
-            </button>}
+      <main className="home-modern">
+        <section className="home-modern-hero">
+          <div className="home-modern-copy">
+            <div className="home-modern-kicker"><Zap/><span>ONLINE VOLEYBOL AKADEMİSİ</span><i>2026</i></div>
+            <h1><span>Tekniğini çalış.</span><strong>Oyunu oku.</strong><em>Sahada fark yarat.</em></h1>
+            <p>Spor okulları, antrenörler ve sporcular için ders, video ve değerlendirmeyi tek bir gelişim sisteminde buluşturuyoruz.</p>
+            <div className="home-modern-actions">
+              <button className="btn" onClick={() => go(isAuthenticated ? "courses" : "register")}>
+                {isAuthenticated ? "Derslere Başla" : "Spor Okulunu Kaydet"}<ArrowRight/>
+              </button>
+              {!isAuthenticated && <button className="home-modern-login" onClick={() => go("profiles")}><UserRound/> Sporcu Girişi</button>}
+            </div>
           </div>
-          <div className="proof">
-            <span><School/><i><b>{schoolCount}</b><small>Spor Okulu</small></i></span>
-            <span><Users/><i><b>{athleteCount}</b><small>Kayıtlı Sporcu</small></i></span>
-            <span><Video/><i><b>{trainingVideos.length}</b><small>Eğitim Videosu</small></i></span>
-            <span><BookOpen/><i><b>{lessonCount}</b><small>Voleybol Dersi</small></i></span>
+          <div className="home-modern-stage">
+            <span className="home-modern-stage-label">EĞİTİM · GELİŞİM · VOLEYBOL</span>
+            <img src="/volleyball-family-hero-transparent.png" alt="Voleybol toplarıyla farklı yaş gruplarından kadın ve erkek sporcular"/>
           </div>
-        </div>
-        <div className="hero-visual">
-          <img
-            src="/volleyball-family-hero.webp"
-            alt="Voleybol topu tutan yetişkin erkek, erkek çocuk, yetişkin kadın ve kız çocuk"
-          />
-        </div>
-      </section>
-      {isAuthenticated ? <><section className="section">
+        </section>
+        <section className="home-modern-data" aria-label="Platform bilgileri">
+          {[[School,schoolCount,"Spor Okulu"],[Users,athleteCount,"Kayıtlı Sporcu"],[Video,totalVideoCount,"Toplam Video"],[BookOpen,lessonCount,"Ders Bölümü"]].map(([Icon,value,label])=><span key={label}><Icon/><b>{value}</b><small>{label}</small></span>)}
+        </section>
+        <section className="home-modern-rail">
+          {referenceSchools.length>0&&<div className="home-reference-strip" aria-label="Kayıtlı spor okulları"><small>REFERANSLAR · KAYITLI SPOR OKULLARI</small><div className="home-reference-window" ref={referenceScrollRef} onPointerDown={startReferenceDrag} onPointerMove={moveReferenceDrag} onPointerUp={stopReferenceDrag} onPointerCancel={stopReferenceDrag} onPointerLeave={stopReferenceDrag}><div className="home-reference-track">{referenceSchools.map((school)=><span key={school.id||school.schoolName} title={school.schoolName}><TransparentTeamLogo src={referenceLogoPng(school.teamLogo)} name={school.schoolName}/></span>)}</div></div></div>}
+          <div className="home-modern-rail-copy"><small>DİJİTAL GELİŞİM ALANI</small><h2>Öğrenmek tek yönlü değildir.<br/><em>İzle, uygula, ölç.</em></h2></div>
+          <div className="home-modern-rail-side">
+            <nav aria-label="Hızlı erişim">{quickLinks.map(([Icon,label,page],index)=><button key={page} onClick={()=>go(page)}><i>0{index+1}</i><Icon/><span>{label}</span><ArrowRight/></button>)}</nav>
+          </div>
+        </section>
+      </main>
+      {isAuthenticated ? <><section className="section home-modern-library">
         <Title
           eyebrow="EĞİTİM KÜTÜPHANESİ"
-          title="26 kurs, tek hedef: daha iyi voleybol."
+          title="26 ders. Tek hedef: daha iyi voleybol."
           text="Temel tekniklerden ileri taktiğe kadar tüm voleybol eğitimleri burada."
         />
         <div className="course-grid">
@@ -1208,7 +1395,7 @@ function Stats({ schoolCount, athleteCount }) {
       {[
         [School, schoolCount, "Kayıtlı spor okulu"],
         [Users, athleteCount, "Kayıtlı sporcu"],
-        [Video, trainingVideos.length, "Eğitim videosu"],
+        [Video, totalVideoCount, "Toplam video"],
         [BookOpen, courses.length, "Voleybol dersi"],
       ].map(([I, n, t]) => (
         <div key={t}>
@@ -4977,6 +5164,25 @@ const readExamAttempts = () => {
   try { return JSON.parse(localStorage.getItem(EXAM_ATTEMPTS_KEY) || "[]"); }
   catch { return []; }
 };
+const examAttemptFromRow = (row) => ({
+  attemptId: registrationValue(row, "Giriş ID"),
+  schoolId: registrationValue(row, "Okul ID"),
+  schoolName: registrationValue(row, "Okul Adı"),
+  userId: registrationValue(row, "Kullanıcı ID"),
+  userName: registrationValue(row, "Kullanıcı Adı"),
+  userType: registrationValue(row, "Rol"),
+  examId: registrationValue(row, "Sınav ID"),
+  examTitle: registrationValue(row, "Sınav Başlığı"),
+  examOrder: Number(registrationValue(row, "Sınav Sırası")) || 0,
+  attemptNumber: Number(registrationValue(row, "Deneme")) || 1,
+  questionCount: Number(registrationValue(row, "Soru Sayısı")) || 0,
+  correctCount: Number(registrationValue(row, "Doğru")) || 0,
+  wrongCount: Number(registrationValue(row, "Yanlış")) || 0,
+  score: Number(registrationValue(row, "Puan")) || 0,
+  passingScore: Number(registrationValue(row, "Geçme Puanı")) || EXAM_PASS_SCORE,
+  passed: registrationValue(row, "Durum").toLocaleLowerCase("tr") === "geçti",
+  completedAt: registrationValue(row, "Tamamlanma Tarihi"),
+});
 const examIdFor = (title) => `SNV-${String(courseCategories.indexOf(title) + 1).padStart(2, "0")}`;
 
 function ExamPage({ initialCourse, account }) {
@@ -4989,6 +5195,20 @@ function ExamPage({ initialCourse, account }) {
   const userId = canTakeExam ? account?.id : "";
   const userName = canTakeExam ? account?.name : "";
   const [attempts, setAttempts] = useState(readExamAttempts);
+  const [saveNotice, setSaveNotice] = useState("");
+  useEffect(() => {
+    if (!registrationApi || !schoolId) return;
+    let disposed = false;
+    fetchRegistrationSheet("Sinav Sonuclari").then((rows) => {
+      if (disposed) return;
+      const remote = rows.map(examAttemptFromRow).filter((item) => item.attemptId && item.schoolId === schoolId);
+      const merged = new Map([...readExamAttempts(), ...remote].map((item) => [item.attemptId, item]));
+      const next = [...merged.values()];
+      localStorage.setItem(EXAM_ATTEMPTS_KEY, JSON.stringify(next));
+      setAttempts(next);
+    }).catch((error) => setSaveNotice(`Merkezi sınav geçmişi alınamadı: ${error.message}`));
+    return () => { disposed = true; };
+  }, [schoolId]);
   const userAttempts = attempts.filter((item) => canTakeExam ? item.userId === userId : item.schoolId === schoolId);
   const uniqueExamAttempts = Array.from(userAttempts.reduce((bestByExam, item) => {
     const key = `${item.userId}::${item.examId}`;
@@ -5065,6 +5285,15 @@ function ExamPage({ initialCourse, account }) {
     localStorage.setItem(EXAM_ATTEMPTS_KEY, JSON.stringify(nextAttempts));
     setAttempts(nextAttempts);
     setDone(true);
+    const token = sessionStorage.getItem(PROFILE_TOKEN_KEY);
+    if (!token) {
+      setSaveNotice("Sonuç bu cihazda saklandı. Merkezi kayıt için profil oturumunuzu yenileyin.");
+      return;
+    }
+    setSaveNotice("Sınav sonucu kaydediliyor…");
+    sendRegistration({ action:"saveExamAttempt", token, attempt })
+      .then(() => setSaveNotice("Sınav sonucu okulunuza bağlı merkezi geçmişe kaydedildi."))
+      .catch((error) => setSaveNotice(`Sonuç cihazda saklandı; merkezi kayıt başarısız: ${error.message}`));
   };
   const selectExam = (nextTitle) => {
     const nextIndex = courseCategories.indexOf(nextTitle);
@@ -5110,7 +5339,7 @@ function ExamPage({ initialCourse, account }) {
               </div>
             ) : (
               <div className={`exam-result ${passed ? "passed" : "failed"}`}>
-                {passed ? <Trophy /> : <RotateCcw />}<span>{passed ? "SINAVI GEÇTİN" : "TEKRAR ÇALIŞMALISIN"}</span><h2>{scorePercent} puan</h2><p>{score} doğru, {qs.length - score} yanlış. {passed ? nextExamTitle ? `Sıradaki sınav: ${nextExamTitle}.` : "Tüm sınavları tamamladın." : `İlerlemek için en az ${EXAM_PASS_SCORE} puan almalısın.`}</p><div className="exam-result-actions">{passed && nextExamTitle && <button className="btn" onClick={goToNextExam}>Sonraki Sınava Geç <ArrowRight/></button>}<button className="btn ghost" onClick={() => reset()}>Tekrar Dene</button></div>
+                {passed ? <Trophy /> : <RotateCcw />}<span>{passed ? "SINAVI GEÇTİN" : "TEKRAR ÇALIŞMALISIN"}</span><h2>{scorePercent} puan</h2><p>{score} doğru, {qs.length - score} yanlış. {passed ? nextExamTitle ? `Sıradaki sınav: ${nextExamTitle}.` : "Tüm sınavları tamamladın." : `İlerlemek için en az ${EXAM_PASS_SCORE} puan almalısın.`}</p>{saveNotice&&<p className="exam-save-notice" role="status">{saveNotice}</p>}<div className="exam-result-actions">{passed && nextExamTitle && <button className="btn" onClick={goToNextExam}>Sonraki Sınava Geç <ArrowRight/></button>}<button className="btn ghost" onClick={() => reset()}>Tekrar Dene</button></div>
                 <div>{qs.map((question, questionIndex) => <article className={answers[questionIndex] === question.a ? "correct" : "wrong"} key={question.q}><b>{questionIndex + 1}. {question.q}</b><p>{question.e}</p></article>)}</div>
               </div>
             )}
@@ -5458,7 +5687,7 @@ function parseMarkdownLessons(markdown, base, level = "Genel") {
     return {
       ...section,
       level: section.level || level,
-      image: `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`,
+      image: `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.webp`,
       corrects: exact?.corrects,
       errors: exact?.errors,
     };
@@ -5573,7 +5802,7 @@ function mergeSheetLessons(base, rows, courseTitle = "Parmak pas", courseImage) 
         ...lesson,
         image:
           courseTitle === "Parmak pas"
-            ? `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.png`
+            ? `/lesson-images/sheet-parmak-pas-${String(index + 1).padStart(2, "0")}.webp`
             : courseImage,
       }));
     }
@@ -6038,6 +6267,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
   const [selectedClub, setSelectedClub] = useState("");
   const [schools, setSchools] = useState(() => readSchools());
   const [session, setSession] = useState(() => {
+    if (import.meta.env.PROD && !sessionStorage.getItem(PROFILE_TOKEN_KEY)) return null;
     const currentId = localStorage.getItem("volleyballCurrentAthleteId");
     const athlete = readAthletes().find((item) => item.id === currentId);
     if (athlete) return { type:"athlete", athlete };
@@ -6050,6 +6280,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     } catch { return null; }
   });
   const [notice, setNotice] = useState(initialNotice);
+  const [busy, setBusy] = useState(false);
   const [trainers, setTrainers] = useState(() => readTrainers());
   useEffect(() => {
     if (!registrationApi) return;
@@ -6088,15 +6319,26 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     if (person.schoolId && school.id) return String(person.schoolId) === String(school.id) && String(person.schoolCode) === String(school.code);
     return String(person.schoolName || "").trim().toLocaleLowerCase("tr") === String(school.schoolName || "").trim().toLocaleLowerCase("tr") && String(person.schoolCode) === String(school.code);
   };
-  const submit = (event) => {
-    event.preventDefault(); setNotice("");
+  const submit = async (event) => {
+    event.preventDefault(); setNotice(""); setBusy(true);
     const data = new FormData(event.currentTarget);
     const schoolName = String(data.get("schoolName") || "").trim();
     const schoolCode = String(data.get("schoolCode") || "").trim();
-    if (!/^\d{6}$/.test(schoolCode)) { setNotice("Kullanıcı kodu 6 haneli olmalıdır."); return; }
+    if (!/^\d{6}$/.test(schoolCode)) { setNotice("Kullanıcı kodu 6 haneli olmalıdır."); setBusy(false); return; }
+    const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
+    const userName = type === "athlete" ? String(data.get("athleteName") || "").trim() : type === "trainer" ? String(data.get("trainerName") || "").trim() : "";
+    let verified = null;
+    try {
+      verified = await sendRegistration({ action:"profileLogin", type, schoolName, schoolCode, userName });
+      if (verified.token) sessionStorage.setItem(PROFILE_TOKEN_KEY, verified.token);
+    } catch (error) {
+      const legacyEndpoint = /Geçersiz işlem|GeÃ§ersiz iÅŸlem/i.test(error.message || "");
+      if (!legacyEndpoint) { setNotice(error.message); setBusy(false); return; }
+      console.warn("Profil oturumu için Apps Script'in güncel sürümü bekleniyor; yerel doğrulama kullanıldı.");
+    }
     if (type === "club") {
-      const school = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
-      if (!school) { setNotice("Kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
+      const school = verified?.account ? { ...selectedSchool, ...verified.account, id:verified.account.id || selectedSchool?.id } : selectedSchool;
+      if (!school) { setNotice("Kulüp adı veya kullanıcı kodu eşleşmedi."); setBusy(false); return; }
       localStorage.setItem("volleyballCurrentClub", JSON.stringify(school));
       markSessionActivity();
       localStorage.removeItem("volleyballCurrentAthleteId");
@@ -6104,10 +6346,8 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       const clubSession = { type:"club", school };
       setSession(clubSession); onSessionChange(clubSession);
     } else if (type === "athlete") {
-      const athleteName = String(data.get("athleteName") || "").trim();
-      const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
-      const athlete = readAthletes().find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === athleteName.toLocaleLowerCase("tr"));
-      if (!athlete) { setNotice("Sporcu adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
+      const athlete = verified?.account ? { ...readAthletes().find((item) => item.id === verified.account.id), ...verified.account } : readAthletes().find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === userName.toLocaleLowerCase("tr"));
+      if (!athlete) { setNotice("Sporcu adı, kulüp adı veya kullanıcı kodu eşleşmedi."); setBusy(false); return; }
       localStorage.setItem("volleyballCurrentAthleteId", athlete.id);
       markSessionActivity();
       setAthleteLoggedOut(athlete.id, false);
@@ -6119,10 +6359,8 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       sendAthletePresence(active.id, true);
       setSession(athleteSession); onSessionChange(athleteSession); onActivityChange();
     } else {
-      const trainerName = String(data.get("trainerName") || "").trim();
-      const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && String(item.code) === schoolCode);
-      const trainer = trainers.find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === trainerName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
-      if (!trainer) { setNotice("Antrenör adı, kulüp adı veya kullanıcı kodu eşleşmedi."); return; }
+      const trainer = verified?.account ? { ...trainers.find((item) => item.id === verified.account.id), ...verified.account } : trainers.find((item) => matchesSchool(item, selectedSchool) && item.name.toLocaleLowerCase("tr") === userName.toLocaleLowerCase("tr") && String(item.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF");
+      if (!trainer) { setNotice("Antrenör adı, kulüp adı veya kullanıcı kodu eşleşmedi."); setBusy(false); return; }
       localStorage.setItem("volleyballCurrentTrainerId", trainer.id);
       markSessionActivity();
       localStorage.removeItem("volleyballCurrentAthleteId");
@@ -6130,8 +6368,10 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       const trainerSession = { type:"trainer", trainer };
       setSession(trainerSession); onSessionChange(trainerSession);
     }
+    setBusy(false);
   };
   const logout = () => {
+    closeProfileServerSession();
     if (session?.type === "athlete") {
       const id=session.athlete.id;
       localStorage.removeItem("volleyballCurrentAthleteId");
@@ -6180,10 +6420,24 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     <div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular ve antrenörler bağlı oldukları kulüp üzerinden akademiye katılır.</p></div>
     <section className="profile-login-card">
       <div className="registration-tabs profile-login-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setNotice("")}}><School/> Kulüp</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setNotice("")}}><GraduationCap/> Antrenör</button></div>
-      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>Bağlı olduğunuz kulübü seçip kullanıcı bilgilerinizi girin.</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={clubOptions.length===0||!selectedClub}>Profile giriş yap <ArrowRight/></button></form>
+      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>Bağlı olduğunuz kulübü seçip kullanıcı bilgilerinizi girin.</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>6 haneli kullanıcı kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={busy||clubOptions.length===0||!selectedClub}>{busy?"Güvenli giriş kontrol ediliyor…":"Profile giriş yap"} <ArrowRight/></button></form>
       {notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}
     </section>
   </div>;
+}
+
+function VideoPreviewImage({ video, alt="", loading="lazy" }) {
+  const candidates = [...new Set([
+    video?.thumbnail,
+    video?.id ? `https://lh3.googleusercontent.com/d/${video.id}=w900` : "",
+    video?.id ? `https://drive.google.com/thumbnail?id=${video.id}&sz=w900` : "",
+    video?.fallback,
+    "/brand-logo-transparent.png",
+  ].filter(Boolean))];
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  useEffect(() => setCandidateIndex(0), [video?.id]);
+  const currentSource = candidates[Math.min(candidateIndex, candidates.length - 1)];
+  return <img key={`${video?.id}-${candidateIndex}`} src={currentSource} alt={alt} loading={loading} decoding="async" referrerPolicy="no-referrer" onError={()=>setCandidateIndex((value)=>Math.min(value+1,candidates.length-1))}/>;
 }
 
 function TrainingVideosPage() {
@@ -6193,6 +6447,7 @@ function TrainingVideosPage() {
   const [selected, setSelected] = useState(trainingVideos[0]);
   const [playerStarted, setPlayerStarted] = useState(false);
   const [nativePlaybackFailed, setNativePlaybackFailed] = useState(false);
+  const [preferEmbeddedPlayer] = useState(() => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches);
   const [visible, setVisible] = useState(12);
   const [managedVideos, setManagedVideos] = useState(()=>applyManagedVideoOrder(trainingVideos));
   const videos = library === "individual" ? individualTrainingVideos : managedVideos;
@@ -6246,9 +6501,9 @@ function TrainingVideosPage() {
         <div className="video-player-panel">
           <div className="video-player-heading"><span><small>ŞİMDİ İZLENİYOR</small><h2>{selected.title}</h2></span></div>
           <div className={`drive-player ${playerStarted ? "started" : "poster-visible"}`}>
-            {playerStarted && selected.streamUrl && !nativePlaybackFailed && <video key={selected.id} className="video-native-player" src={selected.streamUrl} poster={selected.thumbnail || selected.fallback} controls autoPlay playsInline loop preload="metadata" onError={()=>setNativePlaybackFailed(true)}>Tarayıcınız video oynatmayı desteklemiyor.</video>}
-            {playerStarted && (!selected.streamUrl || nativePlaybackFailed) && <iframe key={`${selected.id}-fallback`} src={selected.preview} title={selected.title} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen loading="eager" referrerPolicy="strict-origin-when-cross-origin" />}
-            {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}>{selected.source ? <video src={selected.source} muted playsInline preload="metadata" aria-label={`${selected.title} video ön izlemesi`}/> : <img src={selected.thumbnail} alt={`${selected.title} video ön izlemesi`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=selected.fallback}}/>}<span><Play/> Videoyu başlat</span></button>}
+            {playerStarted && !preferEmbeddedPlayer && selected.streamUrl && !nativePlaybackFailed && <video key={selected.id} className="video-native-player" src={selected.streamUrl} poster={selected.thumbnail || selected.fallback} controls autoPlay playsInline loop preload="metadata" onError={()=>setNativePlaybackFailed(true)}>Tarayıcınız video oynatmayı desteklemiyor.</video>}
+            {playerStarted && (preferEmbeddedPlayer || !selected.streamUrl || nativePlaybackFailed) && <iframe key={`${selected.id}-fallback`} src={selected.preview} title={selected.title} allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen loading="eager" referrerPolicy="strict-origin-when-cross-origin" />}
+            {!playerStarted && <button type="button" className="video-player-poster" onClick={()=>setPlayerStarted(true)} aria-label={`${selected.title} videosunu başlat`}>{selected.source ? <video src={selected.source} muted playsInline preload="metadata" aria-label={`${selected.title} video ön izlemesi`}/> : <VideoPreviewImage video={selected} alt={`${selected.title} video ön izlemesi`} loading="eager"/>}<span><Play/> Videoyu başlat</span></button>}
           </div>
           <p>Video otomatik başlar ve tamamlandığında yeniden oynatılır. <a className="video-mobile-fallback" href={selected.view} target="_blank" rel="noreferrer">Video açılmazsa güvenli oynatıcıda aç</a></p>
           {selected.practice && <div className="video-practice-info"><article><Users/><span><small>SPORCU SAYISI</small><b>{selected.practice.athletes} sporcu</b></span></article><article><CircleDot/><span><small>TOP SAYISI</small><b>{selected.practice.balls} top</b></span></article><article><Target/><span><small>ÇALIŞMA AMACI</small><b>{selected.practice.goal}</b></span></article><article className="practice-advice"><Dumbbell/><span><small>ANTRENÖR ÖNERİSİ</small><b>{selected.practice.advice}</b></span></article></div>}
@@ -6256,12 +6511,12 @@ function TrainingVideosPage() {
         <aside className="video-playlist-panel" aria-label="Video oynatma listesi">
           <header><span><small>OYNATMA LİSTESİ</small><b>{topic === "Tümü" ? (library === "individual" ? "Bireysel Antrenmanlar" : "Eğitim Videoları") : topic}</b></span><em>{playlistVideos.findIndex((video)=>video.id===selected.id)+1 || 1} / {playlistVideos.length}</em></header>
           <div className="playlist-category-tabs">{topics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>selectPlaylistTopic(item.name)}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
-          <div className="video-playlist-scroll">{playlistVideos.map((video,index)=><button key={video.id} className={selected.id===video.id?"active":""} onClick={()=>choose(video)}><i>{index+1}</i><span className="playlist-thumb">{video.source ? <video src={video.source} muted playsInline preload="metadata"/> : <img src={video.thumbnail} alt="" loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/>}<Play/></span><span className="playlist-copy"><b>{video.title}</b><small>{video.topic}</small></span></button>)}</div>
+          <div className="video-playlist-scroll">{playlistVideos.map((video,index)=><button key={video.id} className={selected.id===video.id?"active":""} onClick={()=>choose(video)}><i>{index+1}</i><span className="playlist-thumb">{video.source ? <video src={video.source} muted playsInline preload="metadata"/> : <VideoPreviewImage video={video}/>}<Play/></span><span className="playlist-copy"><b>{video.title}</b><small>{video.topic}</small></span></button>)}</div>
         </aside>
       </div>
       <div className="video-topic-bar" aria-label="Video konuları"><button className={topic==="Tümü"?"active":""} onClick={()=>selectPlaylistTopic("Tümü")}><span>Tüm videolar</span><b>{videos.length}</b></button>{topics.map((item)=><button key={item.name} className={topic===item.name?"active":""} onClick={()=>selectPlaylistTopic(item.name)}><span>{item.name}</span><b>{item.count}</b></button>)}</div>
       <div className="video-library-toolbar"><div><span className="eyebrow">{library === "individual" ? "BİREYSEL ÇALIŞMA ARŞİVİ" : "VİDEO ARŞİVİ"}</span><h2>{library === "individual" ? "Bireysel antrenman videoları" : "Tüm eğitim videoları"}</h2></div><label className="video-search"><Search/><span className="sr-only">Video ara</span><input value={query} onChange={(event)=>{setQuery(event.target.value);setVisible(12)}} placeholder="Video adı veya numarası ara"/></label></div>
-      {filtered.length ? <div className="training-video-grid">{filtered.slice(0,visible).map((video)=><article className={selected.id===video.id?"training-video-card active":"training-video-card"} key={video.id}><button className="video-card-preview" onClick={()=>choose(video)} aria-label={`${video.title} videosunu oynat`}>{video.source ? <video src={video.source} muted playsInline preload="metadata" aria-label={`${video.title} video görüntüsü`}/> : <img src={video.thumbnail} alt={`${video.title} video görüntüsü`} loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback}}/>}<span className="video-number">#{library === "individual" ? video.number : String(video.number).padStart(2,"0")}</span><span className="video-topic-label">{video.topic}</span><span className="video-play"><Play/></span></button><div><small>{video.topic.toLocaleUpperCase("tr")}</small><h3>{video.title}</h3>{video.fileName && <p className="video-file-name">{video.fileName}</p>}<button onClick={()=>choose(video)}>Videoyu izle <ArrowRight/></button></div></article>)}</div> : <div className="video-empty"><Search/><h2>Video bulunamadı</h2><p>Arama numarasını veya konuyu değiştirin.</p></div>}
+      {filtered.length ? <div className="training-video-grid">{filtered.slice(0,visible).map((video)=><article className={selected.id===video.id?"training-video-card active":"training-video-card"} key={video.id}><button className="video-card-preview" onClick={()=>choose(video)} aria-label={`${video.title} videosunu oynat`}>{video.source ? <video src={video.source} muted playsInline preload="metadata" aria-label={`${video.title} video görüntüsü`}/> : <VideoPreviewImage video={video} alt={`${video.title} video görüntüsü`}/>}<span className="video-number">#{library === "individual" ? video.number : String(video.number).padStart(2,"0")}</span><span className="video-topic-label">{video.topic}</span><span className="video-play"><Play/></span></button><div><small>{video.topic.toLocaleUpperCase("tr")}</small><h3>{video.title}</h3>{video.fileName && <p className="video-file-name">{video.fileName}</p>}<button onClick={()=>choose(video)}>Videoyu izle <ArrowRight/></button></div></article>)}</div> : <div className="video-empty"><Search/><h2>Video bulunamadı</h2><p>Arama numarasını veya konuyu değiştirin.</p></div>}
       {visible < filtered.length && <button className="btn ghost video-load-more" onClick={()=>setVisible((value)=>value+12)}>Daha fazla video göster <ChevronDown/></button>}
     </section>
   </div>;
@@ -6276,7 +6531,7 @@ function applyManagedVideoOrder(videos, rows) {
     .sort((a,b)=>(a.adminOrder??9999)-(b.adminOrder??9999)||a.number-b.number);
 }
 
-function AdminPage(){
+function AdminPageLegacy(){
   const [token,setToken]=useState(()=>sessionStorage.getItem("volleyballAdminToken")||"");
   const [code,setCode]=useState("");
   const [notice,setNotice]=useState("");
@@ -6286,23 +6541,89 @@ function AdminPage(){
   const [dragged,setDragged]=useState(null);
   const [previewVideo,setPreviewVideo]=useState(null);
   const [adminCategory,setAdminCategory]=useState("Tümü");
+  const [bulletinItems,setBulletinItems]=useState(()=>{
+    try{return applyBulletinManagement(JSON.parse(localStorage.getItem("volleyballBulletinManagement")||"[]"),true)}catch{return applyBulletinManagement([],true)}
+  });
+  const [bulletinBusy,setBulletinBusy]=useState(false);
+  const [bulletinDragged,setBulletinDragged]=useState(null);
   const autoSaveReady=useRef(false);
+  const bulletinAutoSaveReady=useRef(false);
   const categories=[...new Set(videoTopics.map((item)=>item.name))];
   const adminCategoryCounts=useMemo(()=>categories.map((category)=>({category,count:items.filter((item)=>item.category===category).length})),[items]);
   const visibleAdminItems=items.map((video,index)=>({video,index})).filter(({video})=>adminCategory==="Tümü"||video.category===adminCategory);
-  const load=async(nextToken=token)=>{const result=await sendRegistration({action:"adminStats",token:nextToken});setBlogStats(result.blog||[]);if(result.videos?.length){localStorage.setItem("volleyballVideoManagement",JSON.stringify(result.videos));setItems(applyManagedVideoOrder(trainingVideos,result.videos).map((video)=>({...video,category:video.topic})))}};
+  const load=async(nextToken=token)=>{const result=await sendRegistration({action:"adminStats",token:nextToken});setBlogStats(result.blog||[]);if(result.videos?.length){localStorage.setItem("volleyballVideoManagement",JSON.stringify(result.videos));setItems(applyManagedVideoOrder(trainingVideos,result.videos).map((video)=>({...video,category:video.topic})))}if(result.bulletins?.length){localStorage.setItem("volleyballBulletinManagement",JSON.stringify(result.bulletins));setBulletinItems(applyBulletinManagement(result.bulletins,true))}};
   useEffect(()=>{if(token)load().catch(()=>{sessionStorage.removeItem("volleyballAdminToken");setToken("")})},[]);
-  const login=async(event)=>{event.preventDefault();setBusy(true);setNotice("");try{const result=await sendRegistration({action:"adminLogin",code});sessionStorage.setItem("volleyballAdminToken",result.token);setToken(result.token);setCode("");await load(result.token)}catch(error){setNotice(error.message)}finally{setBusy(false)}};
+  const login=async(event)=>{event.preventDefault();setBusy(true);setNotice("");try{const result=await sendRegistration({action:"adminLogin",code,clientId:getStableClientId()});sessionStorage.setItem("volleyballAdminToken",result.token);setToken(result.token);setCode("");await load(result.token)}catch(error){setNotice(error.message)}finally{setBusy(false)}};
   const move=(from,to)=>{if(from===null||from===to||to<0||to>=items.length)return;autoSaveReady.current=true;setItems((current)=>{const next=[...current];const [item]=next.splice(from,1);next.splice(to,0,item);return next})};
   const moveInView=(visibleIndex,direction)=>{const target=visibleAdminItems[visibleIndex+direction];if(!target)return;move(visibleAdminItems[visibleIndex].index,target.index)};
   const updateCategory=(index,category)=>{autoSaveReady.current=true;setItems((current)=>current.map((item,itemIndex)=>itemIndex===index?{...item,category}:item))};
   const updateTitle=(index,title)=>{autoSaveReady.current=true;setItems((current)=>current.map((item,itemIndex)=>itemIndex===index?{...item,title}:item))};
   const save=async()=>{if(items.some((item)=>!item.title.trim())){setNotice("Video başlığı boş bırakılamaz.");return}setBusy(true);setNotice("Değişiklikler otomatik kaydediliyor…");try{const payload=items.map((item,index)=>({id:item.id,title:item.title.trim(),category:item.category,order:index+1}));const result=await sendRegistration({action:"adminSaveVideoOrder",token,items:payload});const rows=payload.map((item)=>({"Video ID":item.id,"Başlık":item.title,"Kategori":item.category,"Sıra":item.order}));localStorage.setItem("volleyballVideoManagement",JSON.stringify(rows));window.dispatchEvent(new CustomEvent("volleyballVideoManagementUpdated",{detail:rows}));setNotice(`${result.count||items.length} video otomatik kaydedildi.`)}catch(error){setNotice(error.message)}finally{setBusy(false)}};
   useEffect(()=>{if(!token||!autoSaveReady.current)return;const timer=setTimeout(()=>{autoSaveReady.current=false;save()},700);return()=>clearTimeout(timer)},[items,token]);
+  const updateBulletin=(index,changes)=>{bulletinAutoSaveReady.current=true;setBulletinItems((current)=>current.map((item,itemIndex)=>itemIndex===index?{...item,...changes}:item))};
+  const moveBulletin=(from,to)=>{if(from===null||from===to||to<0||to>=bulletinItems.length)return;bulletinAutoSaveReady.current=true;setBulletinItems((current)=>{const next=[...current];const [item]=next.splice(from,1);next.splice(to,0,item);return next})};
+  const saveBulletins=async()=>{if(bulletinItems.some((item)=>!item.title.trim()||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(item.date))){setNotice("Bülten başlığı ve tarihi geçerli olmalıdır.");return}setBulletinBusy(true);try{const payload=bulletinItems.map((item,index)=>({id:item.id,title:item.title.trim(),date:item.date,published:item.published!==false,order:index+1}));const rows=payload.map((item)=>({"Bülten ID":item.id,"Başlık":item.title,"Tarih":item.date,"Sıra":item.order,"Yayında":item.published?"EVET":"HAYIR"}));localStorage.setItem("volleyballBulletinManagement",JSON.stringify(rows));window.dispatchEvent(new CustomEvent("volleyballBulletinManagementUpdated",{detail:rows}));try{const result=await sendRegistration({action:"adminSaveBulletins",token,items:payload});setNotice(`${result.count||payload.length} bülten otomatik kaydedildi.`)}catch(error){setNotice(`Bültenler bu cihazda kaydedildi. Sunucu: ${error.message}`)}}finally{setBulletinBusy(false)}};
+  useEffect(()=>{if(!token||!bulletinAutoSaveReady.current)return;const timer=setTimeout(()=>{bulletinAutoSaveReady.current=false;saveBulletins()},700);return()=>clearTimeout(timer)},[bulletinItems,token]);
   if(!token)return <div className="admin-page admin-login"><section><span className="admin-icon"><ShieldCheck/></span><small>YÖNETİCİ ALANI</small><h1>İçerik kontrol merkezine giriş</h1><p>Yönetici kodu sunucuda doğrulanır ve web sayfasının kaynak kodunda saklanmaz.</p><form onSubmit={login}><label>6 haneli yönetici kodu<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength="6" value={code} onChange={(event)=>setCode(event.target.value.replace(/\D/g,""))} required autoComplete="one-time-code"/></label><button className="btn" disabled={busy||code.length!==6}><KeyRound/>{busy?"Kontrol ediliyor…":"Güvenli giriş yap"}</button></form>{notice&&<div className="admin-notice error">{notice}</div>}</section></div>;
   return <div className="admin-page"><section className="admin-hero"><div><span className="eyebrow"><Settings/> YÖNETİCİ PANELİ</span><h1>İçerikleri tek yerden yönet.</h1><p>Videoların sırasını ve kategorisini düzenle; blog okunmalarını takip et.</p></div><button className="btn ghost" onClick={()=>{sessionStorage.removeItem("volleyballAdminToken");setToken("")}}>Güvenli çıkış</button></section>
     <div className="admin-grid"><section className="admin-panel video-admin"><header><span><small>VİDEO KONTROLÜ</small><h2>Sıralama ve kategori</h2></span><span className={`admin-autosave-state ${busy?"saving":""}`}><i/>{busy?"Kaydediliyor…":"Otomatik kayıt aktif"}</span></header><p className="admin-hint">Video görseline dokunarak önizleyin. Başlık, kategori ve sıralama değişiklikleri otomatik kaydedilir.</p><div className="admin-category-filter" aria-label="Video kategorileri"><button className={adminCategory==="Tümü"?"active":""} onClick={()=>setAdminCategory("Tümü")}><span>Tüm Videolar</span><b>{items.length}</b></button>{adminCategoryCounts.map(({category,count})=><button key={category} className={adminCategory===category?"active":""} onClick={()=>setAdminCategory(category)}><span>{category}</span><b>{count}</b></button>)}</div>{previewVideo&&<div className="admin-video-player"><div><span><small>VİDEO ÖNİZLEMESİ</small><b>{previewVideo.title}</b></span><button onClick={()=>setPreviewVideo(null)} aria-label="Önizlemeyi kapat">×</button></div><iframe src={previewVideo.preview} title={`${previewVideo.title} önizlemesi`} allow="autoplay; fullscreen" allowFullScreen/></div>}<div className="admin-video-list">{visibleAdminItems.map(({video,index},visibleIndex)=><article key={video.id} draggable onDragStart={()=>setDragged(index)} onDragOver={(event)=>event.preventDefault()} onDrop={()=>{move(dragged,index);setDragged(null)}}><GripVertical/><button className="admin-video-thumb" onClick={()=>setPreviewVideo(video)} aria-label={`${video.title} videosunu önizle`}>{video.source?<video src={video.source} muted playsInline preload="metadata"/>:<img src={video.thumbnail} alt=""/>}<Play/></button><label className="admin-video-title"><small>#{String(visibleIndex+1).padStart(2,"0")} · VİDEO BAŞLIĞI</small><input value={video.title} maxLength="180" onChange={(event)=>updateTitle(index,event.target.value)} aria-label={`${String(visibleIndex+1).padStart(2,"0")} numaralı video başlığı`}/></label><select value={video.category} onChange={(event)=>updateCategory(index,event.target.value)}>{categories.map((category)=><option key={category}>{category}</option>)}</select><div className="admin-move"><button onClick={()=>moveInView(visibleIndex,-1)} aria-label="Yukarı taşı">↑</button><button onClick={()=>moveInView(visibleIndex,1)} aria-label="Aşağı taşı">↓</button></div></article>)}</div></section>
     <section className="admin-panel blog-admin"><header><span><small>BLOG ANALİZİ</small><h2>Okunma sayıları</h2></span><Eye/></header>{blogStats.length?<div className="admin-blog-list">{[...blogStats].sort((a,b)=>Number(b["Okunma Sayısı"]||0)-Number(a["Okunma Sayısı"]||0)).map((row)=><article key={row["Yazı ID"]}><span><b>{row["Başlık"]}</b><small>Son okunma: {row["Son Okunma"]||"—"}</small></span><strong>{row["Okunma Sayısı"]||0}<small>okunma</small></strong></article>)}</div>:<div className="admin-empty"><Eye/><b>Henüz okunma kaydı yok</b><p>Blog yazıları açıldıkça sayaç burada görünür.</p></div>}</section></div>{notice&&<div className="admin-notice">{notice}</div>}</div>;
+}
+
+function AdminPage(){
+  const [token,setToken]=useState(()=>sessionStorage.getItem("volleyballAdminToken")||"");
+  const [code,setCode]=useState("");
+  const [notice,setNotice]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [bulletinBusy,setBulletinBusy]=useState(false);
+  const [items,setItems]=useState(()=>applyManagedVideoOrder(trainingVideos).map((video)=>({...video,category:video.topic})));
+  const [bulletinItems,setBulletinItems]=useState(()=>{
+    try{return applyBulletinManagement(JSON.parse(localStorage.getItem("volleyballBulletinManagement")||"[]"),true)}catch{return applyBulletinManagement([],true)}
+  });
+  const [blogStats,setBlogStats]=useState([]);
+  const [dragged,setDragged]=useState(null);
+  const [bulletinDragged,setBulletinDragged]=useState(null);
+  const [previewVideo,setPreviewVideo]=useState(null);
+  const [adminCategory,setAdminCategory]=useState("Tümü");
+  const videoSaveReady=useRef(false);
+  const bulletinSaveReady=useRef(false);
+  const categories=[...new Set([...videoTopics.map((item)=>item.name),...items.map((item)=>item.category)])];
+  const categoryCounts=useMemo(()=>categories.map((category)=>({category,count:items.filter((item)=>item.category===category).length})),[items]);
+  const visibleVideos=items.map((video,index)=>({video,index})).filter(({video})=>adminCategory==="Tümü"||video.category===adminCategory);
+
+  const load=async(nextToken=token)=>{
+    const result=await sendRegistration({action:"adminStats",token:nextToken});
+    setBlogStats(result.blog||[]);
+    if(result.videos?.length){localStorage.setItem("volleyballVideoManagement",JSON.stringify(result.videos));setItems(applyManagedVideoOrder(trainingVideos,result.videos).map((video)=>({...video,category:video.topic})))}
+    if(result.bulletins?.length){localStorage.setItem("volleyballBulletinManagement",JSON.stringify(result.bulletins));setBulletinItems(applyBulletinManagement(result.bulletins,true))}
+  };
+  useEffect(()=>{if(token)load().catch(()=>{sessionStorage.removeItem("volleyballAdminToken");setToken("")})},[]);
+  const login=async(event)=>{event.preventDefault();setBusy(true);setNotice("");try{const result=await sendRegistration({action:"adminLogin",code,clientId:getStableClientId()});sessionStorage.setItem("volleyballAdminToken",result.token);setToken(result.token);setCode("");await load(result.token)}catch(error){setNotice(error.message)}finally{setBusy(false)}};
+
+  const moveVideo=(from,to)=>{if(from===null||from===to||to<0||to>=items.length)return;videoSaveReady.current=true;setItems((current)=>{const next=[...current];const [item]=next.splice(from,1);next.splice(to,0,item);return next})};
+  const moveVisibleVideo=(visibleIndex,direction)=>{const target=visibleVideos[visibleIndex+direction];if(target)moveVideo(visibleVideos[visibleIndex].index,target.index)};
+  const updateVideo=(index,changes)=>{videoSaveReady.current=true;setItems((current)=>current.map((item,itemIndex)=>itemIndex===index?{...item,...changes}:item))};
+  const saveVideos=async()=>{if(items.some((item)=>!item.title.trim())){setNotice("Video başlığı boş bırakılamaz.");return}setBusy(true);try{const payload=items.map((item,index)=>({id:item.id,title:item.title.trim(),category:item.category,order:index+1}));const result=await sendRegistration({action:"adminSaveVideoOrder",token,items:payload});const rows=payload.map((item)=>({"Video ID":item.id,"Başlık":item.title,"Kategori":item.category,"Sıra":item.order}));localStorage.setItem("volleyballVideoManagement",JSON.stringify(rows));window.dispatchEvent(new CustomEvent("volleyballVideoManagementUpdated",{detail:rows}));setNotice(`${result.count||items.length} video otomatik kaydedildi.`)}catch(error){setNotice(error.message)}finally{setBusy(false)}};
+  useEffect(()=>{if(!token||!videoSaveReady.current)return;const timer=setTimeout(()=>{videoSaveReady.current=false;saveVideos()},700);return()=>clearTimeout(timer)},[items,token]);
+
+  const updateBulletin=(index,changes)=>{bulletinSaveReady.current=true;setBulletinItems((current)=>current.map((item,itemIndex)=>itemIndex===index?{...item,...changes}:item))};
+  const moveBulletin=(from,to)=>{if(from===null||from===to||to<0||to>=bulletinItems.length)return;bulletinSaveReady.current=true;setBulletinItems((current)=>{const next=[...current];const [item]=next.splice(from,1);next.splice(to,0,item);return next})};
+  const saveBulletins=async()=>{if(bulletinItems.some((item)=>!item.title.trim()||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(item.date))){setNotice("Bülten başlığı ve tarihi geçerli olmalıdır.");return}setBulletinBusy(true);const payload=bulletinItems.map((item,index)=>({id:item.id,title:item.title.trim(),date:item.date,status:item.status||"published",order:index+1}));const statusLabel={published:"YAYINDA",draft:"TASLAK",deleted:"SİLİNDİ"};const rows=payload.map((item)=>({"Bülten ID":item.id,"Başlık":item.title,"Tarih":item.date,"Sıra":item.order,"Yayında":statusLabel[item.status]||"TASLAK"}));localStorage.setItem("volleyballBulletinManagement",JSON.stringify(rows));window.dispatchEvent(new CustomEvent("volleyballBulletinManagementUpdated",{detail:rows}));try{const result=await sendRegistration({action:"adminSaveBulletins",token,items:payload});setNotice(`${result.count||payload.length} bülten otomatik kaydedildi.`)}catch(error){setNotice(`Bültenler bu cihazda kaydedildi. Sunucu: ${error.message}`)}finally{setBulletinBusy(false)}};
+  useEffect(()=>{if(!token||!bulletinSaveReady.current)return;const timer=setTimeout(()=>{bulletinSaveReady.current=false;saveBulletins()},700);return()=>clearTimeout(timer)},[bulletinItems,token]);
+
+  if(!token)return <div className="admin-page admin-login"><section><span className="admin-icon"><ShieldCheck/></span><small>YÖNETİCİ ALANI</small><h1>İçerik kontrol merkezine giriş</h1><p>Yönetici kodu sunucuda doğrulanır ve web sayfasının kaynak kodunda saklanmaz.</p><form onSubmit={login}><label>6 haneli yönetici kodu<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength="6" value={code} onChange={(event)=>setCode(event.target.value.replace(/\D/g,""))} required autoComplete="one-time-code"/></label><button className="btn" disabled={busy||code.length!==6}><KeyRound/>{busy?"Kontrol ediliyor…":"Güvenli giriş yap"}</button></form>{notice&&<div className="admin-notice error">{notice}</div>}</section></div>;
+  return <div className="admin-page">
+    <section className="admin-hero"><div><span className="eyebrow"><Settings/> YÖNETİCİ PANELİ</span><h1>İçerikleri tek yerden yönet.</h1><p>Videoları, eğitim bültenlerini ve blog okunmalarını kontrol et.</p></div><button className="btn ghost" onClick={()=>{sessionStorage.removeItem("volleyballAdminToken");setToken("")}}>Güvenli çıkış</button></section>
+    <div className="admin-grid">
+      <section className="admin-panel video-admin"><header><span><small>VİDEO KONTROLÜ</small><h2>Sıralama ve kategori</h2></span><span className={`admin-autosave-state ${busy?"saving":""}`}><i/>{busy?"Kaydediliyor…":"Otomatik kayıt aktif"}</span></header><p className="admin-hint">Video görseline dokunarak ön izleyin. Başlık, kategori ve sıralama değişiklikleri otomatik kaydedilir.</p><div className="admin-category-filter"><button className={adminCategory==="Tümü"?"active":""} onClick={()=>setAdminCategory("Tümü")}><span>Tüm Videolar</span><b>{items.length}</b></button>{categoryCounts.map(({category,count})=><button key={category} className={adminCategory===category?"active":""} onClick={()=>setAdminCategory(category)}><span>{category}</span><b>{count}</b></button>)}</div>
+        {previewVideo&&<div className="admin-video-player"><div><span><small>VİDEO ÖN İZLEMESİ</small><b>{previewVideo.title}</b></span><button onClick={()=>setPreviewVideo(null)} aria-label="Ön izlemeyi kapat">×</button></div><iframe src={previewVideo.preview} title={`${previewVideo.title} ön izlemesi`} allow="autoplay; fullscreen" allowFullScreen/></div>}
+        <div className="admin-video-list">{visibleVideos.map(({video,index},visibleIndex)=><article key={video.id} draggable onDragStart={()=>setDragged(index)} onDragOver={(event)=>event.preventDefault()} onDrop={()=>{moveVideo(dragged,index);setDragged(null)}}><GripVertical/><button className="admin-video-thumb" onClick={()=>setPreviewVideo(video)} aria-label={`${video.title} videosunu ön izleyin`}><img src={video.thumbnail||video.fallback} alt={`${video.title} ön izleme görseli`} loading="lazy" onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src=video.fallback||"/brand-logo.png"}}/><Play/></button><label className="admin-video-title"><small>#{String(visibleIndex+1).padStart(2,"0")} · VİDEO BAŞLIĞI</small><input value={video.title} maxLength="180" onChange={(event)=>updateVideo(index,{title:event.target.value})}/></label><select value={video.category} onChange={(event)=>updateVideo(index,{category:event.target.value})}>{categories.map((category)=><option key={category}>{category}</option>)}</select><div className="admin-move"><button onClick={()=>moveVisibleVideo(visibleIndex,-1)} aria-label="Yukarı taşı">↑</button><button onClick={()=>moveVisibleVideo(visibleIndex,1)} aria-label="Aşağı taşı">↓</button></div></article>)}</div>
+      </section>
+      <section className="admin-panel blog-admin"><header><span><small>BLOG ANALİZİ</small><h2>Okunma sayıları</h2></span><Eye/></header>{blogStats.length?<div className="admin-blog-list">{[...blogStats].sort((a,b)=>Number(b["Okunma Sayısı"]||0)-Number(a["Okunma Sayısı"]||0)).map((row)=><article key={row["Yazı ID"]}><span><b>{row["Başlık"]}</b><small>Son okunma: {row["Son Okunma"]||"—"}</small></span><strong>{row["Okunma Sayısı"]||0}<small>okunma</small></strong></article>)}</div>:<div className="admin-empty"><Eye/><b>Henüz okunma kaydı yok</b><p>Blog yazıları açıldıkça sayaç burada görünür.</p></div>}</section>
+    </div>
+    <section className="admin-panel bulletin-admin"><header><span><small>EĞİTİM BÜLTENLERİ</small><h2>Yayın planı ve içerik yönetimi</h2></span><span className={`admin-autosave-state ${bulletinBusy?"saving":""}`}><i/>{bulletinBusy?"Kaydediliyor…":"Otomatik kayıt aktif"}</span></header><p className="admin-hint">Taslak bültenler spor okullarına gösterilmez. “Yayınla” seçildiğinde okul sayfalarında görünür; başlık, tarih ve sıralama değişiklikleri otomatik kaydedilir.</p><div className="admin-bulletin-list">{bulletinItems.map((item,index)=>{const status=item.status||"published";const statusText=status==="published"?"Yayında":status==="draft"?"Taslak":"Silindi";return <article key={item.id} className={status==="published"?"":`unpublished ${status}`} draggable onDragStart={()=>setBulletinDragged(index)} onDragOver={(event)=>event.preventDefault()} onDrop={()=>{moveBulletin(bulletinDragged,index);setBulletinDragged(null)}}><GripVertical/><span className="admin-bulletin-number">{String(index+1).padStart(2,"0")}</span><label><small>BÜLTEN BAŞLIĞI</small><input value={item.title} maxLength="150" onChange={(event)=>updateBulletin(index,{title:event.target.value})}/></label><label className="admin-bulletin-date"><small>YAYIN TARİHİ</small><input type="date" value={item.date} onChange={(event)=>updateBulletin(index,{date:event.target.value})}/></label><span className={`admin-bulletin-status ${status}`}>{statusText}</span><div className="admin-bulletin-actions"><button onClick={()=>moveBulletin(index,index-1)} aria-label="Yukarı taşı">↑</button><button onClick={()=>moveBulletin(index,index+1)} aria-label="Aşağı taşı">↓</button>{status==="published"?<button className="draft" onClick={()=>updateBulletin(index,{status:"draft",published:false})}><FileText/> Taslağa al</button>:<button className="publish" onClick={()=>updateBulletin(index,{status:"published",published:true})}><CheckCircle2/> Yayınla</button>}{status==="deleted"?<button className="restore" onClick={()=>updateBulletin(index,{status:"draft",published:false})}><RotateCcw/> Geri al</button>:<button className="remove" onClick={()=>updateBulletin(index,{status:"deleted",published:false})}><X/> Sil</button>}</div></article>})}</div></section>
+    {notice&&<div className="admin-notice">{notice}</div>}
+  </div>;
 }
 
 function InfoPage() {
@@ -6346,7 +6667,7 @@ const instructorProfiles = [
   {
     id:"kursat-bugra-karaoglan",
     name:"Kürşat Buğra Karaoğlan",
-    image:"/instructors/kursat-bugra-karaoglan.png",
+    image:"/instructors/kursat-bugra-karaoglan.webp",
     roles:["Beden Eğitimi ve Spor Öğretmeni","Vibe Coder","Sosyal Medya İçerik Sorumlusu"],
     summary:"Spor eğitimi, dijital içerik üretimi ve teknoloji odaklı geliştirme çalışmalarını aynı çatı altında buluşturur. Online Voleybol Akademisi’nin eğitim deneyimi ve dijital içerik süreçlerinde görev alır.",
     phone:"0555 792 47 58",
@@ -6367,6 +6688,8 @@ function CoachesPage() {
 
 function TechnicalCardsPage({ account }) {
   const [selected, setSelected] = useState(null);
+  const technicalTriggerRef = useRef(null);
+  const technicalCloseRef = useRef(null);
   const [category, setCategory] = useState("Tümü");
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
@@ -6380,10 +6703,21 @@ function TechnicalCardsPage({ account }) {
     const message = `${schoolName} teknik kart paylaşımı\n\n${card.title}\nKategori: ${card.category}\n\nPDF dosyasını doğrudan indir:\n${pdfUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   };
+  const openPreview = (card,event) => { technicalTriggerRef.current=event.currentTarget; setSelected(card); };
+  const closePreview = () => { setSelected(null); requestAnimationFrame(()=>technicalTriggerRef.current?.focus()); };
+  useEffect(()=>{
+    if(!selected)return;
+    const previousOverflow=document.body.style.overflow;
+    const onKeyDown=(event)=>{if(event.key==="Escape")closePreview()};
+    document.body.style.overflow="hidden";
+    document.addEventListener("keydown",onKeyDown);
+    requestAnimationFrame(()=>technicalCloseRef.current?.focus());
+    return()=>{document.body.style.overflow=previousOverflow;document.removeEventListener("keydown",onKeyDown)};
+  },[selected]);
   return <div className="technical-cards-page">
     <section className="technical-cards-hero"><div><span className="eyebrow"><FileText/> TEKNİK KART KÜTÜPHANESİ</span><h1>Tekniği incele,<br/><em>sahaya taşı.</em></h1><p>Voleybol hareketlerini tek sayfalık A4 eğitim kartlarıyla inceleyin; Word veya PDF biçiminde doğrudan indirin.</p><div><span><b>{technicalCards.length}</b><small>Teknik kart</small></span><span><b>A4</b><small>Tek sayfa düzeni</small></span><span><b>2</b><small>İndirme biçimi</small></span></div></div><div className="technical-paper-mark"><FileText/><b>A4</b><span>TEKNİK<br/>EĞİTİM KARTI</span></div></section>
-    <section className="technical-library"><header><div><small>BELGE ARŞİVİ</small><h2>Tüm teknik kartlar</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Teknik kart ara" aria-label="Teknik kartlarda ara"/></label></header><nav>{technicalCardCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}<b>{item==="Tümü"?technicalCards.length:technicalCards.filter((card)=>card.category===item).length}</b></button>)}</nav>{filtered.length?<div className="technical-card-grid">{filtered.map((card)=><article key={card.id}><button className="technical-card-select" onClick={()=>setSelected(card)}><span className="technical-card-page"><FileText/><img src={card.image} alt={`${card.title} teknik kart çalışma görseli`} loading="lazy"/><i>{String(card.number).padStart(2,"0")}</i></span><span><small>{card.category}</small><h3>{card.title}</h3><em>Ön izlemeyi aç <Eye/></em></span></button><div className="technical-card-actions"><a href={`${docUrl(card.id,"export")}?format=docx`} aria-label={`${card.title} Word belgesini indir`}><Download/> Word</a><a href={`${docUrl(card.id,"export")}?format=pdf`} aria-label={`${card.title} PDF belgesini indir`}><Download/> PDF</a><button type="button" onClick={()=>shareCard(card)} aria-label={`${card.title} kartını WhatsApp ile paylaş`}><MessageCircle/> WhatsApp</button></div></article>)}</div>:<div className="technical-empty"><Search/><h3>Teknik kart bulunamadı</h3><p>Arama kelimesini veya kategoriyi değiştirin.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
-    {selected&&<div className="technical-preview-modal" role="dialog" aria-modal="true" aria-label={`${selected.title} ön izlemesi`} onMouseDown={(event)=>{if(event.target===event.currentTarget)setSelected(null)}}><section><header><span><small>TEKNİK KART ÖN İZLEMESİ</small><h2>{selected.title}</h2><p>{selected.category} · Kart {String(selected.number).padStart(2,"0")}</p></span><button type="button" onClick={()=>setSelected(null)} aria-label="Ön izlemeyi kapat"><X/></button></header><div className="technical-modal-document"><img key={selected.id} src={selected.image} alt={`${selected.title} teknik kart ön izlemesi`}/></div><footer><a href={`${docUrl(selected.id,"export")}?format=docx`}><Download/> Word İndir</a><a href={`${docUrl(selected.id,"export")}?format=pdf`}><Download/> PDF İndir</a><button type="button" onClick={()=>shareCard(selected)}><MessageCircle/> WhatsApp ile Paylaş</button></footer></section></div>}
+    <section className="technical-library"><header><div><small>BELGE ARŞİVİ</small><h2>Tüm teknik kartlar</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Teknik kart ara" aria-label="Teknik kartlarda ara"/></label></header><nav>{technicalCardCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}<b>{item==="Tümü"?technicalCards.length:technicalCards.filter((card)=>card.category===item).length}</b></button>)}</nav>{filtered.length?<div className="technical-card-grid">{filtered.map((card)=><article key={card.id}><button className="technical-card-select" onClick={(event)=>openPreview(card,event)}><span className="technical-card-page"><FileText/><img src={card.image} alt={`${card.title} teknik kart çalışma görseli`} loading="lazy"/><i>{String(card.number).padStart(2,"0")}</i></span><span><small>{card.category}</small><h3>{card.title}</h3><em>Ön izlemeyi aç <Eye/></em></span></button><div className="technical-card-actions"><a href={`${docUrl(card.id,"export")}?format=docx`} aria-label={`${card.title} Word belgesini indir`}><Download/> Word</a><a href={`${docUrl(card.id,"export")}?format=pdf`} aria-label={`${card.title} PDF belgesini indir`}><Download/> PDF</a><button type="button" onClick={()=>shareCard(card)} aria-label={`${card.title} kartını WhatsApp ile paylaş`}><MessageCircle/> WhatsApp</button></div></article>)}</div>:<div className="technical-empty"><Search/><h3>Teknik kart bulunamadı</h3><p>Arama kelimesini veya kategoriyi değiştirin.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
+    {selected&&<div className="technical-preview-modal" role="dialog" aria-modal="true" aria-label={`${selected.title} ön izlemesi`} onMouseDown={(event)=>{if(event.target===event.currentTarget)closePreview()}}><section><header><span><small>TEKNİK KART ÖN İZLEMESİ</small><h2>{selected.title}</h2><p>{selected.category} · Kart {String(selected.number).padStart(2,"0")}</p></span><button ref={technicalCloseRef} type="button" onClick={closePreview} aria-label="Ön izlemeyi kapat"><X/></button></header><div className="technical-modal-document"><img key={selected.id} src={selected.image} alt={`${selected.title} teknik kart ön izlemesi`}/></div><footer><a href={`${docUrl(selected.id,"export")}?format=docx`}><Download/> Word İndir</a><a href={`${docUrl(selected.id,"export")}?format=pdf`}><Download/> PDF İndir</a><button type="button" onClick={()=>shareCard(selected)}><MessageCircle/> WhatsApp ile Paylaş</button></footer></section></div>}
   </div>;
 }
 function Empty() {
@@ -6397,6 +6731,7 @@ function Empty() {
 }
 function MobileNav({ page, go, isAuthenticated, isAthlete }) {
   const [courseOpen, setCourseOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   let xs = [
     ["home", Home, "Ana Sayfa"],
     ["courses", BookOpen, "Dersler"],
@@ -6412,15 +6747,27 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
   ];
   if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
+  const primaryKeys = isAuthenticated
+    ? ["home", "courses", "videos", "exams", "profiles"]
+    : ["home", "junior-referee", "blog", "register", "profiles"];
+  const primaryItems = xs.filter(([key]) => primaryKeys.includes(key));
+  const secondaryItems = xs.filter(([key]) => !primaryKeys.includes(key));
+  const openPage = (key) => {
+    setMoreOpen(false);
+    if (key === "courses") setCourseOpen((value)=>!value);
+    else go(key);
+  };
   return (
     <>
       {courseOpen&&<button className="mobile-course-backdrop" type="button" aria-label="Dersler alt menüsünü kapat" onClick={()=>setCourseOpen(false)}/>}
       {courseOpen&&<section className="mobile-course-menu" aria-label="Dersler alt menüsü"><header><span><small>DERSLER</small><b>Eğitim alanını seç</b></span><button type="button" onClick={()=>setCourseOpen(false)} aria-label="Dersler alt menüsünü kapat"><X/></button></header><button type="button" onClick={()=>{setCourseOpen(false);go("courses")}}><BookOpen/><span><b>Tüm Dersler</b><small>Voleybol eğitim kütüphanesi</small></span><ArrowRight/></button><button type="button" onClick={()=>{setCourseOpen(false);go("technical-cards")}}><FileText/><span><b>Teknik Kartlar</b><small>Görsel, Word ve PDF çalışma kartları</small></span><ArrowRight/></button></section>}
+      {moreOpen&&<button className="mobile-course-backdrop" type="button" aria-label="Diğer menüyü kapat" onClick={()=>setMoreOpen(false)}/>}
+      {moreOpen&&<section className="mobile-more-menu" aria-label="Diğer sayfalar"><header><span><small>MENÜ</small><b>Diğer bölümler</b></span><button type="button" onClick={()=>setMoreOpen(false)} aria-label="Diğer menüyü kapat"><X/></button></header><div>{secondaryItems.map(([key,Icon,title])=><button type="button" key={key} onClick={()=>openPage(key)}><Icon/><span>{title}</span><ArrowRight/></button>)}</div></section>}
       <nav className="mobile-nav">
-      {xs.map(([k, I, t]) => (
+      {primaryItems.map(([k, I, t]) => (
         <button
           className={(page === k || (k==="courses"&&["course","lesson","technical-cards"].includes(page))) ? "active" : ""}
-          onClick={() => k === "courses" ? setCourseOpen((value)=>!value) : go(k)}
+          onClick={() => openPage(k)}
           key={k}
           aria-expanded={k === "courses" ? courseOpen : undefined}
         >
@@ -6428,6 +6775,7 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
           <span>{t}</span>
         </button>
       ))}
+      {secondaryItems.length>0&&<button className={moreOpen?"active":""} onClick={()=>{setCourseOpen(false);setMoreOpen((value)=>!value)}} aria-expanded={moreOpen}><Menu/><span>Menü</span></button>}
       </nav>
     </>
   );
@@ -6556,7 +6904,7 @@ function JuniorRefereePage() {
         <p>Voleybol hakemliğine ilk adımı atan gençler için sade, uygulamalı ve adım adım ilerleyen bir öğrenme alanı.</p>
         <div className={`junior-referee-note ${sourceState}`}><ShieldCheck/><span><b>{sourceState==="ready"?"Hakemlik içerikleri güncel":sourceState==="error"?"İçerikler yüklenemedi":"İçerikler güncelleniyor"}</b><small>{sourceState==="ready"?`${sections.length} bölüm • ${caseCount} örnek olay • ${videoCount} video`:sourceState==="error"?"Tekrar denemek için sayfayı yenileyin.":"Güncel hakemlik konuları hazırlanıyor."}</small></span></div>
       </div>
-      <div className="junior-referee-visual"><img src="/junior-referees.png" alt="Voleybol hakemi kıyafetli bir kız ve bir erkek çocuk"/></div>
+      <div className="junior-referee-visual"><img src="/junior-referees.webp" alt="Voleybol hakemi kıyafetli bir kız ve bir erkek çocuk"/></div>
     </section>
     <section className="junior-referee-content">
       <div className="referee-library-cards" aria-label="Junior Hakem eğitim bölümleri">
@@ -6573,12 +6921,32 @@ function JuniorRefereePage() {
     </section>
   </div>;
 }
+function ContactMessenger() {
+  const [open,setOpen]=useState(false);
+  const [name,setName]=useState("");
+  const [message,setMessage]=useState("");
+  const sendMessage=(event)=>{
+    event.preventDefault();
+    const text=`Merhaba, ben ${name.trim() || "bir ziyaretçiyim"}. ${message.trim()}`;
+    window.open(`https://wa.me/905557924758?text=${encodeURIComponent(text)}`,"_blank","noopener,noreferrer");
+  };
+  return <aside className={`contact-messenger ${open?"open":""}`} aria-label="İletişim paneli">
+    {open&&<div className="contact-messenger-panel">
+      <header><span><i/><small>ÇEVRİM İÇİ DESTEK</small><b>Nasıl yardımcı olabiliriz?</b></span><button onClick={()=>setOpen(false)} aria-label="Mesaj panelini kapat"><X/></button></header>
+      <p>Mesajınızı yazın, WhatsApp üzerinden doğrudan iletişime geçelim.</p>
+      <div className="contact-message-topics">{["Kayıt","Dersler","Teknik destek"].map((topic)=><button key={topic} onClick={()=>setMessage(`${topic} hakkında bilgi almak istiyorum.`)}>{topic}</button>)}</div>
+      <form onSubmit={sendMessage}><label>Adınız<input value={name} onChange={(event)=>setName(event.target.value)} placeholder="Adınızı yazın"/></label><label>Mesajınız<textarea required value={message} onChange={(event)=>setMessage(event.target.value)} placeholder="Size nasıl yardımcı olabiliriz?" rows="3"/></label><button className="contact-send" type="submit"><MessageCircle/> WhatsApp ile gönder <ArrowRight/></button></form>
+      <small className="contact-privacy"><ShieldCheck/> Bilgileriniz web sitesinde saklanmaz.</small>
+    </div>}
+    <button className="contact-messenger-trigger" onClick={()=>setOpen((value)=>!value)} aria-expanded={open}><span><MessageCircle/></span><i><b>İletişim</b><small>Çevrim içi destek</small></i></button>
+  </aside>;
+}
 function Footer({ go }) {
   return (
     <footer className="footer">
       <div className="footer-brand-block">
         <div className="brand inverse">
-          <img className="ball" src="/brand-logo.png" alt="" aria-hidden="true" />
+          <img className="ball" src="/brand-logo-transparent.png" alt="" aria-hidden="true" />
           <span>
             VOLEYBOL
             <br />
@@ -6622,6 +6990,7 @@ function Footer({ go }) {
 }
 const rootElement = document.getElementById("root");
 initAnalytics();
+registerPwa();
 const appRoot = rootElement.__reactRoot || createRoot(rootElement);
 rootElement.__reactRoot = appRoot;
 appRoot.render(<App />);

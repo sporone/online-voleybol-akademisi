@@ -16,13 +16,13 @@ const topicVideoNumbers = {
 };
 
 const topicCovers = {
-  "Top kontrolü": "/course-covers/course-01.png",
+  "Top kontrolü": "/course-covers/course-01.webp",
   "Parmak pas": "/course-covers/course-02.webp",
-  "Manşet": "/course-covers/course-03.png",
-  "Servis": "/course-covers/course-04.png",
-  "Smaç": "/course-covers/course-05.png",
-  "Blok": "/course-covers/course-06.png",
-  "Savunma": "/course-covers/course-07.png",
+  "Manşet": "/course-covers/course-03.webp",
+  "Servis": "/course-covers/course-04.webp",
+  "Smaç": "/course-covers/course-05.webp",
+  "Blok": "/course-covers/course-06.webp",
+  "Savunma": "/course-covers/course-07.webp",
 };
 
 const topicByVideoNumber = Object.fromEntries(

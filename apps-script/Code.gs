@@ -1,5 +1,5 @@
-const ALLOWED_SHEETS=['Courses','Lessons','Coaches','Users','Progress','TrainingPlans','Announcements','Assessments','Quizzes','Reviews','Okul Kayitlari','Sporcu Kayitlari','Antrenor Kayitlari','Video Yonetimi'];
-const ADMIN_CODE_HASH='705be25e5e24528f0d472310dac77755da16c2f2ab063160c1b291ee765ea877';
+const ALLOWED_SHEETS=['Courses','Lessons','Coaches','Users','Progress','TrainingPlans','Announcements','Assessments','Quizzes','Reviews','Okul Kayitlari','Sporcu Kayitlari','Antrenor Kayitlari','Video Yonetimi','Bulten Yonetimi','Sinav Sonuclari'];
+const PROFILE_SESSION_SECONDS=15*60;
 function doGet(e){
   const name=String(e.parameter.sheet||'Courses');
   if(!ALLOWED_SHEETS.includes(name))return json_({ok:false,error:'Geçersiz veri kaynağı'});
@@ -18,10 +18,15 @@ function doPost(e){
     if(body.action==='registerSchool') return registerSchool_(body);
     if(body.action==='registerAthlete') return registerAthlete_(body);
     if(body.action==='updateAthletePresence') return updateAthletePresence_(body);
+    if(body.action==='profileLogin') return profileLogin_(body);
+    if(body.action==='validateProfileSession') return validateProfileSession_(body);
+    if(body.action==='logoutProfile') return logoutProfile_(body);
+    if(body.action==='saveExamAttempt') return saveExamAttempt_(body);
     if(body.action==='trackBlogView') return trackBlogView_(body);
     if(body.action==='adminLogin') return adminLogin_(body);
     if(body.action==='adminStats') return adminStats_(body);
     if(body.action==='adminSaveVideoOrder') return adminSaveVideoOrder_(body);
+    if(body.action==='adminSaveBulletins') return adminSaveBulletins_(body);
     return json_({ok:false,error:'Geçersiz işlem'});
   }catch(error){return json_({ok:false,error:'Kayıt işlenemedi: '+error.message})}
 }
@@ -29,6 +34,8 @@ function doPost(e){
 function updateAthletePresence_(body){
   const id=clean_(body.id,40), online=body.online===true||String(body.online).toLowerCase()==='true';
   if(!id) return json_({ok:false,error:'Sporcu kimliği gerekli.'});
+  const account=requireProfile_(body.token);
+  if(account.type!=='athlete'||account.id!==id) return json_({ok:false,error:'Çevrim içi durum yetkisi geçersiz.'});
   const sh=getOrCreate_('Sporcu Kayitlari',['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi']);
   if(sh.getLastRow()<2) return json_({ok:false,error:'Sporcu bulunamadı.'});
   const ids=sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat();
@@ -78,7 +85,73 @@ function registerAthlete_(body){
     const inheritedLogo=school[10]||(athleteRows.find(r=>normalize_(r[2])===normalize_(school[1])&&/^https?:\/\//.test(r[7]))||[])[7]||'';
     sh.appendRow([id,school[0],school[1],code,athleteName,avatarId,avatarName||avatarId,inheritedLogo,false,'',new Date()]);
     rebuildSchoolRosterById_(school[0]);
-    return json_({ok:true,id:id,teamLogo:inheritedLogo});
+    const account={type:'athlete',id:id,name:athleteName,schoolId:school[0],schoolName:school[1],schoolCode:code,avatar:avatarId,teamLogo:inheritedLogo};
+    const session=createProfileSession_(account);
+    return json_({ok:true,id:id,teamLogo:inheritedLogo,profileToken:session.token,expiresIn:PROFILE_SESSION_SECONDS});
+  }finally{lock.releaseLock()}
+}
+
+function createProfileSession_(account){
+  const token=Utilities.getUuid()+'-'+Utilities.getUuid();
+  CacheService.getScriptCache().put('profile:'+token,JSON.stringify(account),PROFILE_SESSION_SECONDS);
+  return {token:token,account:account};
+}
+function requireProfile_(token){
+  const key='profile:'+clean_(token,100);
+  const cache=CacheService.getScriptCache(), raw=cache.get(key);
+  if(!raw) throw new Error('Profil oturumu geçersiz veya süresi dolmuş. Lütfen tekrar giriş yapın.');
+  cache.put(key,raw,PROFILE_SESSION_SECONDS);
+  return JSON.parse(raw);
+}
+function profileLogin_(body){
+  const type=String(body.type||'').toLowerCase(), schoolName=clean_(body.schoolName,120), code=String(body.schoolCode||'').replace(/\D/g,''), userName=clean_(body.userName,100);
+  if(!['club','athlete','trainer'].includes(type)||!schoolName||!/^\d{6}$/.test(code)) return json_({ok:false,error:'Giriş bilgileri geçersiz.'});
+  const schools=getOrCreate_('Okul Kayitlari',['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Durumu','Kayıt Tarihi','Onay Tarihi','WhatsApp Mesajı','WhatsApp Bağlantısı','Yönetici Notu','Takım Logosu (Manuel)']);
+  const schoolRows=schools.getDataRange().getDisplayValues();
+  const school=schoolRows.slice(1).find(r=>normalize_(r[1])===normalize_(schoolName)&&r[3]===code&&String(r[4]).toLocaleUpperCase('tr')==='ONAYLANDI');
+  if(!school) return json_({ok:false,error:'Kulüp adı, kullanıcı kodu veya yönetici onayı doğrulanamadı.'});
+  let account;
+  if(type==='club') account={type:'club',id:school[0],schoolId:school[0],schoolName:school[1],name:school[1],phone:school[2],schoolCode:school[3],teamLogo:school[10]||''};
+  if(type==='athlete'){
+    const sh=getOrCreate_('Sporcu Kayitlari',['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi']);
+    const person=sh.getDataRange().getDisplayValues().slice(1).find(r=>r[1]===school[0]&&normalize_(r[4])===normalize_(userName));
+    if(!person) return json_({ok:false,error:'Sporcu adı bu kulübün kayıtlarıyla eşleşmedi.'});
+    account={type:'athlete',id:person[0],schoolId:person[1],schoolName:person[2],schoolCode:person[3],name:person[4],avatar:person[5],teamLogo:person[7]||school[10]||''};
+  }
+  if(type==='trainer'){
+    const sh=getOrCreate_('Antrenor Kayitlari',['Antrenör ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi']);
+    const person=sh.getDataRange().getDisplayValues().slice(1).find(r=>r[1]===school[0]&&normalize_(r[4])===normalize_(userName)&&String(r[7]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF');
+    if(!person) return json_({ok:false,error:'Antrenör adı bu kulübün aktif kayıtlarıyla eşleşmedi.'});
+    account={type:'trainer',id:person[0],schoolId:person[1],schoolName:person[2],schoolCode:person[3],name:person[4],title:person[5]||'Antrenör',teamLogo:person[6]||school[10]||''};
+  }
+  const session=createProfileSession_(account);
+  return json_({ok:true,token:session.token,expiresIn:PROFILE_SESSION_SECONDS,account:account});
+}
+function validateProfileSession_(body){
+  const account=requireProfile_(body.token);
+  return json_({ok:true,expiresIn:PROFILE_SESSION_SECONDS,account:account});
+}
+function logoutProfile_(body){
+  const token=clean_(body.token,100);
+  if(token) CacheService.getScriptCache().remove('profile:'+token);
+  return json_({ok:true});
+}
+function saveExamAttempt_(body){
+  const account=requireProfile_(body.token), attempt=body.attempt||{};
+  if(!['athlete','trainer'].includes(account.type)) return json_({ok:false,error:'Yalnızca sporcu ve antrenör sınav sonucu kaydedebilir.'});
+  const attemptId=clean_(attempt.attemptId,80), examId=clean_(attempt.examId,30), examTitle=clean_(attempt.examTitle,180);
+  const score=Math.max(0,Math.min(100,Number(attempt.score)||0)), questionCount=Math.max(1,Math.min(100,Number(attempt.questionCount)||1));
+  const correctCount=Math.max(0,Math.min(questionCount,Number(attempt.correctCount)||0)), wrongCount=Math.max(0,questionCount-correctCount);
+  if(!attemptId||!/^SNV-\d{2}$/.test(examId)||!examTitle) return json_({ok:false,error:'Sınav sonucu geçersiz.'});
+  const headers=['Giriş ID','Okul ID','Okul Adı','Kullanıcı ID','Kullanıcı Adı','Rol','Sınav ID','Sınav Başlığı','Sınav Sırası','Deneme','Soru Sayısı','Doğru','Yanlış','Puan','Geçme Puanı','Durum','Tamamlanma Tarihi'];
+  const sh=getOrCreate_('Sinav Sonuclari',headers), lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return json_({ok:false,error:'Sınav kayıt servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const ids=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat():[];
+    if(ids.includes(attemptId)) return json_({ok:true,duplicate:true,attemptId:attemptId});
+    const passingScore=Math.max(0,Math.min(100,Number(attempt.passingScore)||70)), passed=score>=passingScore;
+    sh.appendRow([attemptId,account.schoolId,account.schoolName,account.id,account.name,account.type==='trainer'?'Antrenör':'Sporcu',examId,examTitle,Number(attempt.examOrder)||0,Number(attempt.attemptNumber)||1,questionCount,correctCount,wrongCount,score,passingScore,passed?'Geçti':'Kaldı',new Date()]);
+    return json_({ok:true,attemptId:attemptId,passed:passed});
   }finally{lock.releaseLock()}
 }
 
@@ -144,12 +217,15 @@ function setupAdminCode(){
   return code;
 }
 function adminLogin_(body){
-  const expected=PropertiesService.getScriptProperties().getProperty('ADMIN_CODE_HASH')||ADMIN_CODE_HASH;
+  const expected=PropertiesService.getScriptProperties().getProperty('ADMIN_CODE_HASH');
+  if(!expected) return json_({ok:false,error:'Yönetici kodu yapılandırılmamış. Apps Script içinde setupAdminCode işlevini bir kez çalıştırın.'});
   const code=String(body.code||'').replace(/\D/g,'');
-  const cache=CacheService.getScriptCache(), attempts=Number(cache.get('admin-login-failures')||0);
+  const clientId=clean_(body.clientId,64).replace(/[^a-zA-Z0-9_-]/g,'')||'anonymous';
+  const attemptKey='admin-login-failures:'+clientId;
+  const cache=CacheService.getScriptCache(), attempts=Number(cache.get(attemptKey)||0);
   if(attempts>=5) return json_({ok:false,error:'Çok fazla hatalı deneme yapıldı. 10 dakika sonra tekrar deneyin.'});
-  if(!/^\d{6}$/.test(code)||hash_(code)!==expected){cache.put('admin-login-failures',String(attempts+1),600);return json_({ok:false,error:'Yönetici kodu hatalı.'})}
-  cache.remove('admin-login-failures');
+  if(!/^\d{6}$/.test(code)||hash_(code)!==expected){cache.put(attemptKey,String(attempts+1),600);return json_({ok:false,error:'Yönetici kodu hatalı.'})}
+  cache.remove(attemptKey);
   const token=Utilities.getUuid();
   cache.put('admin:'+token,'1',1800);
   return json_({ok:true,token:token,expiresIn:1800});
@@ -176,7 +252,8 @@ function adminStats_(body){
   requireAdmin_(body.token);
   const blog=getOrCreate_('Blog Okunmalari',['Yazı ID','Başlık','Okunma Sayısı','Son Okunma']).getDataRange().getDisplayValues();
   const videos=getOrCreate_('Video Yonetimi',['Video ID','Başlık','Kategori','Sıra']).getDataRange().getDisplayValues();
-  return json_({ok:true,blog:rowsToObjects_(blog),videos:rowsToObjects_(videos)});
+  const bulletins=getOrCreate_('Bulten Yonetimi',['Bülten ID','Başlık','Tarih','Sıra','Yayında']).getDataRange().getDisplayValues();
+  return json_({ok:true,blog:rowsToObjects_(blog),videos:rowsToObjects_(videos),bulletins:rowsToObjects_(bulletins)});
 }
 function adminSaveVideoOrder_(body){
   requireAdmin_(body.token);
@@ -191,6 +268,23 @@ function adminSaveVideoOrder_(body){
     const sh=getOrCreate_('Video Yonetimi',['Video ID','Başlık','Kategori','Sıra']);
     if(sh.getLastRow()>1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();
     sh.getRange(2,1,cleanRows.length,4).setValues(cleanRows);
+    return json_({ok:true,count:cleanRows.length});
+  }finally{lock.releaseLock()}
+}
+function adminSaveBulletins_(body){
+  requireAdmin_(body.token);
+  const items=Array.isArray(body.items)?body.items.slice(0,80):[];
+  if(!items.length) return json_({ok:false,error:'Kaydedilecek bülten bulunamadı.'});
+  const statusLabels={published:'YAYINDA',draft:'TASLAK',deleted:'SİLİNDİ'};
+  const cleanRows=items.map((item,index)=>[
+    clean_(item.id,40),clean_(item.title,150),clean_(item.date,10),index+1,statusLabels[String(item.status||'published')]||'TASLAK'
+  ]).filter(row=>/^bulten-[0-9]{2}$/.test(row[0])&&row[1]&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(row[2]));
+  if(cleanRows.length!==items.length||new Set(cleanRows.map(row=>row[0])).size!==cleanRows.length) return json_({ok:false,error:'Bülten listesinde eksik veya yinelenen kayıt var.'});
+  const lock=LockService.getScriptLock(); lock.waitLock(10000);
+  try{
+    const sh=getOrCreate_('Bulten Yonetimi',['Bülten ID','Başlık','Tarih','Sıra','Yayında']);
+    if(sh.getLastRow()>1) sh.getRange(2,1,sh.getLastRow()-1,5).clearContent();
+    sh.getRange(2,1,cleanRows.length,5).setValues(cleanRows);
     return json_({ok:true,count:cleanRows.length});
   }finally{lock.releaseLock()}
 }

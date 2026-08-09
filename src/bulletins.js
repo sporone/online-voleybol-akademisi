@@ -171,7 +171,75 @@ export const bulletins = weeklyTitles.map((title, index) => {
     mission:"Bir davranış, bir gelişim ve bir takım hedefi yaz. İçlerinden öncelikli olanı seç; dört haftalık planın ilk adımını bu hafta en az iki antrenmanda uygula. Hafta sonunda yaptığın tekrarları ve öğrendiğin bir noktayı günlüğüne kaydet.",
     questions:["Hedefim benim kontrol edebildiğim bir davranış içeriyor mu?","İlerlememi hangi kayıt veya gözlemle takip edeceğim?","Bu hedef için bu hafta atacağım en küçük adım nedir?"],
   };
+  if(index===2) bulletin.campFeature = {
+    opening:"Kamp hazırlığı yalnızca çantayı doldurmak değildir. Doğru malzemeyi zamanında hazırlamak; antrenmana, dinlenmeye ve takım düzenine hazır olduğunun göstergesidir. Çantanı bir gün önce planladığında unutma stresini azaltır, enerjini sahadaki görevlerine ayırırsın.",
+    principles:[
+      ["HAZIRLIK","Kamp programını, hava durumunu, ulaşım saatini ve tesis koşullarını önceden öğren. İhtiyaçlarını tahmin ederek değil, antrenörünün paylaştığı listeye göre hazırla."],
+      ["DÜZEN","Malzemelerini kullanım sırasına göre bölümlere ayır. Temiz ve kirli kıyafetleri ayrı poşetlerde tut; suya karşı korunması gereken eşyaları kapalı bölmeye yerleştir."],
+      ["SORUMLULUK","Kendi çantanı kendin kontrol et. Her antrenman sonrasında eksilen, ıslanan veya temizlenmesi gereken malzemeyi işaretle ve ertesi güne bırakmadan tamamla."],
+    ],
+    bagGroups:[
+      ["SAHA EKİPMANI",["Antrenman forması ve yedek tişört","Salon ayakkabısı ve temiz çorap","Dizlik, bileklik veya onaylı destek","Kişisel su şişesi ve küçük havlu"]],
+      ["KİŞİSEL BAKIM",["Terli kıyafet için kapalı poşet","Duş ve temel hijyen malzemeleri","Güneş koruyucu ve dudak koruyucu","Kişisel ilaçlar - yetişkin kontrolünde"]],
+      ["BESLENME VE SIVI",["Yeterli içme suyu","Alışık olduğun ara öğün","Sızdırmaz besin kabı","Uzun gün için antrenörün önerdiği plan"]],
+      ["BELGE VE İLETİŞİM",["Kimlik ve gerekli izin belgesi","Acil durum iletişim bilgisi","Kamp programı ve buluşma saati","Gerekliyse şarj cihazı - kullanım kuralına uygun"]],
+    ],
+    packingSteps:[
+      ["01","LİSTEYİ AÇ","Kamp programını ve antrenörün ihtiyaç listesini önüne koy."],
+      ["02","GRUPLA","Eşyaları saha, bakım, beslenme ve belge olarak dört gruba ayır."],
+      ["03","YERLEŞTİR","Ağır malzemeleri alta, sık kullanacaklarını kolay ulaşılacak bölmeye koy."],
+      ["04","SON KONTROL","Çıkıştan önce çantanı listeyle birlikte ikinci kez kontrol et."],
+    ],
+    dayBefore:"Forma ve yedek kıyafetlerinin temiz ve kuru olduğunu kontrol et. Ayakkabı tabanını temizle, su şişeni yıka, gerekli belgeleri kapalı dosyaya yerleştir. Uyku saatini yolculuk ve ilk antrenman saatine göre planla; son dakika hazırlığına güvenme.",
+    travelMorning:"Hafif ve alışık olduğun bir kahvaltı yap. Su içmeye güne erken başla; çok aç veya aşırı tok yola çıkma. Buluşma yerine zamanında ulaş, takım yoklamasını takip et ve çantanı başkasının sorumluluğuna bırakma.",
+    routines:[
+      ["ANTRENMAN ÖNCESİ","Doğru kıyafeti giy, takılarını çıkar, su şişeni doldur ve ağrı ya da rahatsızlık durumunu antrenörüne bildir."],
+      ["ANTRENMAN SONRASI","Soğumayı tamamla, terli kıyafetini değiştir, kullandığın malzemeyi kurula ve sıvı-toparlanma planını uygula."],
+      ["AKŞAM KONTROLÜ","Kirli malzemeyi ayır, ertesi günün formasını hazırla, su şişeni temizle ve gün içindeki enerji durumunu kısa notla değerlendir."],
+    ],
+    hygiene:[
+      "Su şişesi, havlu ve kişisel bakım ürünlerini paylaşma.",
+      "Terli kıyafetle uzun süre kalma; temiz ve kuru kıyafet giy.",
+      "Küçük yara veya cilt sorununu gizleme; sorumlu yetişkine bildir.",
+      "Ortak alanları temiz bırak ve takımın kamp kurallarına uy.",
+    ],
+    nutrition:[
+      ["ÖNCESİ","Antrenmandan önce sindirimi kolay, daha önce denediğin bir öğün tercih et."],
+      ["SIRASINDA","Susamayı beklemeden küçük aralıklarla su iç; kişisel şişeni kullan."],
+      ["SONRASI","Karbonhidrat, kaliteli protein ve sıvı içeren dengeli toparlanma öğününü geciktirme."],
+    ],
+    mindset:"Eksik eşya fark ettiğinde paniğe kapılma. Önce antrenörüne veya sorumlu yetişkine haber ver, güvenli ve takım düzenine uygun çözümü birlikte belirle. Başkasının malzemesini izinsiz kullanma; hazırlık hatasını bir sonraki gün için öğrenme notuna dönüştür.",
+    safety:"Kimlik, kişisel ilaç ve acil durum bilgileri ayrı, güvenli ve kolay bulunabilen bir bölümde olmalı. İlaç kullanımı yalnızca aile ve yetkili sağlık uzmanının belirlediği plana göre yapılmalıdır.",
+    weeklyMission:"Bu hafta çantanı iki kamp günü için bir gece önceden kendin hazırla. Sabah yalnızca son kontrol yap. Antrenman sonunda eksik veya gereksiz taşıdığın bir eşyayı not et ve kişisel kamp listeni buna göre güncelle.",
+    selfCheck:["Çantamı listeyle ve kendim hazırladım.","Temiz-kirli malzemeyi ayrı tuttum.","Su ve öğün planımı tamamladım.","Belge ve acil bilgilerimi kontrol ettim."],
+  };
   return bulletin;
 });
 
 export const bulletinPeriod = { start:bulletins[0].date, end:bulletins.at(-1).date, total:bulletins.length };
+
+const bulletinStatus = (value) => {
+  const normalized = typeof value === "string" ? value.trim().toLocaleUpperCase("tr-TR") : value;
+  if (["SİLİNDİ", "SILINDI", "DELETED"].includes(normalized)) return "deleted";
+  if ([false, 0, "0", "FALSE", "HAYIR", "TASLAK", "YAYINDAN KALDIRILDI"].includes(normalized)) return "draft";
+  return "published";
+};
+
+export function applyBulletinManagement(rows, includeHidden = false) {
+  if (!Array.isArray(rows) || !rows.length) return bulletins.map((item) => ({ ...item, status:"published", published:true }));
+  const byId = new Map(rows.map((row) => [String(row["Bülten ID"] || row.id || ""), row]));
+  return bulletins.map((item) => {
+    const row = byId.get(item.id);
+    if (!row) return { ...item, status:"published", published:true, adminOrder:item.number };
+    const status = bulletinStatus(row["Durum"] ?? row["Yayında"] ?? row.status ?? row.published);
+    return {
+      ...item,
+      title:String(row["Başlık"] || row.title || item.title),
+      date:String(row["Tarih"] || row.date || item.date),
+      status,
+      published:status === "published",
+      adminOrder:Number(row["Sıra"] || row.order || item.number),
+    };
+  }).filter((item) => includeHidden || item.status === "published")
+    .sort((a,b) => (a.adminOrder ?? a.number) - (b.adminOrder ?? b.number));
+}

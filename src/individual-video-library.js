@@ -1,10 +1,10 @@
 const groupMeta = {
   "01_Parmak_Pas": { name: "Parmak Pas", cover: "/course-covers/course-02.webp" },
-  "02_Manset_Pas": { name: "Manşet Pas", cover: "/course-covers/course-03.png" },
-  "03_Smac_ve_Hucum_Vuruslari": { name: "Smaç ve Hücum Vuruşları", cover: "/course-covers/course-05.png" },
-  "04_Birlesik_Alistirmalar": { name: "Birleşik Alıştırmalar", cover: "/course-covers/course-08.png" },
-  "05_Oyunlar": { name: "Oyunlar", cover: "/course-covers/course-17.png" },
-  "06_Top_Kontrolu": { name: "Top Kontrolü", cover: "/course-covers/course-01.png" },
+  "02_Manset_Pas": { name: "Manşet Pas", cover: "/course-covers/course-03.webp" },
+  "03_Smac_ve_Hucum_Vuruslari": { name: "Smaç ve Hücum Vuruşları", cover: "/course-covers/course-05.webp" },
+  "04_Birlesik_Alistirmalar": { name: "Birleşik Alıştırmalar", cover: "/course-covers/course-08.webp" },
+  "05_Oyunlar": { name: "Oyunlar", cover: "/course-covers/course-17.webp" },
+  "06_Top_Kontrolu": { name: "Top Kontrolü", cover: "/course-covers/course-01.webp" },
 };
 
 const turkishTitles = {
@@ -137,7 +137,7 @@ export const individualTrainingVideos = rows.map(([groupKey, videoNo, title, id]
     topic: group.name,
     groupKey,
     fallback: group.cover,
-    thumbnail: `https://drive.google.com/thumbnail?id=${id}&sz=w900`,
+    thumbnail: `https://lh3.googleusercontent.com/d/${id}=w900`,
     // The public Drive folder supports secure HTTP Range requests on mobile.
     source: null,
     streamUrl: `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`,

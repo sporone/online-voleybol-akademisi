@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { jsPDF } from "jspdf";
 import { ArrowLeft, Brain, CalendarDays, CheckCircle2, Download, Dumbbell, FileText, MessageCircle, School, Send, ShieldCheck, Target } from "lucide-react";
-import { bulletins, bulletinPeriod } from "./bulletins.js";
+import { appConfig } from "./config.js";
+import { applyBulletinManagement, bulletins, bulletinPeriod } from "./bulletins.js";
 
 const dateText = (value) => new Intl.DateTimeFormat("tr-TR", {
   day: "numeric", month: "long", year: "numeric", weekday: "long", timeZone: "UTC",
@@ -10,6 +11,19 @@ const dateText = (value) => new Intl.DateTimeFormat("tr-TR", {
 const safeName = (value) => String(value || "spor-okulu").toLocaleLowerCase("tr-TR")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i")
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+const CALENDAR_START_YEAR = 2025;
+const CALENDAR_END_YEAR = 2030;
+const MONTH_NAMES = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+const WEEKDAY_NAMES = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+
+const buildCalendarEntries = (templates) => {
+  return templates
+    .filter((item) => /^20\d{2}-\d{2}-\d{2}$/.test(item.date))
+    .map((item) => ({ ...item, calendarId: `${item.date}-${item.id}` }))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.adminOrder ?? a.number) - (b.adminOrder ?? b.number))
+    .map((item, index) => ({ ...item, calendarOrder:index + 1 }));
+};
 
 const wrapLines = (context, text, maxWidth) => {
   const words = String(text).split(/\s+/); const lines = []; let line = "";
@@ -178,6 +192,82 @@ async function createSecondBulletinArtworks(bulletin, club) {
   return [first.canvas,secondPage.canvas];
 }
 
+function drawCampBackpack(ctx,x,y,color,secondary) {
+  ctx.save();ctx.lineWidth=10;ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.fillStyle=color;ctx.globalAlpha=.10;ctx.beginPath();ctx.arc(x,y,145,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  ctx.strokeStyle=color;ctx.fillStyle="#fff";ctx.beginPath();ctx.roundRect(x-72,y-85,144,185,34);ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.arc(x,y-79,42,Math.PI,0);ctx.stroke();
+  ctx.fillStyle=secondary;ctx.beginPath();ctx.roundRect(x-56,y+15,112,66,20);ctx.fill();
+  ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(x-74,y-45);ctx.quadraticCurveTo(x-116,y+5,x-92,y+82);ctx.moveTo(x+74,y-45);ctx.quadraticCurveTo(x+116,y+5,x+92,y+82);ctx.stroke();
+  ctx.strokeStyle="#fff";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(x-30,y+47);ctx.lineTo(x+30,y+47);ctx.stroke();ctx.restore();
+}
+
+function drawCoverPhoto(ctx,image,x,y,width,height,radius=26) {
+  if(!image) return;
+  const scale=Math.max(width/image.width,height/image.height),drawWidth=image.width*scale,drawHeight=image.height*scale;
+  ctx.save();ctx.beginPath();ctx.roundRect(x,y,width,height,radius);ctx.clip();ctx.drawImage(image,x+(width-drawWidth)/2,y+(height-drawHeight)/2,drawWidth,drawHeight);ctx.restore();
+}
+
+async function createThirdBulletinArtworks(bulletin, club) {
+  const logo=await getClubLogo(club),palette=logoPalette(logo),navy=palette.dark,accent=palette.primary,secondary=shade(palette.secondary,.52),muted="#60738a",line="#dce6ed",data=bulletin.campFeature;
+  const first=newA4Canvas(),secondPage=newA4Canvas();drawFeatureHeader(first.ctx,bulletin,club,logo,palette,1);drawFeatureHeader(secondPage.ctx,bulletin,club,logo,palette,2);
+  const a=first.ctx;a.fillStyle=navy;drawSingleLine(a,"KAMP ÇANTAM VE KİŞİSEL HAZIRLIĞIM",70,345,1090,47,25);a.fillStyle=accent;a.fillRect(70,375,290,8);
+  a.fillStyle=muted;a.font="22px Arial";drawParagraph(a,data.opening,70,430,760,31,6);drawCampBackpack(a,1040,470,accent,palette.secondary);
+  a.fillStyle=navy;a.font="700 21px Arial";a.fillText("KAMPA ÜÇ ADIMDA HAZIRLAN",70,650);
+  data.principles.forEach(([title,text],index)=>{const x=70+index*368,color=[accent,secondary,shade(accent,.68)][index];rounded(a,x,685,340,225,24,index===1?"#f5f8fa":"#fff",line);rounded(a,x+22,708,52,52,15,color);a.fillStyle="#fff";a.font="700 18px Arial";a.textAlign="center";a.fillText(String(index+1).padStart(2,"0"),x+48,742);a.textAlign="left";a.fillStyle=color;a.font="700 18px Arial";a.fillText(title,x+91,742);a.fillStyle=navy;a.font="17px Arial";drawParagraph(a,text,x+22,794,296,23,5);});
+  a.fillStyle=navy;a.font="700 21px Arial";a.fillText("KAMP ÇANTASI KONTROL LİSTEM",70,970);
+  data.bagGroups.forEach(([title,items],index)=>{const col=index%2,row=Math.floor(index/2),x=70+col*558,y=1005+row*285,color=index%2?secondary:accent;rounded(a,x,y,530,260,24,index%3===0?"#fff5ee":"#f5f8fa",line);a.fillStyle=color;a.fillRect(x,y,10,260);a.fillStyle=color;a.font="700 18px Arial";a.fillText(title,x+32,y+43);items.forEach((item,itemIndex)=>{const itemY=y+84+itemIndex*39;a.strokeStyle=color;a.lineWidth=3;a.strokeRect(x+33,itemY-18,19,19);a.fillStyle=navy;a.font="16px Arial";drawParagraph(a,item,x+65,itemY,425,20,2);});});
+  a.fillStyle=muted;a.font="16px Arial";a.fillText("Listeyi kampın süresine, hava koşullarına ve antrenörünün yönergelerine göre güncelle.",70,1627);a.fillStyle=navy;a.font="700 18px Arial";a.fillText("voleybolokullari.com.tr",70,1690);a.fillStyle=accent;a.textAlign="right";a.fillText("1 / 2",1170,1690);a.textAlign="left";
+
+  const b=secondPage.ctx;b.fillStyle=navy;drawSingleLine(b,"KAMP GÜNÜ HAZIRLIK REHBERİ",70,345,1090,47,27);b.fillStyle=accent;b.fillRect(70,375,255,8);
+  [["BİR GECE ÖNCE",data.dayBefore,accent],["YOLCULUK SABAHI",data.travelMorning,secondary]].forEach(([title,text,color],index)=>{const x=70+index*558;rounded(b,x,420,530,230,24,index?"#f5f8fa":"#fff5ee",line);b.fillStyle=color;b.font="700 18px Arial";b.fillText(title,x+28,465);b.fillStyle=navy;b.font="18px Arial";drawParagraph(b,text,x+28,510,474,25,6);});
+  b.fillStyle=navy;b.font="700 21px Arial";b.fillText("ÇANTAYI HAZIRLAMA SIRAM",70,715);
+  data.packingSteps.forEach(([number,title,text],index)=>{const x=70+index*276,color=index%2?secondary:accent;rounded(b,x,750,250,172,22,"#fff",line);rounded(b,x+20,770,52,52,15,color);b.fillStyle="#fff";b.font="700 17px Arial";b.textAlign="center";b.fillText(number,x+46,804);b.textAlign="left";b.fillStyle=color;b.font="700 16px Arial";b.fillText(title,x+84,802);b.fillStyle=navy;b.font="15px Arial";drawParagraph(b,text,x+20,850,208,20,4);});
+  b.fillStyle=navy;b.font="700 21px Arial";b.fillText("KAMPTA GÜNLÜK KİŞİSEL DÜZENİM",70,985);
+  data.routines.forEach(([title,text],index)=>{const y=1020+index*126,color=[accent,secondary,shade(accent,.68)][index];rounded(b,70,y,1100,108,20,index===1?"#f5f8fa":"#fff",line);rounded(b,92,y+18,70,70,18,color);drawTopicIcon(b,index,127,y+53,"#fff");b.fillStyle=color;b.font="700 17px Arial";b.fillText(title,192,y+36);b.fillStyle=navy;b.font="16px Arial";drawParagraph(b,text,192,y+68,930,21,3);});
+  rounded(b,70,1405,520,130,22,"#f5f8fa",line);b.fillStyle=accent;b.font="700 16px Arial";b.fillText("HİJYEN VE GÜVENLİK",96,1442);b.fillStyle=navy;b.font="13px Arial";drawParagraph(b,`✓ ${data.hygiene[0]} ✓ ${data.hygiene[1]} ${data.safety}`,96,1474,460,17,4);
+  rounded(b,614,1405,556,130,22,"#fff5ee",shade(accent,.82));b.fillStyle=secondary;b.font="700 16px Arial";b.fillText("ZİHİNSEL HAZIRLIK",640,1442);b.fillStyle=navy;b.font="13px Arial";drawParagraph(b,data.mindset,640,1474,500,17,4);
+  rounded(b,70,1560,1100,105,22,navy);b.fillStyle=palette.secondary;b.font="700 16px Arial";b.fillText("BU HAFTANIN SPORCU GÖREVİ",96,1595);b.fillStyle="#fff";b.font="13px Arial";drawParagraph(b,data.weeklyMission,96,1622,1035,17,3);
+  b.fillStyle=navy;b.font="700 18px Arial";b.fillText("voleybolokullari.com.tr",70,1710);b.fillStyle=accent;b.textAlign="right";b.fillText("2 / 2",1170,1710);b.textAlign="left";
+  return [first.canvas,secondPage.canvas];
+}
+
+async function createCampBulletinArtworks(bulletin, club) {
+  const [logo,bagPhoto,readyPhoto]=await Promise.all([
+    getClubLogo(club),
+    loadImage("/bulletins/camp-bag-preparation.png"),
+    loadImage("/bulletins/camp-morning-ready.png"),
+  ]);
+  const palette=logoPalette(logo),navy=palette.dark,accent=palette.primary,secondary=shade(palette.secondary,.52),muted="#60738a",line="#dce6ed",data=bulletin.campFeature;
+  const first=newA4Canvas(),secondPage=newA4Canvas();drawFeatureHeader(first.ctx,bulletin,club,logo,palette,1);drawFeatureHeader(secondPage.ctx,bulletin,club,logo,palette,2);
+
+  const a=first.ctx;
+  a.fillStyle=navy;drawSingleLine(a,"KAMP ÇANTAM",70,345,600,52,30);drawSingleLine(a,"VE KİŞİSEL HAZIRLIĞIM",70,405,620,43,24);a.fillStyle=accent;a.fillRect(70,435,260,8);
+  a.fillStyle=muted;a.font="21px Arial";drawParagraph(a,data.opening,70,490,610,29,6);
+  rounded(a,735,325,445,570,30,accent);drawCoverPhoto(a,bagPhoto,715,305,445,570,30);
+  rounded(a,744,815,386,42,21,navy);a.fillStyle="#fff";a.font="700 15px Arial";a.textAlign="center";a.fillText("HAZIRLA  •  KONTROL ET  •  SAHAYA ODAKLAN",937,842);a.textAlign="left";
+  a.fillStyle=navy;a.font="700 20px Arial";a.fillText("KAMPA ÜÇ ADIMDA HAZIRLAN",70,700);
+  data.principles.forEach(([title,text],index)=>{const y=730+index*92,color=[accent,secondary,shade(accent,.68)][index];rounded(a,70,y,610,85,18,index===1?"#f5f8fa":"#fff",line);rounded(a,88,y+17,50,50,14,color);a.fillStyle="#fff";a.font="700 17px Arial";a.textAlign="center";a.fillText(String(index+1).padStart(2,"0"),113,y+49);a.textAlign="left";a.fillStyle=color;a.font="700 14px Arial";a.fillText(title,158,y+26);a.fillStyle=navy;a.font="13px Arial";drawParagraph(a,text,158,y+49,490,15,3);});
+  a.fillStyle=navy;a.font="700 21px Arial";a.fillText("KAMP ÇANTASI KONTROL LİSTEM",70,1030);
+  data.bagGroups.forEach(([title,items],index)=>{const col=index%2,row=Math.floor(index/2),x=70+col*558,y=1065+row*260,color=index%2?secondary:accent;rounded(a,x,y,530,236,23,index%3===0?"#fff4ec":"#f5f8fa",line);a.fillStyle=color;a.fillRect(x,y,10,236);a.fillStyle=color;a.font="700 17px Arial";a.fillText(`${String(index+1).padStart(2,"0")}  ${title}`,x+32,y+40);items.forEach((item,itemIndex)=>{const itemY=y+78+itemIndex*37;a.strokeStyle=color;a.lineWidth=3;a.strokeRect(x+33,itemY-17,18,18);a.fillStyle=navy;a.font="15px Arial";drawParagraph(a,item,x+64,itemY,425,18,2);});});
+  rounded(a,70,1590,1100,55,17,"#f5f8fa",line);a.fillStyle=muted;a.font="15px Arial";a.fillText("Çantanı kamp süresine, hava koşullarına ve antrenörünün paylaştığı programa göre son kez kontrol et.",96,1625);
+  a.fillStyle=navy;a.font="700 18px Arial";a.fillText("voleybolokullari.com.tr",70,1700);a.fillStyle=accent;a.textAlign="right";a.fillText("1 / 2",1170,1700);a.textAlign="left";
+
+  const b=secondPage.ctx;
+  rounded(b,70,315,445,520,30,accent);drawCoverPhoto(b,readyPhoto,55,300,445,520,30);
+  rounded(b,85,740,385,50,24,navy);b.fillStyle="#fff";b.font="700 16px Arial";b.textAlign="center";b.fillText("KAMP SABAHI HAZIRIM",278,772);b.textAlign="left";
+  b.fillStyle=navy;drawSingleLine(b,"KAMP GÜNÜ",545,350,620,48,28);drawSingleLine(b,"HAZIRLIK REHBERİ",545,405,620,42,24);b.fillStyle=accent;b.fillRect(545,435,220,8);
+  [["BİR GECE ÖNCE",data.dayBefore,accent],["YOLCULUK SABAHI",data.travelMorning,secondary]].forEach(([title,text,color],index)=>{const y=480+index*175;rounded(b,545,y,625,155,22,index?"#f5f8fa":"#fff4ec",line);b.fillStyle=color;b.font="700 17px Arial";b.fillText(title,572,y+39);b.fillStyle=navy;b.font="16px Arial";drawParagraph(b,text,572,y+76,570,21,4);});
+  b.fillStyle=navy;b.font="700 21px Arial";b.fillText("ÇANTAYI HAZIRLAMA SIRAM",70,895);
+  data.packingSteps.forEach(([number,title,text],index)=>{const x=70+index*276,color=index%2?secondary:accent;rounded(b,x,930,250,174,22,"#fff",line);rounded(b,x+20,950,52,52,15,color);b.fillStyle="#fff";b.font="700 17px Arial";b.textAlign="center";b.fillText(number,x+46,984);b.textAlign="left";b.fillStyle=color;b.font="700 15px Arial";b.fillText(title,x+84,982);b.fillStyle=navy;b.font="14px Arial";drawParagraph(b,text,x+20,1032,208,18,4);});
+  b.fillStyle=navy;b.font="700 21px Arial";b.fillText("KAMPTA GÜNLÜK DÜZENİM",70,1162);
+  data.routines.forEach(([title,text],index)=>{const x=70+index*368,color=[accent,secondary,shade(accent,.68)][index];rounded(b,x,1195,340,220,22,index===1?"#f5f8fa":"#fff",line);drawTopicIcon(b,index,x+55,1245,color);b.fillStyle=color;b.font="700 16px Arial";b.fillText(title,x+95,1235);b.fillStyle=navy;b.font="15px Arial";drawParagraph(b,text,x+28,1300,284,20,5);});
+  rounded(b,70,1450,530,190,22,"#f5f8fa",line);b.fillStyle=accent;b.font="700 16px Arial";b.fillText("GÜVENLİK VE ZİHİNSEL HAZIRLIK",96,1489);b.fillStyle=navy;b.font="14px Arial";drawParagraph(b,`${data.safety} ${data.mindset}`,96,1526,475,18,6);
+  rounded(b,625,1450,545,190,22,navy);b.fillStyle=palette.secondary;b.font="700 16px Arial";b.fillText("BU HAFTANIN SPORCU GÖREVİ",651,1489);b.fillStyle="#fff";b.font="14px Arial";drawParagraph(b,data.weeklyMission,651,1526,490,19,6);
+  b.fillStyle=navy;b.font="700 18px Arial";b.fillText("voleybolokullari.com.tr",70,1700);b.fillStyle=accent;b.textAlign="right";b.fillText("2 / 2",1170,1700);b.textAlign="left";
+  return [first.canvas,secondPage.canvas];
+}
+
 async function getClubLogo(club) {
   const raw = club?.teamLogo || club?.logoUrl || "/brand-logo.png";
   const sources = /^https?:/i.test(raw)
@@ -275,34 +365,92 @@ async function createBulletinArtwork(bulletin, club) {
 }
 
 async function createBulletinPdf(bulletin, club) {
-  const canvases = bulletin.number===1 ? await createFirstBulletinArtworks(bulletin,club) : bulletin.number===2 ? await createSecondBulletinArtworks(bulletin,club) : [await createBulletinArtwork(bulletin, club)];
+  const canvases = bulletin.number===1 ? await createFirstBulletinArtworks(bulletin,club) : bulletin.number===2 ? await createSecondBulletinArtworks(bulletin,club) : bulletin.number===3 ? await createCampBulletinArtworks(bulletin,club) : [await createBulletinArtwork(bulletin, club)];
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   canvases.forEach((canvas,index)=>{if(index)pdf.addPage("a4","portrait");pdf.addImage(canvas.toDataURL("image/jpeg",.9),"JPEG",0,0,210,297,undefined,"FAST");});
   return {
     blob: pdf.output("blob"),
-    fileName: `${safeName(club?.schoolName)}-${String(bulletin.number).padStart(2, "0")}-hafta-egitim-bulteni.pdf`,
+    fileName: `${safeName(club?.schoolName)}-${bulletin.date}-egitim-bulteni.pdf`,
   };
 }
 
 export default function BulletinsPage({ club, go }) {
-  const phases = ["Tümü", ...new Set(bulletins.map((item) => item.phase))];
-  const [phase, setPhase] = useState("Tümü");
-  const [selected, setSelected] = useState(bulletins[0]);
+  const [managedBulletins, setManagedBulletins] = useState(() => {
+    try { return applyBulletinManagement(JSON.parse(localStorage.getItem("volleyballBulletinManagement") || "[]")); }
+    catch { return applyBulletinManagement([]); }
+  });
+  const firstManagedDate = managedBulletins[0]?.date ? new Date(`${managedBulletins[0].date}T12:00:00Z`) : new Date();
+  const initialYear = Math.min(CALENDAR_END_YEAR, Math.max(CALENDAR_START_YEAR, firstManagedDate.getUTCFullYear()));
+  const [calendarYear, setCalendarYear] = useState(initialYear);
+  const [calendarMonth, setCalendarMonth] = useState(firstManagedDate.getUTCFullYear() === initialYear ? firstManagedDate.getUTCMonth() : 8);
+  const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(""); const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState([]); const [previewLoading, setPreviewLoading] = useState(true);
   const storageKey = `volleyballBulletinsSent:${club?.id || club?.schoolName || "club"}`;
   const [sent, setSent] = useState(() => { try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch { return []; } });
-  const visible = useMemo(() => phase === "Tümü" ? bulletins : bulletins.filter((item) => item.phase === phase), [phase]);
+  const calendarEntries = useMemo(() => buildCalendarEntries(managedBulletins), [managedBulletins]);
+  const calendarPeriodText = calendarEntries.length ? `${dateText(calendarEntries[0].date)} – ${dateText(calendarEntries.at(-1).date)}` : "Yayın planı bulunmuyor";
+  const monthEntries = useMemo(() => calendarEntries.filter((item) => {
+    const date = new Date(`${item.date}T12:00:00Z`);
+    return date.getUTCFullYear() === calendarYear && date.getUTCMonth() === calendarMonth;
+  }), [calendarEntries, calendarYear, calendarMonth]);
+  const firstDayOffset = (new Date(Date.UTC(calendarYear, calendarMonth, 1)).getUTCDay() + 6) % 7;
+  const monthDayCount = new Date(Date.UTC(calendarYear, calendarMonth + 1, 0)).getUTCDate();
+  const monthEventByDay = useMemo(() => new Map(monthEntries.map((item) => [Number(item.date.slice(-2)), item])), [monthEntries]);
   const logo = club?.teamLogo || club?.logoUrl || "/brand-logo.png";
   useEffect(() => {
+    const applyRows = (rows) => {
+      const next = applyBulletinManagement(rows);
+      localStorage.setItem("volleyballBulletinManagement", JSON.stringify(rows));
+      setManagedBulletins(next);
+    };
+    const onUpdate = (event) => applyRows(event.detail || []);
+    window.addEventListener("volleyballBulletinManagementUpdated", onUpdate);
+    const api = import.meta.env.VITE_REGISTRATION_API_URL || appConfig.registrationApiUrl || "";
+    let refreshTimer;
+    if (api) {
+      const refresh = () => {
+        const url = new URL(api); url.searchParams.set("sheet", "Bulten Yonetimi"); url.searchParams.set("_", Date.now());
+        fetch(url, { cache:"no-store" }).then((response) => response.json()).then((result) => {
+          if (result.ok && Array.isArray(result.data) && result.data.length) applyRows(result.data);
+        }).catch(() => {});
+      };
+      refresh();
+      refreshTimer = window.setInterval(refresh, 15000);
+    }
+    return () => { window.removeEventListener("volleyballBulletinManagementUpdated", onUpdate); if (refreshTimer) window.clearInterval(refreshTimer); };
+  }, []);
+  useEffect(() => {
+    setSelected((current) => monthEntries.find((item) => item.calendarId === current?.calendarId) || monthEntries[0] || calendarEntries[0] || null);
+  }, [calendarEntries, monthEntries]);
+  useEffect(() => {
+    if (!selected) return;
     let active = true; setPreviewLoading(true);
-    const artworkPromise=selected.number===1 ? createFirstBulletinArtworks(selected,club) : selected.number===2 ? createSecondBulletinArtworks(selected,club) : createBulletinArtwork(selected,club).then((canvas)=>[canvas]);
+    const artworkPromise=selected.number===1 ? createFirstBulletinArtworks(selected,club) : selected.number===2 ? createSecondBulletinArtworks(selected,club) : selected.number===3 ? createCampBulletinArtworks(selected,club) : createBulletinArtwork(selected,club).then((canvas)=>[canvas]);
     artworkPromise.then((canvases) => {
       if (active) setPreview(canvases.map((canvas)=>canvas.toDataURL("image/jpeg", .84)));
     }).catch(()=>{ if(active) setPreview([]); }).finally(()=>{ if(active) setPreviewLoading(false); });
     return () => { active = false; };
   }, [selected, club?.id, club?.teamLogo, club?.logoUrl]);
+  const moveMonth = (step) => {
+    const next = new Date(Date.UTC(calendarYear, calendarMonth + step, 1));
+    const year = next.getUTCFullYear();
+    if (year < CALENDAR_START_YEAR || year > CALENDAR_END_YEAR) return;
+    setCalendarYear(year);
+    setCalendarMonth(next.getUTCMonth());
+  };
+  const chooseEntry = (item) => {
+    setSelected(item);
+    if (window.innerWidth < 760) window.setTimeout(() => document.getElementById("bulletin-preview")?.scrollIntoView({ behavior:"smooth", block:"start" }), 40);
+  };
+  const calendarCells = Array.from({ length: firstDayOffset + monthDayCount }, (_, index) => {
+    if (index < firstDayOffset) return null;
+    const day = index - firstDayOffset + 1;
+    const weekday = (firstDayOffset + day - 1) % 7;
+    return { day, weekday, entry: monthEventByDay.get(day) };
+  });
   const markSent = (id) => setSent((items) => { const next = [...new Set([...items, id])]; localStorage.setItem(storageKey, JSON.stringify(next)); return next; });
+  const shareMessage = selected ? `${club?.schoolName || "Voleybol Spor Okulu"}\n\nMerhaba sporcularımız,\n\nBülten: ${selected.title}\nTarih: ${dateText(selected.date)}\n\nBu haftanın eğitim bülteni ekte yer almaktadır. Bülteni dikkatlice incelemenizi ve haftalık uygulamaları antrenörünüzün yönlendirmesiyle tamamlamanızı rica ederiz.\n\nSağlıklı, disiplinli ve başarılı antrenmanlar dileriz.` : "";
   const prepare = async (mode) => {
     try {
       setBusy(mode); setNotice("PDF hazırlanıyor…"); const result = await createBulletinPdf(selected, club);
@@ -311,29 +459,44 @@ export default function BulletinsPage({ club, go }) {
         window.setTimeout(() => URL.revokeObjectURL(url), 2000); setNotice("PDF indirildi.");
       } else {
         const file = new File([result.blob], result.fileName, { type: "application/pdf" });
-        const text = `${club.schoolName} ${selected.number}. hafta sporcu eğitim bülteni — ${selected.title}`;
         if (navigator.share && (!navigator.canShare || navigator.canShare({ files:[file] }))) {
-          await navigator.share({ title:"Haftalık sporcu eğitim bülteni", text, files:[file] }); markSent(selected.id); setNotice("Paylaşım tamamlandı olarak işaretlendi.");
+          await navigator.clipboard?.writeText(shareMessage).catch(()=>{});
+          await navigator.share({ title:`${selected.title} | Eğitim Bülteni`, text:shareMessage, files:[file] }); markSent(selected.calendarId || selected.id); setNotice("PDF belge paylaşım ekranına eklendi. Hazır metin görünmezse mesaj alanına yapıştırın; metin panoya kopyalandı.");
         } else {
           const url = URL.createObjectURL(result.blob); const link = document.createElement("a"); link.href=url; link.download=result.fileName; link.click();
           window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-          window.open(`https://wa.me/?text=${encodeURIComponent(`${text}\nPDF cihazınıza indirildi. Lütfen bu konuşmaya belge olarak ekleyin.`)}`, "_blank", "noopener,noreferrer");
-          setNotice("PDF indirildi; WhatsApp'ta alıcıyı seçip belgeyi ekleyin.");
+          await navigator.clipboard?.writeText(shareMessage).catch(()=>{});
+          window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`, "_blank", "noopener,noreferrer");
+          setNotice("Hazır mesaj WhatsApp'ta açıldı ve PDF indirildi. PDF'yi konuşmaya belge olarak ekleyin.");
         }
       }
     } catch (error) { if (error?.name !== "AbortError") setNotice("PDF hazırlanamadı. Lütfen tekrar deneyin."); }
     finally { setBusy(""); }
   };
+  if (!selected) return <div className="page bulletin-page"><div className="bulletin-preview-error"><FileText/><p>Yayında eğitim bülteni bulunmuyor.</p></div></div>;
+  const selectedKey = selected.calendarId || selected.id;
   return <div className="page bulletin-page">
     <button className="bulletin-back" onClick={() => go("profiles")}><ArrowLeft/> Kulüp profiline dön</button>
-    <section className="bulletin-hero"><div className="bulletin-club-logo"><img src={logo} alt={`${club?.schoolName} logosu`} onError={(e)=>{e.currentTarget.src="/brand-logo.png";}}/></div><div><small>SPORCU İLETİŞİMİ</small><h1>Haftalık eğitim bültenleri</h1><p>Her cuma sporcularına sezon hazırlığı, antrenman alışkanlıkları, spor psikolojisi, beslenme ve sporcu tavsiyelerini kulübünün logosuyla ulaştır.</p><div className="bulletin-hero-meta"><span><CalendarDays/> 52 cuma</span><span><FileText/> Logolu PDF</span><span><MessageCircle/> WhatsApp paylaşımı</span></div></div></section>
-    <section className="bulletin-intro"><div><small>PİLOT DÖNEM</small><b>4 Eylül 2026 – 27 Ağustos 2027</b></div><p>Tek içerik planı tüm sporculara yöneliktir. PDF, giriş yapan spor okulunun adı ve logosuyla otomatik hazırlanır.</p></section>
-    <nav className="bulletin-phases" aria-label="Bülten dönemleri">{phases.map((item)=><button className={phase===item?"active":""} onClick={()=>setPhase(item)} key={item}>{item}</button>)}</nav>
-    <div className="bulletin-layout"><section className="bulletin-list">{visible.map((item)=><button key={item.id} className={`bulletin-week ${selected.id===item.id?"selected":""}`} onClick={()=>setSelected(item)}><span className="week-number">{String(item.number).padStart(2,"0")}</span><span><small>{dateText(item.date)}</small><b>{item.title}</b><em>{item.phase}</em></span>{sent.includes(item.id)&&<CheckCircle2 className="sent-check"/>}</button>)}</section>
-      <aside className="bulletin-preview"><header><span><small>{selected.number}. HAFTA</small><h2>{selected.title}</h2><p>{dateText(selected.date)} · {selected.phase}</p></span>{sent.includes(selected.id)&&<em><CheckCircle2/> Paylaşıldı</em>}</header>
+    <section className="bulletin-hero"><div className="bulletin-club-logo"><img src={logo} alt={`${club?.schoolName} logosu`} onError={(e)=>{e.currentTarget.src="/brand-logo.png";}}/></div><div><small>SPORCU İLETİŞİMİ</small><h1>Haftalık eğitim bültenleri</h1><p>Her cuma sporcularına sezon hazırlığı, antrenman alışkanlıkları, spor psikolojisi, beslenme ve sporcu tavsiyelerini kulübünün logosuyla ulaştır.</p><div className="bulletin-hero-meta"><span><CalendarDays/> 2025–2030 takvimi</span><span><FileText/> Logolu PDF</span><span><MessageCircle/> WhatsApp paylaşımı</span></div></div></section>
+    <section className="bulletin-intro"><div><small>YAYIN TAKVİMİ</small><b>{calendarPeriodText}</b></div><p>Yayın tarihleri yönetici planıyla eş zamanlı güncellenir. Başlığa dokunduğunda seçilen bültenin PDF önizlemesi ve paylaşım seçenekleri aşağıda açılır.</p></section>
+    <section className="bulletin-calendar-section" aria-label="Aylık eğitim bülteni takvimi">
+      <header className="bulletin-calendar-toolbar">
+        <div><small>AYLIK PLAN</small><h2>{MONTH_NAMES[calendarMonth]} {calendarYear}</h2><p>{monthEntries.length} yayın</p></div>
+        <div className="bulletin-calendar-controls">
+          <button type="button" aria-label="Önceki ay" onClick={()=>moveMonth(-1)} disabled={calendarYear===CALENDAR_START_YEAR&&calendarMonth===0}>‹</button>
+          <label><span>Ay</span><select value={calendarMonth} onChange={(event)=>setCalendarMonth(Number(event.target.value))}>{MONTH_NAMES.map((month,index)=><option value={index} key={month}>{month}</option>)}</select></label>
+          <label><span>Yıl</span><select value={calendarYear} onChange={(event)=>setCalendarYear(Number(event.target.value))}>{Array.from({length:CALENDAR_END_YEAR-CALENDAR_START_YEAR+1},(_,index)=>CALENDAR_START_YEAR+index).map((year)=><option value={year} key={year}>{year}</option>)}</select></label>
+          <button type="button" aria-label="Sonraki ay" onClick={()=>moveMonth(1)} disabled={calendarYear===CALENDAR_END_YEAR&&calendarMonth===11}>›</button>
+        </div>
+      </header>
+      <div className="bulletin-calendar-weekdays" aria-hidden="true">{WEEKDAY_NAMES.map((day)=><span key={day}>{day}</span>)}</div>
+      <div className="bulletin-calendar-grid">{calendarCells.map((cell,index)=>cell ? <div key={cell.day} className={`bulletin-calendar-day ${cell.weekday===4?"friday":""}`}><span className="bulletin-calendar-date">{cell.day}</span>{cell.entry&&<button type="button" className={`bulletin-calendar-event ${selected.calendarId===cell.entry.calendarId?"active":""}`} onClick={()=>chooseEntry(cell.entry)}><b>{cell.entry.title}</b>{sent.includes(cell.entry.calendarId)&&<CheckCircle2/>}</button>}</div> : <div className="bulletin-calendar-day empty" aria-hidden="true" key={`empty-${index}`}/>)}</div>
+    </section>
+    <aside id="bulletin-preview" className="bulletin-preview bulletin-preview-below"><header><span><small>{selected.calendarOrder}. BÜLTEN</small><h2>{selected.title}</h2><p>{dateText(selected.date)} · {selected.phase}</p></span>{sent.includes(selectedKey)&&<em><CheckCircle2/> Paylaşıldı</em>}</header>
+        <div className="preview-club"><img src={logo} alt={`${club?.schoolName || "Spor okulu"} logosu`} onError={(event)=>{event.currentTarget.onerror=null;event.currentTarget.src="/brand-logo.png"}}/><span><small>BÜLTENİ HAZIRLAYAN</small><b>{club?.schoolName || "Voleybol Spor Okulu"}</b></span></div>
         <div className={`bulletin-paper-preview ${preview.length>1?"multi-page":""} ${previewLoading ? "loading" : ""}`}>{preview.length ? preview.map((image,index)=><figure key={index}><img src={image} alt={`${selected.title} PDF bülten ${index+1}. sayfa önizlemesi`}/><figcaption>{index+1}. SAYFA</figcaption></figure>) : <div className="bulletin-preview-error"><FileText/><p>Önizleme hazırlanamadı.</p></div>}</div>
         {notice&&<p className="bulletin-notice">{notice}</p>}
-        <div className="bulletin-actions"><button className="btn ghost" disabled={busy} onClick={()=>prepare("download")}><Download/> {busy==="download"?"Hazırlanıyor…":"PDF indir"}</button><button className="btn" disabled={busy} onClick={()=>prepare("share")}><Send/> {busy==="share"?"Hazırlanıyor…":"WhatsApp'ta paylaş"}</button></div>
-      </aside></div>
+        <div className="bulletin-actions"><button className="btn ghost" disabled={busy} onClick={()=>prepare("download")}><Download/> {busy==="download"?"Hazırlanıyor…":"PDF indir"}</button><button className="btn" disabled={busy} onClick={()=>prepare("share")}><Send/> {busy==="share"?"Hazırlanıyor…":"Belgeyi WhatsApp'ta paylaş"}</button></div>
+      </aside>
   </div>;
 }
