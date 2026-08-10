@@ -5,7 +5,13 @@ function doGet(e){
   if(!ALLOWED_SHEETS.includes(name))return json_({ok:false,error:'Geçersiz veri kaynağı'});
   const sh=SpreadsheetApp.getActive().getSheetByName(name); if(!sh)return json_({ok:false,error:'Sekme bulunamadı'});
   const values=sh.getDataRange().getDisplayValues(); const headers=values.shift()||[];
-  const data=values.filter(r=>r.some(Boolean)).map(r=>Object.fromEntries(headers.map((h,i)=>[h,r[i]??''])));
+  const publicFields={
+    'Okul Kayitlari':['Kayıt ID','Okul Adı','Onay Durumu','Kayıt Tarihi','Takım Logosu (Manuel)'],
+    'Sporcu Kayitlari':['Sporcu ID','Okul Kayıt ID','Okul Adı','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi'],
+    'Antrenor Kayitlari':['Antrenör ID','Okul Kayıt ID','Okul Adı','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli']
+  };
+  const allowed=publicFields[name]||headers;
+  const data=values.filter(r=>r.some(Boolean)).map(r=>Object.fromEntries(allowed.map(h=>[h,r[headers.indexOf(h)]??''])));
   return json_({ok:true,data,updatedAt:new Date().toISOString()});
 }
 function json_(value){return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON)}
@@ -17,7 +23,9 @@ function doPost(e){
     const body=JSON.parse(raw);
     if(body.action==='registerSchool') return registerSchool_(body);
     if(body.action==='registerAthlete') return registerAthlete_(body);
+    if(body.action==='registerTrainer') return registerTrainer_(body);
     if(body.action==='updateAthletePresence') return updateAthletePresence_(body);
+    if(body.action==='syncSchoolRoster') return syncSchoolRoster_(body);
     if(body.action==='profileLogin') return profileLogin_(body);
     if(body.action==='validateProfileSession') return validateProfileSession_(body);
     if(body.action==='logoutProfile') return logoutProfile_(body);
@@ -56,11 +64,10 @@ function registerSchool_(body){
   try{
     const sh=getOrCreate_('Okul Kayitlari',['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Durumu','Kayıt Tarihi','Onay Tarihi','WhatsApp Mesajı','WhatsApp Bağlantısı','Yönetici Notu','Takım Logosu (Manuel)']);
     const rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,11).getDisplayValues():[];
-    const duplicate=rows.find(r=>normalize_(r[1])===normalize_(schoolName)||String(r[2]).replace(/\D/g,'')===phone);
-    if(duplicate) return json_({ok:false,error:'Bu okul veya telefon numarası daha önce kaydedilmiş.'});
+    const duplicate=rows.find(r=>normalize_(r[1])===normalize_(schoolName));
+    if(duplicate) return json_({ok:false,error:'Bu okul adı daha önce kaydedilmiş. Farklı bir okul adı girin.'});
     const code=uniqueSchoolCode_(sh), id='OKL-'+Utilities.getUuid().slice(0,8).toUpperCase();
     sh.appendRow([id,schoolName,phone,code,'BEKLİYOR',new Date(),'','','','','']);
-    getSchoolRosterSheet_(schoolName,id);
     return json_({ok:true,id:id,code:code,status:'BEKLİYOR'});
   }finally{lock.releaseLock()}
 }
@@ -84,8 +91,32 @@ function registerAthlete_(body){
     if(!/^(kadin|erkek)-voleybolcu-[1-6]$/.test(avatarId)) return json_({ok:false,error:'Profil seçimi geçersiz.'});
     const inheritedLogo=school[10]||(athleteRows.find(r=>normalize_(r[2])===normalize_(school[1])&&/^https?:\/\//.test(r[7]))||[])[7]||'';
     sh.appendRow([id,school[0],school[1],code,athleteName,avatarId,avatarName||avatarId,inheritedLogo,false,'',new Date()]);
-    rebuildSchoolRosterById_(school[0]);
     const account={type:'athlete',id:id,name:athleteName,schoolId:school[0],schoolName:school[1],schoolCode:code,avatar:avatarId,teamLogo:inheritedLogo};
+    const session=createProfileSession_(account);
+    return json_({ok:true,id:id,teamLogo:inheritedLogo,profileToken:session.token,expiresIn:PROFILE_SESSION_SECONDS});
+  }finally{lock.releaseLock()}
+}
+
+function registerTrainer_(body){
+  const schoolName=clean_(body.schoolName,120), code=String(body.schoolCode||''), trainerName=clean_(body.name,100), title=clean_(body.title,60)||'Voleybol Antrenörü';
+  if(!/^\d{6}$/.test(code)||!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(trainerName)||title.length<3) return json_({ok:false,error:'Antrenör bilgileri geçersiz.'});
+  const avatarId=clean_(body.avatar,30), avatarName=clean_(body.avatarName,80);
+  if(!/^(kadin|erkek)-antrenor-[1-6]$/.test(avatarId)) return json_({ok:false,error:'Antrenör profil seçimi geçersiz.'});
+  const schools=getOrCreate_('Okul Kayitlari',['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Durumu','Kayıt Tarihi','Onay Tarihi','WhatsApp Mesajı','WhatsApp Bağlantısı','Yönetici Notu','Takım Logosu (Manuel)']);
+  const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>normalize_(r[1])===normalize_(schoolName)&&r[3]===code&&String(r[4]).toLocaleUpperCase('tr')==='ONAYLANDI');
+  if(!school) return json_({ok:false,error:'Okul adı, kod veya yönetici onayı doğrulanamadı.'});
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return json_({ok:false,error:'Kayıt servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const headers=['Antrenör ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli'];
+    const sh=getOrCreate_('Antrenor Kayitlari',headers);
+    sh.getRange(1,1,1,headers.length).setValues([headers]);
+    const trainerRows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,headers.length).getDisplayValues():[];
+    if(trainerRows.some(r=>r[1]===school[0]&&normalize_(r[4])===normalize_(trainerName))) return json_({ok:false,error:'Bu antrenör adı seçilen okulda zaten kayıtlı.'});
+    const id='ANT-'+Utilities.getUuid().slice(0,8).toUpperCase();
+    const inheritedLogo=school[10]||(trainerRows.find(r=>normalize_(r[2])===normalize_(school[1])&&/^https?:\/\//.test(r[6]))||[])[6]||'';
+    sh.appendRow([id,school[0],school[1],code,trainerName,title,inheritedLogo,'AKTİF',new Date(),avatarId,avatarName||avatarId]);
+    const account={type:'trainer',id:id,schoolId:school[0],schoolName:school[1],schoolCode:code,name:trainerName,title:title,avatar:avatarId,teamLogo:inheritedLogo,status:'AKTİF'};
     const session=createProfileSession_(account);
     return json_({ok:true,id:id,teamLogo:inheritedLogo,profileToken:session.token,expiresIn:PROFILE_SESSION_SECONDS});
   }finally{lock.releaseLock()}
@@ -119,10 +150,12 @@ function profileLogin_(body){
     account={type:'athlete',id:person[0],schoolId:person[1],schoolName:person[2],schoolCode:person[3],name:person[4],avatar:person[5],teamLogo:person[7]||school[10]||''};
   }
   if(type==='trainer'){
-    const sh=getOrCreate_('Antrenor Kayitlari',['Antrenör ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi']);
+    const headers=['Antrenör ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli'];
+    const sh=getOrCreate_('Antrenor Kayitlari',headers);
+    sh.getRange(1,1,1,headers.length).setValues([headers]);
     const person=sh.getDataRange().getDisplayValues().slice(1).find(r=>r[1]===school[0]&&normalize_(r[4])===normalize_(userName)&&String(r[7]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF');
     if(!person) return json_({ok:false,error:'Antrenör adı bu kulübün aktif kayıtlarıyla eşleşmedi.'});
-    account={type:'trainer',id:person[0],schoolId:person[1],schoolName:person[2],schoolCode:person[3],name:person[4],title:person[5]||'Antrenör',teamLogo:person[6]||school[10]||''};
+    account={type:'trainer',id:person[0],schoolId:person[1],schoolName:person[2],schoolCode:person[3],name:person[4],title:person[5]||'Antrenör',teamLogo:person[6]||school[10]||'',status:person[7]||'AKTİF',avatar:person[9]||''};
   }
   const session=createProfileSession_(account);
   return json_({ok:true,token:session.token,expiresIn:PROFILE_SESSION_SECONDS,account:account});
@@ -130,6 +163,11 @@ function profileLogin_(body){
 function validateProfileSession_(body){
   const account=requireProfile_(body.token);
   return json_({ok:true,expiresIn:PROFILE_SESSION_SECONDS,account:account});
+}
+function syncSchoolRoster_(body){
+  const account=requireProfile_(body.token);
+  rebuildSchoolRosterById_(account.schoolId);
+  return json_({ok:true,schoolId:account.schoolId});
 }
 function logoutProfile_(body){
   const token=clean_(body.token,100);
@@ -187,7 +225,7 @@ function rebuildSchoolRosterById_(schoolId){
   if(target.getLastRow()>1) target.getRange(2,1,target.getLastRow()-1,SCHOOL_ROSTER_HEADERS.length).clearContent();
   const output=[], athletes=ss.getSheetByName('Sporcu Kayitlari'), trainers=ss.getSheetByName('Antrenor Kayitlari');
   if(athletes&&athletes.getLastRow()>1) athletes.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Sporcu',r[0],r[1],r[2],r[3],r[4],'Sporcu',r[5],r[6],r[7],'AKTİF',r[8],r[9],r[10]]));
-  if(trainers&&trainers.getLastRow()>1) trainers.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Antrenör',r[0],r[1],r[2],r[3],r[4],r[5],'','',r[6],r[7],'','',r[8]]));
+  if(trainers&&trainers.getLastRow()>1) trainers.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Antrenör',r[0],r[1],r[2],r[3],r[4],r[5],r[9]||'',r[10]||'',r[6],r[7],'','',r[8]]));
   if(output.length) target.getRange(2,1,output.length,SCHOOL_ROSTER_HEADERS.length).setValues(output);
   target.setFrozenRows(1); target.autoResizeColumns(1,SCHOOL_ROSTER_HEADERS.length);
 }

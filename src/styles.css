@@ -140,3 +140,7 @@
 .faq-guide-image{display:flex;align-items:flex-start;min-height:0;background:#f4f7f9}.faq-guide img{width:100%;height:auto;max-height:none;object-fit:contain;object-position:top center}
 @media(max-width:760px){.faq-guide-image{min-height:0}.faq-guide img{max-height:none}}
 @media(max-width:600px){.faq-guide-image{min-height:0;border-radius:10px}}
+/* Üçlü kayıt türü ve antrenör kullanıcı adı */
+.registration-card>.registration-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+.registration-form input[name="trainerName"]{font-weight:750;letter-spacing:.02em}
+@media(max-width:600px){.registration-card>.registration-tabs button{padding-inline:4px;font-size:10px}.registration-card>.registration-tabs button svg{width:16px}}

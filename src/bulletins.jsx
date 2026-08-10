@@ -47,6 +47,14 @@ const loadImage = (url) => new Promise((resolve, reject) => {
   image.onload = () => resolve(image); image.onerror = reject; image.src = url;
 });
 
+const publicLogoUrl = (source="") => {
+  const value=String(source).trim();
+  const driveId=value.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i)?.[1]
+    || value.match(/drive\.google\.com\/(?:open|uc|thumbnail)[^#]*[?&]id=([^&#]+)/i)?.[1]
+    || value.match(/lh\d*\.googleusercontent\.com\/d\/([^=/?#]+)/i)?.[1];
+  return driveId ? `https://lh3.googleusercontent.com/d/${driveId}=w1000` : value;
+};
+
 const rgbHex = (r,g,b) => `#${[r,g,b].map((value)=>Math.round(Math.max(0,Math.min(255,value))).toString(16).padStart(2,"0")).join("")}`;
 const hexRgb = (hex) => { const value=String(hex).replace("#",""); return [0,2,4].map((i)=>parseInt(value.slice(i,i+2),16)); };
 const shade = (hex, amount) => rgbHex(...hexRgb(hex).map((value)=>value*amount));
@@ -269,7 +277,7 @@ async function createCampBulletinArtworks(bulletin, club) {
 }
 
 async function getClubLogo(club) {
-  const raw = club?.teamLogo || club?.logoUrl || "/brand-logo.png";
+  const raw = publicLogoUrl(club?.teamLogo || club?.logoUrl || "/brand-logo.png");
   const sources = /^https?:/i.test(raw)
     ? [`https://images.weserv.nl/?url=${encodeURIComponent(raw)}&w=360&h=360&fit=contain&output=png`, raw, "/brand-logo.png"]
     : [raw, "/brand-logo.png"];
@@ -397,7 +405,7 @@ export default function BulletinsPage({ club, go }) {
   const firstDayOffset = (new Date(Date.UTC(calendarYear, calendarMonth, 1)).getUTCDay() + 6) % 7;
   const monthDayCount = new Date(Date.UTC(calendarYear, calendarMonth + 1, 0)).getUTCDate();
   const monthEventByDay = useMemo(() => new Map(monthEntries.map((item) => [Number(item.date.slice(-2)), item])), [monthEntries]);
-  const logo = club?.teamLogo || club?.logoUrl || "/brand-logo.png";
+  const logo = publicLogoUrl(club?.teamLogo || club?.logoUrl || "/brand-logo.png");
   useEffect(() => {
     const applyRows = (rows) => {
       const next = applyBulletinManagement(rows);

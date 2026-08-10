@@ -330,8 +330,8 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
       ...local,
       id,
       schoolName: registrationValue(row, "Okul Adı"),
-      phone: registrationValue(row, "Telefon"),
-      code: registrationValue(row, "6 Haneli Kod"),
+      phone: registrationValue(row, "Telefon") || local.phone || "",
+      code: registrationValue(row, "6 Haneli Kod") || local.code || "",
       status: registrationValue(row, "Onay Durumu"),
       createdAt: registrationValue(row, "Kayıt Tarihi"),
       approvedAt: registrationValue(row, "Onay Tarihi"),
@@ -349,7 +349,7 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
       id,
       schoolId: registrationValue(row, "Okul Kayıt ID"),
       schoolName: registrationValue(row, "Okul Adı"),
-      schoolCode: registrationValue(row, "Okul Kodu"),
+      schoolCode: registrationValue(row, "Okul Kodu") || local.schoolCode || "",
       name: registrationValue(row, "Sporcu Adı"),
       avatar: registrationValue(row, "Profil Kodu") || local.avatar || profileChoices[0].id,
       teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || teamLogoBySchool.get(schoolKey(registrationValue(row, "Okul Adı"))) || local.teamLogo || "",
@@ -376,9 +376,11 @@ function syncTrainerStorage(trainerRows) {
       id,
       schoolId: registrationValue(row, "Okul Kayıt ID"),
       schoolName: registrationValue(row, "Okul Adı"),
-      schoolCode: registrationValue(row, "Okul Kodu"),
+      schoolCode: registrationValue(row, "Okul Kodu") || local.schoolCode || "",
       name: registrationValue(row, "Antrenör Adı"),
       title: registrationValue(row, "Görev") || "Antrenör",
+      avatar: registrationValue(row, "Profil Kodu") || local.avatar || trainerProfileChoices[0].id,
+      avatarName: registrationValue(row, "Profil Görseli") || local.avatarName || "",
       teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || local.teamLogo || "",
       status: registrationValue(row, "Durum") || "AKTİF",
       createdAt: registrationValue(row, "Kayıt Tarihi"),
@@ -699,7 +701,7 @@ function App() {
         ) : page === "videos" ? (
           <TrainingVideosPage />
         ) : page === "register" ? (
-          <RegistrationPage go={go} onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => dedupeActiveAthletes([...items.filter((x) => x.id !== athlete.id), athlete])); go("profiles"); }} />
+          <RegistrationPage go={go} onAthleteOnline={(athlete) => { localStorage.removeItem("volleyballCurrentClub"); setCurrentClub(null); setCurrentTrainer(null); setCurrentAthlete(athlete); setOnlineAthletes((items) => dedupeActiveAthletes([...items.filter((x) => x.id !== athlete.id), athlete])); go("profiles"); }} onTrainerRegistered={(trainer) => { localStorage.removeItem("volleyballCurrentClub"); localStorage.removeItem("volleyballCurrentAthleteId"); setCurrentClub(null); setCurrentAthlete(null); setCurrentTrainer(trainer); go("profiles"); }} />
         ) : page === "registered-schools" ? (
           <RegisteredSchoolsPage go={go} />
         ) : page === "pricing" ? (
@@ -747,9 +749,41 @@ const profileChoices = [
 ];
 const profileById = (id) => profileChoices.find((item) => item.id === id) || profileChoices[0];
 function AthleteAvatar({ id, className="" }) { const item=profileById(id); return <i className={`athlete-avatar ${className}`} style={{"--avatar-image":`url(${item.image})`,"--avatar-x":item.x,"--avatar-y":item.y}} role="img" aria-label={item.name} />; }
+const trainerProfileChoices = [
+  { id:"kadin-antrenor-1", name:"Topla kadın voleybol antrenörü", image:"/profile-volleyball-coaches-women.png", x:"0%", y:"0%" },
+  { id:"kadin-antrenor-2", name:"Kadın takım antrenörü", image:"/profile-volleyball-coaches-women.png", x:"50%", y:"0%" },
+  { id:"kadin-antrenor-3", name:"Taktik anlatan kadın voleybol antrenörü", image:"/profile-volleyball-coaches-women.png", x:"100%", y:"0%" },
+  { id:"kadin-antrenor-4", name:"Düdüklü kadın voleybol antrenörü", image:"/profile-volleyball-coaches-women.png", x:"0%", y:"100%" },
+  { id:"kadin-antrenor-5", name:"Taktik panolu kadın voleybol antrenörü", image:"/profile-volleyball-coaches-women.png", x:"50%", y:"100%" },
+  { id:"kadin-antrenor-6", name:"Kıdemli kadın voleybol antrenörü", image:"/profile-volleyball-coaches-women.png", x:"100%", y:"100%" },
+  { id:"erkek-antrenor-1", name:"Erkek takım antrenörü", image:"/profile-volleyball-coaches-men.png", x:"0%", y:"0%" },
+  { id:"erkek-antrenor-2", name:"Taktik panolu erkek voleybol antrenörü", image:"/profile-volleyball-coaches-men.png", x:"50%", y:"0%" },
+  { id:"erkek-antrenor-3", name:"Topla taktik anlatan erkek voleybol antrenörü", image:"/profile-volleyball-coaches-men.png", x:"100%", y:"0%" },
+  { id:"erkek-antrenor-4", name:"Erkek voleybol antrenörü", image:"/profile-volleyball-coaches-men.png", x:"0%", y:"100%" },
+  { id:"erkek-antrenor-5", name:"Kıdemli erkek voleybol antrenörü", image:"/profile-volleyball-coaches-men.png", x:"50%", y:"100%" },
+  { id:"erkek-antrenor-6", name:"Toplu erkek voleybol antrenörü", image:"/profile-volleyball-coaches-men.png", x:"100%", y:"100%" },
+];
+const trainerProfileById = (id) => trainerProfileChoices.find((item) => item.id === id) || trainerProfileChoices[0];
+function TrainerAvatar({ id, className="" }) { const item=trainerProfileById(id); return <i className={`athlete-avatar trainer-avatar ${className}`} style={{"--avatar-image":`url(${item.image})`,"--avatar-x":item.x,"--avatar-y":item.y}} role="img" aria-label={item.name} />; }
+function ProfileAvatar({ id, className="" }) { return trainerProfileChoices.some((item)=>item.id===id) ? <TrainerAvatar id={id} className={className}/> : <AthleteAvatar id={id} className={className}/>; }
+function googleDriveImageId(source="") {
+  const value=String(source).trim();
+  return value.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i)?.[1]
+    || value.match(/drive\.google\.com\/(?:open|uc|thumbnail)[^#]*[?&]id=([^&#]+)/i)?.[1]
+    || value.match(/lh\d*\.googleusercontent\.com\/d\/([^=/?#]+)/i)?.[1]
+    || "";
+}
+function publicLogoUrl(source="") {
+  const value=String(source).trim(), driveId=googleDriveImageId(value);
+  return driveId ? `https://lh3.googleusercontent.com/d/${driveId}=w1000` : value;
+}
 function TeamLogo({ src, name, className="" }) {
+  const driveId=googleDriveImageId(src);
+  const sources=driveId ? [`https://lh3.googleusercontent.com/d/${driveId}=w1000`,`https://drive.google.com/thumbnail?id=${driveId}&sz=w1000`] : [String(src||"").trim()];
+  const [sourceIndex,setSourceIndex]=useState(0);
+  useEffect(()=>setSourceIndex(0),[src]);
   if (!src) return null;
-  return <img className={`team-logo ${className}`} src={src} alt={`${name || "Takım"} logosu`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />;
+  return <img className={`team-logo ${className}`} src={sources[Math.min(sourceIndex,sources.length-1)]} alt={`${name || "Takım"} logosu`} loading="lazy" referrerPolicy="no-referrer" onError={(event) => { if(sourceIndex<sources.length-1)setSourceIndex(sourceIndex+1);else event.currentTarget.hidden=true; }} />;
 }
 
 const transparentLogoCache = new Map();
@@ -908,12 +942,14 @@ function sendAthletePresenceBeacon(id, online) {
   fetch(registrationApi, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body, keepalive:true }).catch(() => {});
 }
 
-function RegistrationPage({ go, onAthleteOnline }) {
+function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
   const [type, setType] = useState("school");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [avatar, setAvatar] = useState(profileChoices[0].id);
   const [athleteSchool, setAthleteSchool] = useState("");
+  const [trainerAvatar, setTrainerAvatar] = useState(trainerProfileChoices[0].id);
+  const [trainerSchool, setTrainerSchool] = useState("");
   const approvedSchools = readSchools()
     .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
     .sort((a, b) => String(a.schoolName).localeCompare(String(b.schoolName), "tr"));
@@ -968,12 +1004,44 @@ function RegistrationPage({ go, onAthleteOnline }) {
       setNotice("Sporcu profili oluşturuldu ve derste olanlar alanına eklendi."); form.reset();
     } catch (error) { setNotice(error.message); } finally { setBusy(false); }
   };
+  const submitTrainer = async (event) => {
+    event.preventDefault(); setBusy(true); setNotice("");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const selectedProfile = trainerProfileById(trainerAvatar);
+    const trainer = { action:"registerTrainer", id:`ANT-${Date.now()}`, schoolName:String(data.get("schoolName") || "").trim(), schoolCode:String(data.get("schoolCode") || "").trim(), name:String(data.get("trainerName") || "").trim(), title:String(data.get("trainerTitle") || "Voleybol Antrenörü").trim(), avatar:trainerAvatar, avatarName:selectedProfile.name };
+    if (!trainer.schoolName) { setNotice("Kayıtlı spor okulunu seçin."); setBusy(false); return; }
+    if (!/^\d{6}$/.test(trainer.schoolCode)) { setNotice("Okul kodu 6 haneli olmalıdır."); setBusy(false); return; }
+    if (!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(trainer.name)) { setNotice("Antrenör adı @ ile başlamalı ve boşluk içermemelidir."); setBusy(false); return; }
+    if (trainer.title.length < 3) { setNotice("Antrenör görevini yazın."); setBusy(false); return; }
+    const duplicate = readTrainers().some((item) => String(item.schoolName || "").trim().toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr") && String(item.name || "").trim().toLocaleLowerCase("tr") === trainer.name.toLocaleLowerCase("tr"));
+    if (duplicate) { setNotice("Bu antrenör adı seçilen okulda zaten kayıtlı."); setBusy(false); return; }
+    try {
+      const result = await sendRegistration(trainer);
+      if (result.ok === false) throw new Error(result.error || "Okul bilgileri doğrulanamadı.");
+      const inheritedTeamLogo = readSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo || "";
+      const savedTrainer = { ...trainer, id:result.id || trainer.id, teamLogo:result.teamLogo || inheritedTeamLogo, status:"AKTİF", createdAt:new Date().toISOString() };
+      if (result.profileToken) {
+        sessionStorage.setItem(PROFILE_TOKEN_KEY, result.profileToken);
+        sendRegistration({ action:"syncSchoolRoster", token:result.profileToken }).catch(() => {});
+      }
+      localStorage.setItem("volleyballTrainers", JSON.stringify([...readTrainers().filter((item)=>item.id!==savedTrainer.id), savedTrainer]));
+      localStorage.setItem("volleyballCurrentTrainerId", savedTrainer.id);
+      localStorage.removeItem("volleyballCurrentAthleteId");
+      localStorage.removeItem("volleyballCurrentClub");
+      markSessionActivity();
+      onTrainerRegistered(savedTrainer);
+      setNotice("Antrenör profili oluşturuldu ve kulübün antrenör kadrosuna eklendi.");
+      form.reset();
+    } catch (error) { setNotice(error.message); } finally { setBusy(false); }
+  };
   return <div className="page registration-page">
-    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Önce okul başvurusu yapılır. Yönetici onayından sonra okulun 6 haneli davet kodu WhatsApp ile iletilir; sporcular bu kodla kendi profillerini oluşturur.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
+    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Önce okul başvurusu yapılır. Yönetici onayından sonra okulun 6 haneli davet kodu iletilir; sporcular ve antrenörler bu kodla yalnızca kendi kulüplerine bağlı profillerini oluşturur.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
     <section className="registration-card">
-      <div className="registration-tabs"><button className={type==="school"?"active":""} onClick={()=>{setType("school");setNotice("")}}><School/> Okul kaydı</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu kaydı</button></div>
+      <div className="registration-tabs"><button className={type==="school"?"active":""} onClick={()=>{setType("school");setNotice("")}}><School/> Okul kaydı</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu kaydı</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setNotice("")}}><GraduationCap/> Antrenör kaydı</button></div>
       {type === "school" ? <form onSubmit={submitSchool} className="registration-form"><div className="form-heading"><School/><span><b>Okul başvurusu</b><small>Başvurunuz yönetici onayından sonra etkinleştirilir.</small></span></div><label>Okul adı<input name="schoolName" required minLength="3" placeholder="Örn. İzmir Gençlik Voleybol Okulu" /></label><label>WhatsApp telefon numarası<input name="phone" required inputMode="tel" placeholder="05XX XXX XX XX" /></label><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Başvuruyu gönder"}<ArrowRight/></button></form>
-      : <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Kayıtlı okul ve onaylanmış 6 haneli kod gereklidir.</small></span></div><div className="form-grid athlete-school-grid"><SearchableSchoolPicker value={athleteSchool} onChange={(school)=>{setAthleteSchool(school);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!athleteSchool}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>}
+      : type === "athlete" ? <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Kayıtlı okul ve onaylanmış 6 haneli kod gereklidir.</small></span></div><div className="form-grid athlete-school-grid"><SearchableSchoolPicker value={athleteSchool} onChange={(school)=>{setAthleteSchool(school);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!athleteSchool}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>
+      : <form onSubmit={submitTrainer} className="registration-form"><div className="form-heading"><GraduationCap/><span><b>Antrenör profili</b><small>Profil, seçilen spor okulunun antrenör kadrosuna bağlanır.</small></span></div><div className="form-grid athlete-school-grid"><SearchableSchoolPicker value={trainerSchool} onChange={(school)=>{setTrainerSchool(school);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><label>6 haneli okul kodu<input name="schoolCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" /></label></div><div className="form-grid"><label>Antrenör kullanıcı adı<input name="trainerName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false"/><small className="field-help">Örnek: @antrenorayse</small></label><label>Görev<input name="trainerTitle" required minLength="3" maxLength="60" defaultValue="Voleybol Antrenörü"/></label></div><fieldset><legend>Antrenör profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek çizim antrenör profili</small><div className="avatar-choices">{trainerProfileChoices.map((choice)=><button type="button" key={choice.id} className={trainerAvatar===choice.id?"active":""} onClick={()=>setTrainerAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><TrainerAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!trainerSchool}>{busy?"Profil oluşturuluyor…":"Antrenör profilini oluştur"}<ArrowRight/></button></form>}
       {notice && <div className="registration-notice" role="status"><CheckCircle2/>{notice}</div>}
     </section>
   </div>;
@@ -1309,9 +1377,9 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
           <button className={page === k ? "active" : ""} onClick={() => go(k)} key={k}><Icon aria-hidden="true"/><span>{v}</span></button>
         ))}
         {isAuthenticated && account && <div className={`header-account ${accountOpen ? "open" : ""}`} ref={accountMenuRef}>
-          <button className="account-profile" onClick={() => setAccountOpen((value) => !value)} aria-label="Hesap menüsünü aç" aria-expanded={accountOpen}><span className="account-visual">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span className="account-label"><small>HESABIM</small></span><ChevronDown className="account-chevron"/></button>
+          <button className="account-profile" onClick={() => setAccountOpen((value) => !value)} aria-label="Hesap menüsünü aç" aria-expanded={accountOpen}><span className="account-visual">{account.avatar ? <ProfileAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span className="account-label"><small>HESABIM</small></span><ChevronDown className="account-chevron"/></button>
           {accountOpen && <div className="account-dropdown">
-            <header><span className="account-dropdown-logo">{account.avatar ? <AthleteAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span><small>AKTİF HESAP</small><b>{account.name || account.schoolName}</b><em>{accountSchool?.schoolName || account.schoolName || "Voleybol Akademisi"}</em></span></header>
+            <header><span className="account-dropdown-logo">{account.avatar ? <ProfileAvatar id={account.avatar}/> : accountTeamLogo ? <TeamLogo src={accountTeamLogo} name={account.schoolName}/> : <UserRound/>}</span><span><small>AKTİF HESAP</small><b>{account.name || account.schoolName}</b><em>{accountSchool?.schoolName || account.schoolName || "Voleybol Akademisi"}</em></span></header>
             <div className="account-dropdown-stats"><span><Users/><b>{accountAthleteCount}</b><small>Sporcu</small></span><span><GraduationCap/><b>{accountTrainerCount}</b><small>Antrenör</small></span></div>
             <button className="account-dropdown-profile" onClick={() => { setAccountOpen(false); go("profiles"); }}><UserRound/><span><b>Profil</b><small>Hesap ve kulüp bilgilerini aç</small></span><ArrowRight/></button>
             <button className="account-dropdown-logout" onClick={() => { setAccountOpen(false); onLogout(); }}><LogOut/> Çıkış Yap</button>
@@ -1334,7 +1402,7 @@ function HomePage({ go, isAuthenticated }) {
   const registeredSchools = readSchools();
   const schoolCount = new Set(registeredSchools.map((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr")).filter(Boolean)).size;
   const referenceSchools = [...new Map(registeredSchools.filter((school)=>school.teamLogo).map((school)=>[String(school.schoolName||"").trim().toLocaleLowerCase("tr"),school])).values()];
-  const referenceLogoPng = (source) => /^https?:\/\//i.test(source||"") ? `https://images.weserv.nl/?url=${encodeURIComponent(source)}&w=160&h=160&fit=contain&output=png` : source;
+  const referenceLogoPng = (source) => { const publicSource=publicLogoUrl(source); return /^https?:\/\//i.test(publicSource) ? `https://images.weserv.nl/?url=${encodeURIComponent(publicSource)}&w=160&h=160&fit=contain&output=png` : publicSource; };
   const startReferenceDrag = (event) => { const area=referenceScrollRef.current; if(!area)return; referenceDragRef.current={active:true,startX:event.clientX,scrollLeft:area.scrollLeft}; area.setPointerCapture?.(event.pointerId); area.classList.add("dragging"); };
   const moveReferenceDrag = (event) => { const area=referenceScrollRef.current; if(!area||!referenceDragRef.current.active)return; area.scrollLeft=referenceDragRef.current.scrollLeft-(event.clientX-referenceDragRef.current.startX); };
   const stopReferenceDrag = () => { referenceDragRef.current.active=false; referenceScrollRef.current?.classList.remove("dragging"); };
@@ -5347,7 +5415,7 @@ function ExamPage({ initialCourse, account }) {
           </div>
         </div>
       )}
-      <section className="exam-history"><div className="exam-section-head"><span><small>SINAV GEÇMİŞİ</small><h2>{accountType === "club" ? "Okula bağlı katılımcılar ve sınavları" : "Girdiğin sınavlar"}</h2></span><em>{schoolId}</em></div>{historyGroups.length ? <div className="exam-participant-list">{historyGroups.map((group)=>{const profile=participantProfileFor(group);return <article className="exam-participant" key={group.userId}><header><span className="exam-participant-avatar">{group.userType === "Sporcu" && profile.avatar ? <AthleteAvatar id={profile.avatar}/> : <UserRound/>}{profile.teamLogo&&<TeamLogo src={profile.teamLogo} name={profile.schoolName} className="exam-participant-team-logo"/>}</span><span className="exam-participant-identity"><small>{group.userType} PROFİLİ</small><b>{group.userName}</b><em>{profile.schoolName}</em></span><span className="exam-participant-summary"><strong>{group.exams.length}</strong><small>Tamamlanan sınav</small></span></header><div className="exam-taken-list"><div className="exam-taken-row header"><span>Girdiği Sınav</span><span>Puan</span><span>Durum</span></div>{group.exams.map((item,index)=><div className="exam-taken-row" key={`${group.userId}-${item.examId}`}><i className="exam-taken-index">{String(index+1).padStart(2,"0")}</i><span><b>{item.examTitle}</b><small>{new Date(item.completedAt).toLocaleDateString("tr-TR")} • En iyi sonuç</small></span><strong>{item.score}<small>/100</small></strong><em className={item.passed?"passed":"failed"}>{item.passed?<><CheckCircle2/> Geçti</>:<>Kaldı</>}</em></div>)}</div></article>})}</div> : <div className="exam-empty"><ClipboardCheck/><h3>Henüz sınav kaydı yok</h3><p>İlk sınav tamamlandığında okul kimliği, kullanıcı ve puan bilgisi burada görünecek.</p></div>}</section>
+      <section className="exam-history"><div className="exam-section-head"><span><small>SINAV GEÇMİŞİ</small><h2>{accountType === "club" ? "Okula bağlı katılımcılar ve sınavları" : "Girdiğin sınavlar"}</h2></span><em>{schoolId}</em></div>{historyGroups.length ? <div className="exam-participant-list">{historyGroups.map((group)=>{const profile=participantProfileFor(group);return <article className="exam-participant" key={group.userId}><header><span className="exam-participant-avatar">{profile.avatar ? <ProfileAvatar id={profile.avatar}/> : <UserRound/>}{profile.teamLogo&&<TeamLogo src={profile.teamLogo} name={profile.schoolName} className="exam-participant-team-logo"/>}</span><span className="exam-participant-identity"><small>{group.userType} PROFİLİ</small><b>{group.userName}</b><em>{profile.schoolName}</em></span><span className="exam-participant-summary"><strong>{group.exams.length}</strong><small>Tamamlanan sınav</small></span></header><div className="exam-taken-list"><div className="exam-taken-row header"><span>Girdiği Sınav</span><span>Puan</span><span>Durum</span></div>{group.exams.map((item,index)=><div className="exam-taken-row" key={`${group.userId}-${item.examId}`}><i className="exam-taken-index">{String(index+1).padStart(2,"0")}</i><span><b>{item.examTitle}</b><small>{new Date(item.completedAt).toLocaleDateString("tr-TR")} • En iyi sonuç</small></span><strong>{item.score}<small>/100</small></strong><em className={item.passed?"passed":"failed"}>{item.passed?<><CheckCircle2/> Geçti</>:<>Kaldı</>}</em></div>)}</div></article>})}</div> : <div className="exam-empty"><ClipboardCheck/><h3>Henüz sınav kaydı yok</h3><p>İlk sınav tamamlandığında okul kimliği, kullanıcı ve puan bilgisi burada görünecek.</p></div>}</section>
       <section className="exam-reminder"><span><Award/></span><div><small>İÇERİK HATIRLATMASI</small><h2>Her ders konusu için özgün sınav hazırlanmalı.</h2><p>Toplam {courseCategories.length} konu bulunuyor. Sorular; ders anlatımı, teknik doğrular ve yaygın hatalarla bire bir eşleştirilerek sırayla hazırlanacak.</p></div><b>{courseCategories.length} KONU</b></section>
     </div>
   );
@@ -6240,7 +6308,7 @@ function CourseDetail({ course, go }) {
 function ClubCodeShare({ school }) {
   const [copied, setCopied] = useState(false);
   const phone = String(school.phone || "").trim();
-  const message = `${school.schoolName} sporcu girişi\n\nKulüp adı: ${school.schoolName}\nKullanıcı kodu: ${school.code}\n\nOnline Voleybol Akademisi giriş sayfası:\n${SITE_URL}${routeFor("profiles")}`;
+  const message = `${school.schoolName} sporcu kayıt daveti\n\nMerhaba,\n\nOnline Voleybol Akademisine giriş yapmadan önce bu kodla sporcu kaydınızı tamamlamanız gerekir.\n\nKulüp adı: ${school.schoolName}\n6 haneli kayıt kodu: ${school.code}\n\nKayıt adımları:\n1. Aşağıdaki kayıt bağlantısını açın.\n2. “Sporcu kaydı” bölümünü seçin.\n3. Kulüp adını seçip 6 haneli kodu girin.\n4. Kullanıcı adınızı ve profil görselinizi belirleyerek kaydı tamamlayın.\n5. Kayıt tamamlandıktan sonra giriş sayfasından hesabınıza giriş yapabilirsiniz.\n\nKayıt sayfası:\n${SITE_URL}${routeFor("register")}\n\nGiriş sayfası:\n${SITE_URL}${routeFor("profiles")}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
   const copyMessage = async () => {
     try {
@@ -6251,12 +6319,12 @@ function ClubCodeShare({ school }) {
   };
   const nativeShare = async () => {
     if (navigator.share) {
-      try { await navigator.share({ title: `${school.schoolName} kullanıcı kodu`, text: message }); }
+      try { await navigator.share({ title: `${school.schoolName} sporcu kayıt kodu`, text: message }); }
       catch { /* Kullanıcı paylaşım penceresini kapatabilir. */ }
     } else window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   };
   return <section className="club-code-share">
-    <div className="club-code-share-heading"><span className="club-code-share-icon"><MessageCircle/></span><span><small>SPORCU DAVETİ</small><h2>Kullanıcı kodunu paylaş</h2><p>Kodu WhatsApp üzerinden bir kişiye veya kulüp grubuna güvenle gönder.</p></span></div>
+    <div className="club-code-share-heading"><span className="club-code-share-icon"><MessageCircle/></span><span><small>SPORCU DAVETİ</small><h2>Kullanıcı kodunu paylaş</h2><p>Kodu alan sporcu önce <b>Kayıt → Sporcu kaydı</b> bölümünden profilini oluşturmalı; kayıt tamamlandıktan sonra hesabına giriş yapabilir.</p></span></div>
     <div className="club-code-ticket"><div><small>KULÜP</small><b>{school.schoolName}</b></div><div><small>6 HANELİ KOD</small><strong>{school.code}</strong></div><div><small>KAYITLI WHATSAPP NUMARASI</small><b>{phone || "Telefon numarası kayıtlı değil"}</b></div></div>
     <div className="club-code-share-actions"><a className="btn club-whatsapp-button" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle/> WhatsApp’ta kişi veya grup seç</a><button type="button" className="btn ghost" onClick={nativeShare}><Share2/> Paylaş</button><button type="button" className="btn ghost" onClick={copyMessage}><Copy/> {copied ? "Kopyalandı" : "Mesajı kopyala"}</button></div>
     <p className="club-code-share-note"><ShieldCheck/> Mesaj yalnızca siz WhatsApp’ta alıcıyı seçip gönderdiğinizde iletilir.</p>
@@ -6397,7 +6465,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>21 profesyonel PDF kaynağını ve tüm çalışma bölümlerini sayfa içinde görüntüle.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
       <ClubCodeShare school={session.school}/>
       <section className="member-panel"><div className="member-heading"><span><small>TAKIM KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular kulüp adı ve 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
-      <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=><article key={trainer.id}><span className="member-role-icon"><GraduationCap/></span><span><b>{trainer.name}</b><small>{trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{trainer.status || "AKTİF"}</em></article>)}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler bu okulun kayıt kimliği ve koduyla eşleştiğinde yalnızca burada listelenir.</p></div>}</section>
+      <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=><article key={trainer.id}><TrainerAvatar id={trainer.avatar}/><span><b>{trainer.name}</b><small>{trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{trainer.status || "AKTİF"}</em></article>)}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler bu okulun kayıt kimliği ve koduyla eşleştiğinde yalnızca burada listelenir.</p></div>}</section>
     </div>;
   }
   if (session?.type === "trainer") {
@@ -6405,7 +6473,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     const school = schools.find((item) => item.schoolName.toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr"));
     const teamLogo = trainer.teamLogo || school?.teamLogo || "";
     return <div className="page profile-area trainer-profile">
-      <section className="profile-hero-card"><div className={`club-emblem ${teamLogo ? "has-logo" : ""}`}>{teamLogo ? <TeamLogo src={teamLogo} name={trainer.schoolName}/> : <GraduationCap/>}</div><span><small>ANTRENÖR PROFİLİ</small><h1>{trainer.name}</h1><p>{trainer.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
+      <section className="profile-hero-card"><span className="trainer-profile-avatar-wrap"><TrainerAvatar id={trainer.avatar} className="profile-large-avatar"/>{teamLogo&&<TeamLogo src={teamLogo} name={trainer.schoolName} className="trainer-team-logo"/>}</span><span><small>ANTRENÖR PROFİLİ</small><h1>{trainer.name}</h1><p>{trainer.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
       <div className="athlete-profile-grid"><article><small>GÖREV</small><b>{trainer.title || "Antrenör"}</b></article><article><small>KULÜP KODU</small><b>{trainer.schoolCode}</b></article><article><small>PROFİL KİMLİĞİ</small><b>{trainer.id}</b></article></div>
       <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>Antrenman, beceri gelişimi, takım sistemleri ve sezon planlama PDF kütüphanesi.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
       <div className="profile-info-note"><ShieldCheck/><span><b>Kulübe bağlı antrenör hesabı</b><p>Bu profil yalnızca bağlı olduğu kulübün adı ve 6 haneli kullanıcı koduyla kullanılabilir.</p></span></div>

@@ -249,7 +249,25 @@
 .detail-hero{padding-top:32px!important;padding-bottom:52px!important}
 .admin-hero{padding:36px 40px!important}
 .privacy-hero{padding-top:58px!important;padding-bottom:58px!important}
-.profile-hero-card{border-left:4px solid #ff6515!important}
+.profile-hero-card{
+  border-left:4px solid #ff6515!important;
+  color:var(--navy)!important;
+}
+.profile-hero-card h1,
+.profile-hero-card p b{color:var(--navy)!important}
+.profile-hero-card p{color:#586b7f!important}
+.profile-hero-card span>small{color:#ff6515!important}
+.profile-hero-card .btn.ghost{
+  color:var(--navy)!important;
+  background:#fff!important;
+  border-color:#8ca0b4!important;
+}
+.profile-hero-card .btn.ghost:hover,
+.profile-hero-card .btn.ghost:focus-visible{
+  color:#fff!important;
+  background:var(--navy)!important;
+  border-color:var(--navy)!important;
+}
 
 /* Menüde doğrudan yer almayan yardım, iletişim, hakkımızda ve 404 altyapısı. */
 .page.empty-page{
