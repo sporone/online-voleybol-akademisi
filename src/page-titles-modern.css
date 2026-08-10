@@ -1,0 +1,342 @@
+/* Ana sayfadaki modern tasarım dilini tüm ana ve alt sayfa başlıklarına taşır. */
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero,
+  .profile-hero-card
+){
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  border:0!important;
+  border-top:1px solid #cbd5dd!important;
+  border-bottom:1px solid #cbd5dd!important;
+  border-radius:0!important;
+  background-color:#f7f8fa!important;
+  background-image:
+    linear-gradient(90deg,rgba(7,27,51,.045) 1px,transparent 1px),
+    linear-gradient(rgba(7,27,51,.045) 1px,transparent 1px)!important;
+  background-size:72px 72px!important;
+  color:#071b33!important;
+  box-shadow:none!important;
+}
+
+:is(
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero,
+  .bulletin-hero,
+  .ready-hero
+){
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  border:0!important;
+  border-top:1px solid #294158!important;
+  border-bottom:1px solid #294158!important;
+  border-radius:0!important;
+  background-color:#071b33!important;
+  background-image:
+    linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px),
+    linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px)!important;
+  background-size:72px 72px!important;
+  color:#fff!important;
+  box-shadow:none!important;
+}
+
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero,
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero,
+  .bulletin-hero,
+  .ready-hero
+) h1{
+  font-family:var(--display,'Barlow Condensed',sans-serif)!important;
+  font-size:clamp(48px,6vw,82px)!important;
+  font-weight:800!important;
+  line-height:.92!important;
+  letter-spacing:-1.8px!important;
+}
+
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero
+) h1{color:#071b33!important}
+
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero
+) h1 em{color:#ff6515!important;font-style:normal!important}
+
+:is(
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero,
+  .bulletin-hero,
+  .ready-hero
+) h1{color:#fff!important}
+
+:is(
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero,
+  .bulletin-hero,
+  .ready-hero
+) h1 em{color:#ffc727!important;font-style:normal!important}
+
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero
+) p{color:#536477!important;line-height:1.65!important}
+
+:is(
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero,
+  .bulletin-hero,
+  .ready-hero
+) p{color:#bdcad8!important;line-height:1.65!important}
+
+:is(
+  .page-head,
+  .registration-intro,
+  .profile-login-intro,
+  .registered-schools-hero,
+  .pricing-hero,
+  .demo-hero,
+  .video-library-hero,
+  .junior-referee-hero,
+  .volleyball-ai-hero,
+  .blog-hero,
+  .faq-page-hero,
+  .exam-hero,
+  .detail-hero,
+  .admin-hero,
+  .privacy-hero,
+  .coaches-hero,
+  .technical-cards-hero
+) .eyebrow{
+  color:#ff6515!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  letter-spacing:1.8px!important;
+}
+
+.page>.page-head{
+  max-width:none;
+  min-height:250px;
+  margin:0 0 30px;
+  padding:38px 42px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.page>.page-head h1{max-width:820px;margin:16px 0 14px}
+.page>.page-head p{max-width:680px;margin:0;font-size:16px}
+
+.registration-intro,.profile-login-intro{
+  padding:34px 32px!important;
+  border-left:4px solid #ff6515!important;
+}
+.registration-intro h1,.profile-login-intro h1{margin:18px 0 15px!important}
+
+/* Kayıt ekranında eski sticky değeri relative konumda 110px kayma oluşturuyordu. */
+.registration-page{
+  padding-top:42px!important;
+  padding-bottom:54px!important;
+  gap:32px!important;
+  align-items:stretch!important;
+}
+.registration-page .registration-intro{
+  top:auto!important;
+  align-self:stretch;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-width:0;
+}
+.registration-page .registration-intro h1{
+  max-width:460px;
+  font-size:clamp(48px,5vw,66px)!important;
+}
+.registration-page .registration-intro p{max-width:520px;margin-bottom:26px}
+.registration-page .registration-local-nav{margin-top:auto}
+.registration-page .registration-card{align-self:stretch}
+
+.registered-schools-hero,.pricing-hero,.demo-hero{
+  max-width:1180px!important;
+  min-height:280px;
+  padding:42px 46px!important;
+  text-align:left!important;
+}
+.pricing-hero .eyebrow{justify-content:flex-start!important}
+.pricing-hero>p{max-width:760px!important;margin:0!important;white-space:normal!important}
+.pricing-hero h1{white-space:normal!important}
+.pricing-hero .unlimited-students{margin:18px 0 0!important}
+
+.video-library-hero,.volleyball-ai-hero{
+  max-width:1400px!important;
+  min-height:360px!important;
+  padding:46px 50px!important;
+}
+
+.junior-referee-hero,.blog-hero,.faq-page-hero,.coaches-hero,.technical-cards-hero{
+  padding-top:64px!important;
+  padding-bottom:64px!important;
+}
+
+.detail-hero{padding-top:32px!important;padding-bottom:52px!important}
+.admin-hero{padding:36px 40px!important}
+.privacy-hero{padding-top:58px!important;padding-bottom:58px!important}
+.profile-hero-card{border-left:4px solid #ff6515!important}
+
+/* Menüde doğrudan yer almayan yardım, iletişim, hakkımızda ve 404 altyapısı. */
+.page.empty-page{
+  width:100%;
+  max-width:none;
+  min-height:520px;
+  margin:0;
+  padding:64px max(8vw,30px);
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  text-align:left;
+  border-top:1px solid #cbd5dd;
+  border-bottom:1px solid #cbd5dd;
+  background-color:#f7f8fa;
+  background-image:linear-gradient(90deg,rgba(7,27,51,.045) 1px,transparent 1px),linear-gradient(rgba(7,27,51,.045) 1px,transparent 1px);
+  background-size:72px 72px;
+}
+.page.empty-page>svg{width:58px;height:58px;padding:15px;background:#071b33;color:#ff6515}
+.page.empty-page h1{max-width:820px;margin:23px 0 14px;font-size:clamp(48px,6vw,82px);line-height:.92;letter-spacing:-1.8px}
+.page.empty-page p{max-width:680px;color:#536477;font-size:16px;line-height:1.65}
+.page.empty-page .btn{margin-top:13px;border-radius:0}
+
+@media(max-width:900px){
+  :is(.registered-schools-hero,.video-library-hero,.volleyball-ai-hero,.blog-hero,.coaches-hero,.technical-cards-hero,.ready-hero){grid-template-columns:1fr!important}
+  :is(.blog-hero-mark,.coaches-hero-mark,.technical-paper-mark,.video-hero-mark,.ai-hero-mark){display:none!important}
+  .registration-page{padding:30px 22px 48px!important;gap:20px!important}
+  .registration-page .registration-intro{min-height:auto}
+  .registration-page .registration-intro h1{max-width:680px;font-size:52px!important}
+}
+
+@media(max-width:600px){
+  :is(
+    .page-head,
+    .registration-intro,
+    .profile-login-intro,
+    .registered-schools-hero,
+    .pricing-hero,
+    .demo-hero,
+    .video-library-hero,
+    .junior-referee-hero,
+    .volleyball-ai-hero,
+    .blog-hero,
+    .faq-page-hero,
+    .exam-hero,
+    .detail-hero,
+    .admin-hero,
+    .privacy-hero,
+    .coaches-hero,
+    .technical-cards-hero,
+    .bulletin-hero,
+    .ready-hero
+  ) h1{
+    font-size:clamp(38px,12vw,52px)!important;
+    line-height:.96!important;
+    letter-spacing:-1px!important;
+  }
+  .page>.page-head{min-height:205px;padding:27px 21px;margin-bottom:20px}
+  .registration-intro,.profile-login-intro{padding:25px 20px!important}
+  .registration-page{padding:22px 12px 82px!important}
+  .registration-page .registration-intro h1{font-size:43px!important}
+  .registered-schools-hero,.pricing-hero,.demo-hero,.video-library-hero,.volleyball-ai-hero{min-height:auto!important;padding:28px 21px!important}
+  .junior-referee-hero,.blog-hero,.faq-page-hero,.coaches-hero,.technical-cards-hero{padding:42px 18px!important}
+  .detail-hero{padding:24px 18px 38px!important}
+  .admin-hero,.privacy-hero{padding:28px 20px!important}
+  .bulletin-hero{padding:24px 18px!important}
+  .ready-hero-copy{padding:27px 20px!important}
+  .page.empty-page{min-height:430px;padding:42px 20px}
+  .page.empty-page h1{font-size:clamp(40px,12vw,52px);letter-spacing:-1px}
+}
+
+/* Marka logosu masaustu ve mobilde cercevesiz, seffaf gorunur. */
+.header .brand,
+.footer .brand{
+  border:0!important;
+  outline:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.header .brand .ball,
+.footer .brand .ball{
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  outline:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  filter:none!important;
+}

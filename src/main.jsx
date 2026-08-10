@@ -71,6 +71,7 @@ import "./bulletins.css";
 import "./ready365-library.css";
 import "./quality-fixes.css";
 import "./home-modern.css";
+import "./page-titles-modern.css";
 import "./contact-messenger.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
