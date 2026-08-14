@@ -23,6 +23,7 @@ const pages = [
   ["/kayitli-spor-okullari/", "Kayıtlı Voleybol Spor Okulları", "Akademiye kayıtlı voleybol spor okullarını inceleyin."],
   ["/ucretler/", "Voleybol Akademisi Üyelik Ücretleri", "Sınırsız öğrenci erişimli üyelik seçenekleri."],
   ["/kayit/", "Spor Okulu ve Sporcu Kaydı", "Spor okulunuzu kaydedin veya sporcu profilinizi oluşturun."],
+  ["/giris/", "Spor Okulu, Sporcu ve Antrenör Girişi", "Spor okulu, sporcu veya antrenör hesabınızla Online Voleybol Akademisine giriş yapın.", false],
   ["/demo/", "Online Voleybol Akademisi Demo", "Akademinin ders, video ve sınav modüllerini inceleyin."],
   ["/online-akademi/ai-asistan/", "Voleybol AI Asistanı | Online Voleybol Akademisi", "Voleybol teknikleri, kurallar ve eğitim içerikleri hakkında AI destekli çalışma alanımızdan yararlanın."],
   ["/hakkimizda/", "Hakkımızda | Online Voleybol Akademisi", "Online Voleybol Akademisinin amacı ve eğitim yaklaşımı."],
