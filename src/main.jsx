@@ -449,11 +449,11 @@ function syncRegistrationStorage(schoolRows, athleteRows) {
   return { schools, athletes };
 }
 const splitTeamList = (value) => String(value || "").split("|").map((item) => item.trim()).filter(Boolean);
-const trainerTeamMemberships = (trainer = {}) => {
+  const trainerTeamMemberships = (trainer = {}) => {
   if (Array.isArray(trainer.teams) && trainer.teams.length) return trainer.teams.filter((team) => team?.id).map((team) => ({ id:String(team.id), name:String(team.name || ""), code:String(team.code || "") }));
   const ids = Array.isArray(trainer.teamIds) ? trainer.teamIds : splitTeamList(trainer.teamId);
   const names = Array.isArray(trainer.teamNames) ? trainer.teamNames : splitTeamList(trainer.teamName);
-  const codes = Array.isArray(trainer.teamCodes) ? trainer.teamCodes : splitTeamList(trainer.teamCode || trainer.schoolCode);
+  const codes = Array.isArray(trainer.teamCodes) ? trainer.teamCodes : [];
   return ids.map((id, index) => ({ id, name:names[index] || trainer.teamName || "", code:codes[index] || "" }));
 };
 function syncTrainerStorage(trainerRows) {
@@ -463,14 +463,16 @@ function syncTrainerStorage(trainerRows) {
     const local = localTrainers.find((item) => item.id === id) || {};
     const teamIds = splitTeamList(registrationValue(row, "Takım ID") || local.teamId);
     const teamNames = splitTeamList(registrationValue(row, "Takım Adı") || local.teamName);
-    const teamCodes = splitTeamList(registrationValue(row, "Takım Kodu") || local.teamCode || local.schoolCode);
+    const teamCodes = splitTeamList(registrationValue(row, "Takım Kodu"));
+    const trainerCode = registrationValue(row, "Antrenör Kodu") || local.trainerCode || local.teamCode || local.schoolCode || "";
     const memberships = teamIds.map((teamId, index) => ({ id:teamId, name:teamNames[index] || "", code:teamCodes[index] || "" }));
     return {
       ...local,
       id,
       schoolId: registrationValue(row, "Okul Kayıt ID"),
       schoolName: registrationValue(row, "Okul Adı"),
-      schoolCode: registrationValue(row, "Okul Kodu") || local.schoolCode || "",
+      schoolCode: trainerCode,
+      trainerCode,
       name: registrationValue(row, "Antrenör Adı"),
       title: registrationValue(row, "Görev") || "Antrenör",
       avatar: registrationValue(row, "Profil Kodu") || local.avatar || trainerProfileChoices[0].id,
@@ -480,7 +482,7 @@ function syncTrainerStorage(trainerRows) {
       createdAt: registrationValue(row, "Kayıt Tarihi"),
       teamId: teamIds[0] || "",
       teamName: teamNames[0] || "",
-      teamCode: teamCodes[0] || "",
+      teamCode: trainerCode,
       teamIds,
       teamNames,
       teamCodes,
@@ -1064,7 +1066,6 @@ function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
   const [trainerAvatar, setTrainerAvatar] = useState(trainerProfileChoices[0].id);
   const [trainerSchool, setTrainerSchool] = useState("");
   const [trainerTeamIds, setTrainerTeamIds] = useState([]);
-  const [trainerTeamCodes, setTrainerTeamCodes] = useState({});
   const [teams, setTeams] = useState(() => readTeams());
   useEffect(() => {
     if (!registrationApi) return;
@@ -1089,7 +1090,6 @@ function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
   const trainerTeams = teamsForSchool(teams, trainerSchoolRecord || trainerSchool);
   const toggleTrainerTeam = (teamId, checked) => {
     setTrainerTeamIds((current) => checked ? [...new Set([...current, teamId])] : current.filter((id) => id !== teamId));
-    if (!checked) setTrainerTeamCodes((current) => { const next={...current}; delete next[teamId]; return next; });
   };
   const submitSchool = async (event) => {
     event.preventDefault(); setBusy(true); setNotice("");
@@ -1143,12 +1143,13 @@ function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
     const form = event.currentTarget;
     const data = new FormData(form);
     const selectedProfile = trainerProfileById(trainerAvatar);
-    const selectedTeams = trainerTeamIds.map((teamId) => ({ teamId, teamCode:String(trainerTeamCodes[teamId] || "").trim() }));
+    const selectedTeams = trainerTeamIds.map((teamId) => ({ teamId }));
     const primaryTeam = selectedTeams[0] || {};
-    const trainer = { action:"registerTrainer", id:`ANT-${Date.now()}`, schoolName:String(data.get("schoolName") || "").trim(), teamId:primaryTeam.teamId || "", teamCode:primaryTeam.teamCode || "", teams:selectedTeams, name:String(data.get("trainerName") || "").trim(), title:String(data.get("trainerTitle") || "Voleybol Antrenörü").trim(), avatar:trainerAvatar, avatarName:selectedProfile.name };
+    const trainerCode = String(data.get("trainerCode") || "").trim();
+    const trainer = { action:"registerTrainer", id:`ANT-${Date.now()}`, schoolName:String(data.get("schoolName") || "").trim(), teamId:primaryTeam.teamId || "", trainerCode, teams:selectedTeams, name:String(data.get("trainerName") || "").trim(), title:String(data.get("trainerTitle") || "Voleybol Antrenörü").trim(), avatar:trainerAvatar, avatarName:selectedProfile.name };
     if (!trainer.schoolName) { setNotice("Kayıtlı spor okulunu seçin."); setBusy(false); return; }
     if (!selectedTeams.length) { setNotice("Görev yapacağınız en az bir takımı seçin."); setBusy(false); return; }
-    if (selectedTeams.some((team) => !/^\d{6}$/.test(team.teamCode))) { setNotice("Seçilen her takımın kodu 6 haneli olmalıdır."); setBusy(false); return; }
+    if (!/^\d{6}$/.test(trainerCode)) { setNotice("Antrenör kayıt kodu 6 haneli olmalıdır."); setBusy(false); return; }
     if (!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(trainer.name)) { setNotice("Antrenör adı @ ile başlamalı ve boşluk içermemelidir."); setBusy(false); return; }
     if (trainer.title.length < 3) { setNotice("Antrenör görevini yazın."); setBusy(false); return; }
     const duplicate = readTrainers().some((item) => String(item.schoolName || "").trim().toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr") && String(item.name || "").trim().toLocaleLowerCase("tr") === trainer.name.toLocaleLowerCase("tr"));
@@ -1157,8 +1158,8 @@ function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
       const result = await sendRegistration(trainer);
       if (result.ok === false) throw new Error(result.error || "Okul bilgileri doğrulanamadı.");
       const inheritedTeamLogo = readSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === trainer.schoolName.toLocaleLowerCase("tr") && item.teamLogo)?.teamLogo || "";
-      const memberships = Array.isArray(result.account?.teams) ? result.account.teams : selectedTeams.map((item) => ({ id:item.teamId, name:trainerTeams.find((team)=>team.id===item.teamId)?.name||"", code:item.teamCode }));
-      const savedTrainer = { ...trainer, ...result.account, id:result.id || trainer.id, teamId:memberships[0]?.id||"", teamName:memberships[0]?.name||"", teamCode:memberships[0]?.code||"", teamIds:memberships.map((team)=>team.id), teamNames:memberships.map((team)=>team.name), teamCodes:memberships.map((team)=>team.code), teams:memberships, schoolCode:memberships[0]?.code||"", teamLogo:result.teamLogo || inheritedTeamLogo, status:"AKTİF", createdAt:new Date().toISOString() };
+      const memberships = Array.isArray(result.account?.teams) ? result.account.teams : selectedTeams.map((item) => ({ id:item.teamId, name:trainerTeams.find((team)=>team.id===item.teamId)?.name||"", code:"" }));
+      const savedTrainer = { ...trainer, ...result.account, id:result.id || trainer.id, teamId:memberships[0]?.id||"", teamName:memberships[0]?.name||"", teamCode:result.trainerCode||trainerCode, trainerCode:result.trainerCode||trainerCode, teamIds:memberships.map((team)=>team.id), teamNames:memberships.map((team)=>team.name), teamCodes:[], teams:memberships, schoolCode:result.trainerCode||trainerCode, teamLogo:result.teamLogo || inheritedTeamLogo, status:"AKTİF", createdAt:new Date().toISOString() };
       if (result.profileToken) {
         sessionStorage.setItem(PROFILE_TOKEN_KEY, result.profileToken);
         sendRegistration({ action:"syncSchoolRoster", token:result.profileToken }).catch(() => {});
@@ -1169,18 +1170,18 @@ function RegistrationPage({ go, onAthleteOnline, onTrainerRegistered }) {
       localStorage.removeItem("volleyballCurrentClub");
       markSessionActivity();
       onTrainerRegistered(savedTrainer);
-      setTrainerTeamIds([]); setTrainerTeamCodes({});
+      setTrainerTeamIds([]);
       setNotice(`Antrenör profili oluşturuldu ve ${memberships.length} takımın kadrosuna eklendi.`);
       form.reset();
     } catch (error) { setNotice(error.message); } finally { setBusy(false); }
   };
   return <div className="page registration-page">
-    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Okul onaylandıktan sonra kulüp yöneticisi takımını oluşturur. Sporcular ve antrenörler kulüp giriş kodunu değil, yalnızca bağlı oldukları takımın 6 haneli kodunu kullanır.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
+    <div className="registration-intro"><span className="eyebrow"><ShieldCheck size={15}/> GÜVENLİ KAYIT</span><h1>Takımını akademiye taşı.</h1><p>Okul onaylandıktan sonra kulüp yöneticisi takımlarını oluşturur. Sporcular takım koduyla, antrenörler ise kulübün ayrı antrenör koduyla kayıt olur.</p><nav className="registration-local-nav" aria-label="Kayıt sayfası menüsü"><button type="button" onClick={()=>go("registered-schools")}><span><School/><b>Kayıtlı Okullar</b><small>Akademimizdeki spor okullarını incele</small></span><ArrowRight/></button></nav></div>
     <section className="registration-card">
       <div className="registration-tabs"><button className={type==="school"?"active":""} onClick={()=>{setType("school");setNotice("")}}><School/> Okul kaydı</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setNotice("")}}><UserPlus/> Sporcu kaydı</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setNotice("")}}><GraduationCap/> Antrenör kaydı</button></div>
       {type === "school" ? <form onSubmit={submitSchool} className="registration-form"><div className="form-heading"><School/><span><b>Okul başvurusu</b><small>Başvurunuz yönetici onayından sonra etkinleştirilir.</small></span></div><label>Okul adı<input name="schoolName" required minLength="3" placeholder="Örn. İzmir Gençlik Voleybol Okulu" /></label><label>WhatsApp telefon numarası<input name="phone" required inputMode="tel" placeholder="05XX XXX XX XX" /></label><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Başvuruyu gönder"}<ArrowRight/></button></form>
       : type === "athlete" ? <form onSubmit={submitAthlete} className="registration-form"><div className="form-heading"><UserPlus/><span><b>Sporcu profili</b><small>Kulübünüzü ve takımınızı seçip takım koduyla kayıt olun.</small></span></div><SearchableSchoolPicker value={athleteSchool} onChange={(school)=>{setAthleteSchool(school);setAthleteTeamId("");setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><div className="form-grid athlete-school-grid"><label>Takım<select name="teamId" required value={athleteTeamId} onChange={(event)=>setAthleteTeamId(event.target.value)} disabled={!athleteSchool}><option value="">{athleteSchool?(athleteTeams.length?"Takımınızı seçin":"Bu kulüp henüz takım oluşturmadı"):"Önce spor okulunu seçin"}</option>{athleteTeams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label><label>6 haneli takım kodu<input name="teamCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000" /></label></div><label>Sporcu adı<input name="athleteName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false" aria-describedby="athlete-name-help"/><small id="athlete-name-help" className="field-help">Örnek: @eda10 — boşluk kullanmayın.</small></label><fieldset><legend>Voleybolcu profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek voleybolcu profili</small><div className="avatar-choices">{profileChoices.map((choice)=><button type="button" key={choice.id} className={avatar===choice.id?"active":""} onClick={()=>setAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><AthleteAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!athleteSchool||!athleteTeamId}>{busy?"Profil oluşturuluyor…":"Sporcu profilini oluştur"}<ArrowRight/></button></form>
-      : <form onSubmit={submitTrainer} className="registration-form"><div className="form-heading"><GraduationCap/><span><b>Antrenör profili</b><small>Antrenör bir veya birden fazla takımın kadrosuna bağlanabilir.</small></span></div><SearchableSchoolPicker value={trainerSchool} onChange={(school)=>{setTrainerSchool(school);setTrainerTeamIds([]);setTrainerTeamCodes({});setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><fieldset className="trainer-team-selector"><legend>Görev yapılacak takımlar</legend><small className="field-help">Birden fazla takım seçebilirsiniz. Her takım için kendi 6 haneli kodunu girin.</small><div className="trainer-team-options">{trainerTeams.length ? trainerTeams.map((team)=>{const selected=trainerTeamIds.includes(team.id);return <label key={team.id} className={selected?"selected":""}><span className="trainer-team-choice"><input type="checkbox" checked={selected} onChange={(event)=>toggleTrainerTeam(team.id,event.target.checked)}/><b>{team.name}</b></span>{selected&&<input aria-label={`${team.name} takım kodu`} value={trainerTeamCodes[team.id]||""} onChange={(event)=>setTrainerTeamCodes((current)=>({...current,[team.id]:event.target.value.replace(/\D/g,"").slice(0,6)}))} required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="6 haneli takım kodu"/>}</label>}):<p className="field-help">{trainerSchool?"Bu kulüp henüz takım oluşturmadı.":"Önce spor okulunu seçin."}</p>}</div></fieldset><div className="form-grid"><label>Antrenör kullanıcı adı<input name="trainerName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false"/><small className="field-help">Örnek: @antrenorayse</small></label><label>Görev<input name="trainerTitle" required minLength="3" maxLength="60" defaultValue="Voleybol Antrenörü"/></label></div><fieldset><legend>Antrenör profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek çizim antrenör profili</small><div className="avatar-choices">{trainerProfileChoices.map((choice)=><button type="button" key={choice.id} className={trainerAvatar===choice.id?"active":""} onClick={()=>setTrainerAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><TrainerAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!trainerSchool||trainerTeamIds.length===0||trainerTeamIds.some((id)=>!/^\d{6}$/.test(trainerTeamCodes[id]||""))}>{busy?"Profil oluşturuluyor…":"Antrenör profilini oluştur"}<ArrowRight/></button></form>}
+      : <form onSubmit={submitTrainer} className="registration-form"><div className="form-heading"><GraduationCap/><span><b>Antrenör profili</b><small>Sistemdeki takımlardan bir veya daha fazlasını seçip antrenör koduyla kayıt olun.</small></span></div><SearchableSchoolPicker value={trainerSchool} onChange={(school)=>{setTrainerSchool(school);setTrainerTeamIds([]);setNotice("")}} options={approvedSchools.map((school)=>school.schoolName)} logoFor={registrationSchoolLogo} label="Spor okulu"/><fieldset className="trainer-team-selector"><legend>Görev yapılacak takımlar</legend><small className="field-help">Kulübünüze ait sistemdeki takımlardan birden fazlasını seçebilirsiniz.</small><div className="trainer-team-options">{trainerTeams.length ? trainerTeams.map((team)=>{const selected=trainerTeamIds.includes(team.id);return <label key={team.id} className={selected?"selected":""}><span className="trainer-team-choice"><input type="checkbox" checked={selected} onChange={(event)=>toggleTrainerTeam(team.id,event.target.checked)}/><b>{team.name}</b></span><small>{selected?"Seçildi":"Takıma ekle"}</small></label>}):<p className="field-help">{trainerSchool?"Bu kulüp henüz takım oluşturmadı.":"Önce spor okulunu seçin."}</p>}</div></fieldset><label>6 haneli antrenör kayıt kodu<input name="trainerCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/><small className="field-help">Bu kod kulüp giriş kodundan ve sporcu takım kodlarından ayrıdır. Kulüp yöneticinizden alın.</small></label><div className="form-grid"><label>Antrenör kullanıcı adı<input name="trainerName" required defaultValue="@" minLength="3" maxLength="31" pattern="@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}" autoCapitalize="none" spellCheck="false"/><small className="field-help">Örnek: @antrenorayse</small></label><label>Görev<input name="trainerTitle" required minLength="3" maxLength="60" defaultValue="Voleybol Antrenörü"/></label></div><fieldset><legend>Antrenör profilini seç</legend><small className="avatar-help">6 kadın ve 6 erkek çizim antrenör profili</small><div className="avatar-choices">{trainerProfileChoices.map((choice)=><button type="button" key={choice.id} className={trainerAvatar===choice.id?"active":""} onClick={()=>setTrainerAvatar(choice.id)} aria-label={`${choice.name} profilini seç`} title={choice.name}><TrainerAvatar id={choice.id}/></button>)}</div></fieldset><button className="btn" disabled={busy||approvedSchools.length===0||!trainerSchool||trainerTeamIds.length===0}>{busy?"Profil oluşturuluyor…":"Antrenör profilini oluştur"}<ArrowRight/></button></form>}
       {notice && <div className="registration-notice" role="status"><CheckCircle2/>{notice}</div>}
     </section>
   </div>;
@@ -6490,11 +6491,11 @@ function ClubTeamManager({ school, members, trainers }) {
     } catch (error) { setNotice(error.message); } finally { setBusy(false); }
   };
   const shareTeam = (team) => {
-    const text = `${school.schoolName} - ${team.name} kayıt daveti\n\nSporcu veya antrenör kaydı için:\nKulüp: ${school.schoolName}\nTakım: ${team.name}\n6 haneli takım kodu: ${team.code}\n\nÖnce kayıt sayfasından profilinizi oluşturun, ardından aynı takım ve kodla giriş yapın.\n\nKayıt: ${SITE_URL}${routeFor("register")}\nGiriş: ${SITE_URL}${routeFor("profiles")}`;
+    const text = `${school.schoolName} - ${team.name} sporcu kayıt daveti\n\nKulüp: ${school.schoolName}\nTakım: ${team.name}\n6 haneli sporcu takım kodu: ${team.code}\n\nÖnce kayıt sayfasından sporcu profilinizi oluşturun, ardından aynı takım ve kodla giriş yapın.\n\nKayıt: ${SITE_URL}${routeFor("register")}\nGiriş: ${SITE_URL}${routeFor("profiles")}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,"_blank","noopener,noreferrer");
   };
   return <section className="club-team-manager">
-    <header className="club-team-heading"><span><small>TAKIM YÖNETİMİ</small><h2>Kulübünün takımlarını oluştur</h2><p>Kulüp kodun yalnızca kulüp girişinde kullanılır. Her takımın sporcu ve antrenörler için ayrı kodu vardır.</p></span><div className="team-view-toggle" aria-label="Takım görünümü"><button type="button" className={view==="cards"?"active":""} onClick={()=>setView("cards")}>Kartlar</button><button type="button" className={view==="list"?"active":""} onClick={()=>setView("list")}>Liste</button></div></header>
+    <header className="club-team-heading"><span><small>TAKIM YÖNETİMİ</small><h2>Kulübünün takımlarını oluştur</h2><p>Kulüp kodu yalnızca kulüp girişinde, takım kodları yalnızca sporcu kayıt ve girişinde kullanılır.</p></span><div className="team-view-toggle" aria-label="Takım görünümü"><button type="button" className={view==="cards"?"active":""} onClick={()=>setView("cards")}>Kartlar</button><button type="button" className={view==="list"?"active":""} onClick={()=>setView("list")}>Liste</button></div></header>
     <form className="team-create-form" onSubmit={createTeam}><label>Yeni takım adı<input value={teamName} onChange={(event)=>setTeamName(event.target.value)} required minLength="2" maxLength="70" placeholder="Örn. U14 Kız Takımı"/></label><label>Otomatik takım kodu<input value={teamCode} onChange={(event)=>setTeamCode(event.target.value.replace(/\D/g,"").slice(0,6))} required inputMode="numeric" pattern="[0-9]{6}" maxLength="6"/></label><button type="button" className="team-code-refresh" onClick={()=>setTeamCode(createSixDigitCode())}><KeyRound/> Yeni kod</button><button className="btn" disabled={busy}>{busy?"Kaydediliyor…":"Takımı oluştur"}</button></form>
     {notice&&<p className="team-manager-notice" role="status"><ShieldCheck/>{notice}</p>}
     {teams.length?<div className={`club-team-collection ${view}`}>{teams.map((team)=>{
@@ -6503,6 +6504,19 @@ function ClubTeamManager({ school, members, trainers }) {
       return <article className="club-team-item" key={team.id}><div className="team-item-number">{String(team.order||1).padStart(2,"0")}</div><div className="team-item-fields"><label>Takım adı<input value={team.name} onChange={(event)=>changeTeam(team.id,"name",event.target.value)}/></label><label>Takım kodu<input value={team.code||""} onChange={(event)=>changeTeam(team.id,"code",event.target.value.replace(/\D/g,"").slice(0,6))} inputMode="numeric" maxLength="6"/></label></div><div className="team-item-stats"><span><Users/><b>{athleteCount}</b><small>Sporcu</small></span><span><GraduationCap/><b>{trainerCount}</b><small>Antrenör</small></span></div><div className="team-item-actions"><button type="button" className="btn ghost" onClick={()=>shareTeam(team)}><MessageCircle/> Kodu paylaş</button><button type="button" className="btn" disabled={busy||!/^\d{6}$/.test(team.code||"")} onClick={()=>updateTeam(team)}><Save/> Güncelle</button></div></article>;
     })}</div>:<div className="member-empty team-empty"><Users/><h3>Henüz takım oluşturulmadı</h3><p>İlk takımın adını yazın; sistem ayrı ve güvenli 6 haneli takım kodunu hazırlasın.</p></div>}
   </section>;
+}
+
+function ClubTrainerInvite({ school }) {
+  const [copied, setCopied] = useState(false);
+  const trainerCode = String(school?.trainerCode || "").replace(/\D/g, "");
+  const message = `${school.schoolName} antrenör kayıt daveti\n\nKulüp: ${school.schoolName}\n6 haneli antrenör kodu: ${trainerCode}\n\nKayıt sırasında kulübü seçin, görev yapacağınız bir veya daha fazla takımı işaretleyin ve bu antrenör kodunu girin. Sporcu takım kodlarını kullanmayın.\n\nKayıt: ${SITE_URL}${routeFor("register")}\nGiriş: ${SITE_URL}${routeFor("profiles")}`;
+  const copyMessage = async () => {
+    await navigator.clipboard.writeText(message);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
+  if (!/^\d{6}$/.test(trainerCode)) return <section className="club-code-share trainer-code-share"><div className="club-code-share-heading"><span className="club-code-share-icon"><GraduationCap/></span><span><small>ANTRENÖR DAVETİ</small><h2>Ayrı antrenör kodu</h2><p>Kodu oluşturmak için kulüp hesabından çıkış yapıp yeniden giriş yapın.</p></span></div></section>;
+  return <section className="club-code-share trainer-code-share"><div className="club-code-share-heading"><span className="club-code-share-icon"><GraduationCap/></span><span><small>ANTRENÖR DAVETİ</small><h2>Antrenör kayıt kodunu paylaş</h2><p>Bu kod kulüp giriş kodundan ve sporcu takım kodlarından tamamen ayrıdır.</p></span></div><div className="club-code-ticket trainer-code-ticket"><div><small>KULÜP</small><b>{school.schoolName}</b></div><div><small>6 HANELİ ANTRENÖR KODU</small><strong>{trainerCode}</strong></div></div><div className="club-code-share-actions"><button className="btn club-whatsapp-button" type="button" onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(message)}`,"_blank","noopener,noreferrer")}><MessageCircle/> WhatsApp ile paylaş</button><button className="btn ghost" type="button" onClick={copyMessage}><Copy/> {copied?"Mesaj kopyalandı":"Mesajı kopyala"}</button></div><p className="club-code-share-note"><ShieldCheck/> Antrenör bu kodla kayıt olur; seçtiği takımların sporcu kodlarını bilmesine gerek yoktur.</p></section>;
 }
 
 function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange }) {
@@ -6592,7 +6606,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       || "";
   };
   const selectedSchoolForLogin = getSchools().find((school)=>String(school.schoolName||"").trim().toLocaleLowerCase("tr")===selectedClub.trim().toLocaleLowerCase("tr"));
-  const loginTeams = type === "club" ? [] : teamsForSchool(teams, selectedSchoolForLogin || selectedClub);
+  const loginTeams = type === "athlete" ? teamsForSchool(teams, selectedSchoolForLogin || selectedClub) : [];
   const matchesSchool = (person, school) => {
     if (!person || !school) return false;
     if (person.schoolId && school.id) return String(person.schoolId) === String(school.id);
@@ -6603,14 +6617,14 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     const data = new FormData(event.currentTarget);
     const schoolName = String(data.get("schoolName") || "").trim();
     const accessCode = String(data.get("accessCode") || "").trim();
-    const teamId = type === "club" ? "" : String(data.get("teamId") || "").trim();
-    if (!/^\d{6}$/.test(accessCode)) { setNotice(`${type === "club" ? "Kulüp" : "Takım"} kodu 6 haneli olmalıdır.`); setBusy(false); return; }
-    if (type !== "club" && !teamId) { setNotice("Bağlı olduğunuz takımı seçin."); setBusy(false); return; }
+    const teamId = type === "athlete" ? String(data.get("teamId") || "").trim() : "";
+    if (!/^\d{6}$/.test(accessCode)) { setNotice(`${type === "club" ? "Kulüp" : type === "trainer" ? "Antrenör" : "Takım"} kodu 6 haneli olmalıdır.`); setBusy(false); return; }
+    if (type === "athlete" && !teamId) { setNotice("Bağlı olduğunuz takımı seçin."); setBusy(false); return; }
     const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && (type !== "club" || String(item.code) === accessCode));
     const userName = type === "athlete" ? String(data.get("athleteName") || "").trim() : type === "trainer" ? String(data.get("trainerName") || "").trim() : "";
     let verified = null;
     try {
-      verified = await sendRegistration({ action:"profileLogin", type, schoolName, schoolCode:type==="club"?accessCode:"", teamId, teamCode:type==="club"?"":accessCode, userName });
+      verified = await sendRegistration({ action:"profileLogin", type, schoolName, schoolCode:type==="club"?accessCode:"", trainerCode:type==="trainer"?accessCode:"", teamId, teamCode:type==="athlete"?accessCode:"", userName });
       if (verified.token) sessionStorage.setItem(PROFILE_TOKEN_KEY, verified.token);
     } catch (error) {
       const legacyEndpoint = /Geçersiz işlem|GeÃ§ersiz iÅŸlem/i.test(error.message || "");
@@ -6675,9 +6689,10 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       <div className="profile-summary"><article><Users/><span><b>{members.length}</b><small>Kayıtlı sporcu</small></span></article><article><GraduationCap/><span><b>{clubTrainers.length}</b><small>Kayıtlı antrenör</small></span></article><article><ShieldCheck/><span><b>{session.school.status === "ONAYLANDI" ? "Onaylı" : "Bekliyor"}</b><small>Kulüp durumu</small></span></article></div>
       <section className="club-bulletin-entry"><span className="club-bulletin-icon"><Newspaper/></span><span><small>SPORCU İLETİŞİMİ</small><h2>Haftalık eğitim bültenleri</h2><p>52 cuma için hazırlanan bültenleri kulüp logonla PDF oluşturup WhatsApp üzerinden paylaş.</p></span><button className="btn" onClick={()=>go("bulletins")}>Bültenleri yönet <ArrowRight/></button></section>
       <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>21 profesyonel PDF kaynağını ve tüm çalışma bölümlerini sayfa içinde görüntüle.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
+      <ClubTrainerInvite school={session.school}/>
       <ClubTeamManager school={session.school} members={members} trainers={clubTrainers}/>
       <section className="member-panel"><div className="member-heading"><span><small>SPORCU KADROSU</small><h2>Kulübe kayıtlı sporcular</h2></span></div>{members.length ? <div className="member-list">{members.map((athlete)=><article key={athlete.id}><AthleteAvatar id={athlete.avatar}/><span><b>{athlete.name}</b><small>{athlete.teamName||"Takım ataması bekliyor"} · {athlete.id}</small></span><em className={isAthleteActive(athlete)?"active":"offline"}>{isAthleteActive(athlete)?"Derste":"Çevrim dışı"}</em></article>)}</div> : <div className="member-empty"><Users/><h3>Henüz sporcu kaydı yok</h3><p>Sporcular takım adı ve o takıma ait 6 haneli kodla kayıt olduğunda burada listelenir.</p></div>}</section>
-      <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=>{const memberships=trainerTeamMemberships(trainer);return <article key={trainer.id}><TrainerAvatar id={trainer.avatar}/><span><b>{trainer.name}</b><small>{memberships.map((team)=>team.name).filter(Boolean).join(" · ")||"Takım ataması bekliyor"} · {trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{memberships.length} TAKIM</em></article>})}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler takım adı ve takım koduyla eşleştiğinde yalnızca burada listelenir.</p></div>}</section>
+      <section className="member-panel"><div className="member-heading"><span><small>ANTRENÖR KADROSU</small><h2>Kulübe kayıtlı antrenörler</h2></span></div>{clubTrainers.length ? <div className="member-list">{clubTrainers.map((trainer)=>{const memberships=trainerTeamMemberships(trainer);return <article key={trainer.id}><TrainerAvatar id={trainer.avatar}/><span><b>{trainer.name}</b><small>{memberships.map((team)=>team.name).filter(Boolean).join(" · ")||"Takım ataması bekliyor"} · {trainer.title || "Antrenör"} · {trainer.id}</small></span><em className="active">{memberships.length} TAKIM</em></article>})}</div> : <div className="member-empty"><GraduationCap/><h3>Henüz antrenör kaydı yok</h3><p>Antrenörler ayrı antrenör koduyla kayıt olup sistemdeki takımlarını seçtiğinde burada listelenir.</p></div>}</section>
     </div>;
   }
   if (session?.type === "trainer") {
@@ -6687,10 +6702,10 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     const trainerMemberships = trainerTeamMemberships(trainer);
     return <div className="page profile-area trainer-profile">
       <section className="profile-hero-card"><span className="trainer-profile-avatar-wrap"><TrainerAvatar id={trainer.avatar} className="profile-large-avatar"/>{teamLogo&&<TeamLogo src={teamLogo} name={trainer.schoolName} className="trainer-team-logo"/>}</span><span><small>ANTRENÖR PROFİLİ</small><h1>{trainer.name}</h1><p>{trainer.schoolName}</p></span><button className="btn ghost" onClick={logout}>Çıkış yap</button></section>
-      <div className="athlete-profile-grid"><article><small>GÖREV</small><b>{trainer.title || "Antrenör"}</b></article><article><small>BAĞLI TAKIM</small><b>{trainerMemberships.length}</b></article><article><small>AKTİF TAKIM</small><b>{trainer.teamName||trainerMemberships[0]?.name||"Atanmadı"}</b></article><article><small>PROFİL KİMLİĞİ</small><b>{trainer.id}</b></article></div>
-      <section className="trainer-team-list"><div className="member-heading"><span><small>TAKIM LİSTEM</small><h2>Bağlı olduğum takımlar</h2></span></div><div className="trainer-team-list-grid">{trainerMemberships.map((team,index)=><article key={team.id||index}><span className="trainer-team-index">{String(index+1).padStart(2,"0")}</span><span><b>{team.name||"Takım"}</b><small>6 haneli takım kodu</small></span><strong>{team.code||"••••••"}</strong></article>)}</div></section>
+      <div className="athlete-profile-grid"><article><small>GÖREV</small><b>{trainer.title || "Antrenör"}</b></article><article><small>BAĞLI TAKIM</small><b>{trainerMemberships.length}</b></article><article><small>ANTRENÖR KODU</small><b>{trainer.trainerCode||trainer.teamCode||trainer.schoolCode}</b></article><article><small>PROFİL KİMLİĞİ</small><b>{trainer.id}</b></article></div>
+      <section className="trainer-team-list"><div className="member-heading"><span><small>TAKIM LİSTEM</small><h2>Bağlı olduğum takımlar</h2></span></div><div className="trainer-team-list-grid">{trainerMemberships.map((team,index)=><article key={team.id||index}><span className="trainer-team-index">{String(index+1).padStart(2,"0")}</span><span><b>{team.name||"Takım"}</b><small>Antrenör görevlendirmesi</small></span><CheckCircle2/></article>)}</div></section>
       <section className="club-bulletin-entry ready365-entry"><span className="club-bulletin-icon"><Library/></span><span><small>ANTRENÖR EĞİTİM ALANI</small><h2>Voleybol Antrenörlük Kütüphanesi</h2><p>Antrenman, beceri gelişimi, takım sistemleri ve sezon planlama PDF kütüphanesi.</p></span><button className="btn" onClick={()=>go("ready365-library")}>Kütüphaneyi aç <ArrowRight/></button></section>
-      <div className="profile-info-note"><ShieldCheck/><span><b>Takıma bağlı antrenör hesabı</b><p>Bu profil yalnızca bağlı olduğu kulüp, takım ve o takıma ait 6 haneli kodla kullanılabilir.</p></span></div>
+      <div className="profile-info-note"><ShieldCheck/><span><b>Kulübe bağlı antrenör hesabı</b><p>Bu profil kulüp yöneticisinin paylaştığı ayrı antrenör koduyla açılır; takım kodları yalnızca sporcular içindir.</p></span></div>
     </div>;
   }
   if (session?.type === "athlete") {
@@ -6703,7 +6718,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     <div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular ve antrenörler bağlı oldukları kulüp üzerinden akademiye katılır.</p></div>
     <section className="profile-login-card">
       <div className="registration-tabs profile-login-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setSelectedTeamId("");setNotice("")}}><School/> Kulüp</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setSelectedTeamId("");setNotice("")}}><UserPlus/> Sporcu</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setSelectedTeamId("");setNotice("")}}><GraduationCap/> Antrenör</button></div>
-      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>{type==="club"?"Kulübünüzü seçip size özel kulüp kodunu girin.":"Kulübünüzü ve takımınızı seçip takım kodunu girin."}</small></span></div>{!schoolsReady&&<p className="field-help" role="status">Güncel okul listesi yükleniyor…</p>}<SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setSelectedTeamId("");setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type!=="club"&&<label>Takım<select name="teamId" required value={selectedTeamId} onChange={(event)=>setSelectedTeamId(event.target.value)} disabled={!selectedClub}><option value="">{selectedClub?(loginTeams.length?"Bağlı olduğunuz takımı seçin":"Bu kulüp henüz takım oluşturmadı"):"Önce kulübünüzü seçin"}</option>{loginTeams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>{type==="club"?"6 haneli kulüp giriş kodu":"6 haneli takım kodu"}<input name="accessCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={!schoolsReady||busy||clubOptions.length===0||!selectedClub||(type!=="club"&&!selectedTeamId)}>{busy?"Güvenli giriş kontrol ediliyor…":"Profile giriş yap"} <ArrowRight/></button></form>
+      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>{type==="club"?"Kulübünüzü seçip size özel kulüp kodunu girin.":type==="trainer"?"Kulübünüzü seçip antrenör kullanıcı adınızı ve ayrı antrenör kodunu girin.":"Kulübünüzü ve takımınızı seçip takım kodunu girin."}</small></span></div>{!schoolsReady&&<p className="field-help" role="status">Güncel okul listesi yükleniyor…</p>}<SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setSelectedTeamId("");setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type==="athlete"&&<label>Takım<select name="teamId" required value={selectedTeamId} onChange={(event)=>setSelectedTeamId(event.target.value)} disabled={!selectedClub}><option value="">{selectedClub?(loginTeams.length?"Bağlı olduğunuz takımı seçin":"Bu kulüp henüz takım oluşturmadı"):"Önce kulübünüzü seçin"}</option>{loginTeams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>{type==="club"?"6 haneli kulüp giriş kodu":type==="trainer"?"6 haneli antrenör kodu":"6 haneli takım kodu"}<input name="accessCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={!schoolsReady||busy||clubOptions.length===0||!selectedClub||(type==="athlete"&&!selectedTeamId)}>{busy?"Güvenli giriş kontrol ediliyor…":"Profile giriş yap"} <ArrowRight/></button></form>
       {notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}
     </section>
   </div>;
