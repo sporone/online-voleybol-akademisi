@@ -185,6 +185,17 @@ function syncTeamUsers_(schoolId,teamId,teamName,teamCode,onlyEmpty){
     values.forEach(row=>{
       if(String(row[1])!==schoolId) return;
       const rowTeamId=String(row[11]||'');
+      if(sh.getName()==='Antrenor Kayitlari'){
+        const ids=splitTeamValues_(row[11]), names=splitTeamValues_(row[12]), codes=splitTeamValues_(row[13]);
+        if(onlyEmpty){
+          if(ids.length) return;
+          row[3]=teamCode; row[11]=teamId; row[12]=teamName; row[13]=teamCode; changed=true; return;
+        }
+        const teamIndex=ids.indexOf(teamId);
+        if(teamIndex<0) return;
+        names[teamIndex]=teamName; codes[teamIndex]=teamCode;
+        row[3]=codes[0]||teamCode; row[11]=ids.join('|'); row[12]=names.join('|'); row[13]=codes.join('|'); changed=true; return;
+      }
       if((onlyEmpty&&rowTeamId)||(!onlyEmpty&&rowTeamId!==teamId)) return;
       row[3]=teamCode; row[11]=teamId; row[12]=teamName; row[13]=teamCode; changed=true;
     });
@@ -249,15 +260,23 @@ function registerAthlete_(body){
   }finally{lock.releaseLock()}
 }
 
+function splitTeamValues_(value){return String(value||'').split('|').map(item=>item.trim()).filter(Boolean)}
+function trainerTeamsFromRow_(row){
+  const ids=splitTeamValues_(row&&row[11]), names=splitTeamValues_(row&&row[12]), codes=splitTeamValues_(row&&row[13]);
+  return ids.map((id,index)=>({id:id,name:names[index]||'',code:codes[index]||''}));
+}
 function registerTrainer_(body){
-  const schoolName=clean_(body.schoolName,120), teamId=clean_(body.teamId,40), code=String(body.teamCode||body.schoolCode||''), trainerName=clean_(body.name,100), title=clean_(body.title,60)||'Voleybol Antrenörü';
-  if(!/^\d{6}$/.test(code)||!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(trainerName)||title.length<3) return json_({ok:false,error:'Antrenör bilgileri geçersiz.'});
+  const schoolName=clean_(body.schoolName,120), trainerName=clean_(body.name,100), title=clean_(body.title,60)||'Voleybol Antrenörü';
+  const requested=Array.isArray(body.teams)&&body.teams.length?body.teams:[{teamId:body.teamId,teamCode:body.teamCode||body.schoolCode}];
+  const selections=requested.slice(0,20).map(item=>({teamId:clean_(item&&item.teamId,40),teamCode:String(item&&item.teamCode||'').replace(/\D/g,'')})).filter((item,index,list)=>item.teamId&&list.findIndex(other=>other.teamId===item.teamId)===index);
+  if(!selections.length||selections.some(item=>!/^\d{6}$/.test(item.teamCode))||!/^@[A-Za-z0-9._çğıöşüÇĞİÖŞÜ-]{2,30}$/.test(trainerName)||title.length<3) return json_({ok:false,error:'Antrenör ve takım bilgileri geçersiz.'});
   const avatarId=clean_(body.avatar,30), avatarName=clean_(body.avatarName,80);
   if(!/^(kadin|erkek)-antrenor-[1-6]$/.test(avatarId)) return json_({ok:false,error:'Antrenör profil seçimi geçersiz.'});
   const school=approvedSchoolByName_(schoolName);
   if(!school) return json_({ok:false,error:'Okul adı veya yönetici onayı doğrulanamadı.'});
-  const team=findActiveTeam_(school[0],teamId,code,school[1]);
-  if(!team) return json_({ok:false,error:'Takım veya 6 haneli takım kodu doğrulanamadı.'});
+  const teams=selections.map(item=>findActiveTeam_(school[0],item.teamId,item.teamCode,school[1]));
+  if(teams.some(team=>!team)) return json_({ok:false,error:'Seçilen takımlardan biri veya 6 haneli takım kodu doğrulanamadı.'});
+  const memberships=teams.map(team=>({id:team[0],name:team[3],code:team[4]}));
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(10000)) return json_({ok:false,error:'Kayıt servisi yoğun. Lütfen tekrar deneyin.'});
   try{
@@ -265,10 +284,11 @@ function registerTrainer_(body){
     if(exactRows_(sh,5,trainerName,TRAINER_HEADERS.length).some(r=>r[1]===school[0]&&normalize_(r[4])===normalize_(trainerName))) return json_({ok:false,error:'Bu antrenör adı seçilen okulda zaten kayıtlı.'});
     const id='ANT-'+Utilities.getUuid().slice(0,8).toUpperCase();
     const inheritedLogo=school[10]||(exactRows_(sh,3,school[1],TRAINER_HEADERS.length).find(r=>/^https?:\/\//.test(r[6]))||[])[6]||'';
-    sh.appendRow([id,school[0],school[1],code,trainerName,title,inheritedLogo,'AKTİF',new Date(),avatarId,avatarName||avatarId,team[0],team[3],code]);
-    const account={type:'trainer',id:id,schoolId:school[0],schoolName:school[1],teamId:team[0],teamName:team[3],teamCode:code,schoolCode:code,name:trainerName,title:title,avatar:avatarId,teamLogo:inheritedLogo,status:'AKTİF'};
+    const teamIds=memberships.map(team=>team.id).join('|'), teamNames=memberships.map(team=>team.name).join('|'), teamCodes=memberships.map(team=>team.code).join('|');
+    sh.appendRow([id,school[0],school[1],memberships[0].code,trainerName,title,inheritedLogo,'AKTİF',new Date(),avatarId,avatarName||avatarId,teamIds,teamNames,teamCodes]);
+    const account={type:'trainer',id:id,schoolId:school[0],schoolName:school[1],teamId:memberships[0].id,teamName:memberships[0].name,teamCode:memberships[0].code,teamIds:memberships.map(team=>team.id),teamNames:memberships.map(team=>team.name),teamCodes:memberships.map(team=>team.code),teams:memberships,schoolCode:memberships[0].code,name:trainerName,title:title,avatar:avatarId,teamLogo:inheritedLogo,status:'AKTİF'};
     const session=createProfileSession_(account);
-    return json_({ok:true,id:id,teamId:team[0],teamName:team[3],teamCode:code,teamLogo:inheritedLogo,account:account,profileToken:session.token,expiresIn:PROFILE_SESSION_SECONDS});
+    return json_({ok:true,id:id,teams:memberships,teamId:memberships[0].id,teamName:memberships[0].name,teamCode:memberships[0].code,teamLogo:inheritedLogo,account:account,profileToken:session.token,expiresIn:PROFILE_SESSION_SECONDS});
   }finally{lock.releaseLock()}
 }
 
@@ -306,9 +326,10 @@ function profileLogin_(body){
     const team=findActiveTeam_(school[0],teamId,code,school[1]);
     if(!team) return json_({ok:false,error:'Takım veya takım kodu doğrulanamadı.'});
     const sh=getOrCreate_('Antrenor Kayitlari',TRAINER_HEADERS);
-    const person=exactRows_(sh,5,userName,TRAINER_HEADERS.length).find(r=>r[1]===school[0]&&r[11]===team[0]&&normalize_(r[4])===normalize_(userName)&&String(r[7]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF');
+    const person=exactRows_(sh,5,userName,TRAINER_HEADERS.length).find(r=>r[1]===school[0]&&splitTeamValues_(r[11]).includes(team[0])&&normalize_(r[4])===normalize_(userName)&&String(r[7]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF');
     if(!person) return json_({ok:false,error:'Antrenör adı seçilen takımın aktif kayıtlarıyla eşleşmedi.'});
-    account={type:'trainer',id:person[0],schoolId:person[1],schoolName:person[2],teamId:team[0],teamName:team[3],teamCode:team[4],schoolCode:team[4],name:person[4],title:person[5]||'Antrenör',teamLogo:person[6]||school[10]||'',status:person[7]||'AKTİF',avatar:person[9]||''};
+    const memberships=trainerTeamsFromRow_(person);
+    account={type:'trainer',id:person[0],schoolId:person[1],schoolName:person[2],teamId:team[0],teamName:team[3],teamCode:team[4],teamIds:memberships.map(item=>item.id),teamNames:memberships.map(item=>item.name),teamCodes:memberships.map(item=>item.code),teams:memberships,schoolCode:team[4],name:person[4],title:person[5]||'Antrenör',teamLogo:person[6]||school[10]||'',status:person[7]||'AKTİF',avatar:person[9]||''};
   }
   const session=createProfileSession_(account);
   return json_({ok:true,token:session.token,expiresIn:PROFILE_SESSION_SECONDS,account:account});
