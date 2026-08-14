@@ -249,6 +249,7 @@ const SESSION_IDLE_LIMIT = 15 * 60 * 1000;
 const PRESENCE_HEARTBEAT_INTERVAL = 10000;
 const PRESENCE_STALE_AFTER = 45000;
 const SCHOOL_LIST_REFRESH_INTERVAL = 3000;
+const RELATED_REGISTRATION_REFRESH_INTERVAL = 15000;
 const markSessionActivity = () => localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
 const clearSessionActivity = () => localStorage.removeItem(SESSION_ACTIVITY_KEY);
 const presenceTime = (value) => {
@@ -6505,7 +6506,11 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
   useEffect(() => {
     if (!registrationApi) return;
     let disposed = false;
-    const refreshSchools = async () => {
+    let active = false;
+    let lastRelatedRefresh = 0;
+    const refreshSchools = async (forceRelated = false) => {
+      if (active || disposed) return;
+      active = true;
       try {
         const schoolRows = await fetchRegistrationSheet("Okul Kayitlari");
         if (disposed) return;
@@ -6513,27 +6518,28 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
         setSchools(syncedSchools);
         setSchoolsReady(true);
         setSelectedClub((current) => current && !syncedSchools.some((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr") === current.trim().toLocaleLowerCase("tr")) ? "" : current);
-        fetchRegistrationSheet("Sporcu Kayitlari").then((athleteRows) => {
-          if (!disposed) syncRegistrationStorage(schoolRows, athleteRows);
-        }).catch((error) => console.warn("Sporcu listesi yenilenemedi:", error));
-        fetchRegistrationSheet("Takimlar").then((teamRows) => {
-          if (!disposed) setTeams(syncTeamStorage(teamRows));
-        }).catch((error) => console.warn("Takım listesi yenilenemedi:", error));
+        if (forceRelated || Date.now() - lastRelatedRefresh >= RELATED_REGISTRATION_REFRESH_INTERVAL) {
+          lastRelatedRefresh = Date.now();
+          Promise.allSettled([fetchRegistrationSheet("Sporcu Kayitlari"), fetchRegistrationSheet("Takimlar"), fetchRegistrationSheet("Antrenor Kayitlari")]).then(([athleteResult, teamResult, trainerResult]) => {
+            if (disposed) return;
+            if (athleteResult.status === "fulfilled") syncRegistrationStorage(schoolRows, athleteResult.value);
+            if (teamResult.status === "fulfilled") setTeams(syncTeamStorage(teamResult.value));
+            if (trainerResult.status === "fulfilled") setTrainers(syncTrainerStorage(trainerResult.value));
+          });
+        }
       } catch (error) { console.warn("Okul listesi yenilenemedi:", error); }
-      try {
-        const trainerRows = await fetchRegistrationSheet("Antrenor Kayitlari");
-        if (!disposed) setTrainers(syncTrainerStorage(trainerRows));
-      } catch { /* Antrenör sekmesi oluşturulana kadar yerel kayıtları koru. */ }
+      finally { active = false; }
     };
-    refreshSchools();
-    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshSchools(); };
-    const timer = window.setInterval(refreshSchools, SCHOOL_LIST_REFRESH_INTERVAL);
-    window.addEventListener("focus", refreshSchools);
+    refreshSchools(true);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshSchools(true); };
+    const refreshOnFocus = () => refreshSchools(true);
+    const timer = window.setInterval(() => refreshSchools(false), SCHOOL_LIST_REFRESH_INTERVAL);
+    window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       disposed = true;
       window.clearInterval(timer);
-      window.removeEventListener("focus", refreshSchools);
+      window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
