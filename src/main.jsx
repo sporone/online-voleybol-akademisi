@@ -73,6 +73,7 @@ import "./quality-fixes.css";
 import "./home-modern.css";
 import "./page-titles-modern.css";
 import "./contact-messenger.css";
+import "./notebooklm-workspace.css";
 import { refereeVideoMap } from "./referee-videos";
 import { appConfig } from "./config.js";
 import { trainingVideos, videoTopics } from "./video-library.js";
@@ -84,6 +85,7 @@ import { initAnalytics } from "./analytics.js";
 import { registerPwa } from "./pwa.js";
 const totalVideoCount = trainingVideos.length + individualTrainingVideos.length;
 const VolleyballAIPage = React.lazy(() => import("./volleyball-ai.jsx"));
+const NotebookLMWorkspacePage = React.lazy(() => import("./notebooklm-workspace.jsx"));
 const BulletinsPage = React.lazy(() => import("./bulletins.jsx"));
 const Ready365LibraryPage = React.lazy(() => import("./ready365-library.jsx"));
 const Instagram = Heart,
@@ -209,7 +211,7 @@ const nav = [
   ["exams", "Sınavlar", CheckCircle2],
   ["junior-referee", "Junior Hakem", Flag],
   ["blog", "Blog", Newspaper],
-  ["volleyball-ai", "Voleybol AI", MessageCircle],
+  ["notebooklm-ai", "Voleybol AI", MessageCircle],
   ["demo", "Demo", Play],
   ["pricing", "Ücretler", BadgeTurkishLira],
   ["register", "Kayıt", UserPlus],
@@ -728,6 +730,8 @@ function App() {
           <BlogPage />
         ) : page === "volleyball-ai" ? (
           <VolleyballAIPage courses={courses} go={go} />
+        ) : page === "notebooklm-ai" ? (
+          <NotebookLMWorkspacePage />
         ) : page === "admin" ? (
           <AdminPage />
         ) : page === "faq" ? (
@@ -1394,7 +1398,7 @@ function Header({ page, go, menu, setMenu, account, isAuthenticated, onLogout })
   const courseMenuRef = useRef(null);
   const visibleNav = isAuthenticated
     ? nav.filter(([key]) => !["profiles", "demo", "pricing", "register"].includes(key))
-    : nav.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
+    : nav.filter(([key]) => ["home", "junior-referee", "blog", "notebooklm-ai", "demo", "pricing", "register", "profiles"].includes(key));
   const accountTeamLogo = account?.schoolName && !account?.avatar
     ? readSchools().find((school) => school.schoolName === account.schoolName && school.teamLogo)?.teamLogo
       || readAthletes().find((athlete) => athlete.schoolName === account.schoolName && athlete.teamLogo)?.teamLogo || ""
@@ -6910,13 +6914,13 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["exams", CheckCircle2, "Sınavlar"],
     ["junior-referee", Flag, "Junior Hakem"],
     ["blog", Newspaper, "Blog"],
-    ["volleyball-ai", MessageCircle, "Voleybol AI"],
+    ["notebooklm-ai", MessageCircle, "Voleybol AI"],
     ["demo", Play, "Demo"],
     ["pricing", BadgeTurkishLira, "Ücretler"],
     ["register", UserPlus, "Kayıt"],
     ["profiles", Users, isAuthenticated ? "Hesabım" : "Giriş Yap"],
   ];
-  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "volleyball-ai", "demo", "pricing", "register", "profiles"].includes(key));
+  if (!isAuthenticated) xs = xs.filter(([key]) => ["home", "junior-referee", "blog", "notebooklm-ai", "demo", "pricing", "register", "profiles"].includes(key));
   if (isAuthenticated) xs = xs.filter(([key]) => !["demo", "pricing", "register"].includes(key));
   const primaryKeys = isAuthenticated
     ? ["home", "courses", "videos", "exams", "profiles"]

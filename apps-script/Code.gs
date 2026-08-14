@@ -285,15 +285,58 @@ function saveExamAttempt_(body){
   }finally{lock.releaseLock()}
 }
 
+function normalizeWhatsappPhone_(value){
+  let phone=String(value||'').replace(/\D/g,'');
+  if(phone.length===11&&phone.startsWith('0')) phone='90'+phone.slice(1);
+  else if(phone.length===10) phone='90'+phone;
+  return phone;
+}
+function schoolApprovalMessage_(school,code){
+  return [
+    'Merhaba '+school+' Yetkilisi,',
+    '',
+    'Online Voleybol Akademisi spor okulu kaydınız onaylandı.',
+    '',
+    'Kulüp adı: '+school,
+    'Kulüp giriş kodu: '+code,
+    '',
+    'Bu kod yalnızca kulüp yöneticisinin giriş yapması içindir. Sporcu ve antrenörlerle paylaşmayın.',
+    '',
+    'İlk girişten sonra:',
+    '1. Kulüp profilinize giriş yapın.',
+    '2. Takımlarınızı oluşturun.',
+    '3. Her takım için sistemin oluşturduğu 6 haneli takım kodunu kontrol edin.',
+    '4. Sporcu ve antrenörlere yalnızca bağlı oldukları takımın kodunu gönderin.',
+    '',
+    'Kulüp girişi: https://voleybolokullari.com.tr/giris/',
+    'Sporcu ve antrenör kaydı: https://voleybolokullari.com.tr/kayit/',
+    '',
+    'Online Voleybol Akademisi'
+  ].join('\n');
+}
+function writeSchoolApproval_(sh,row){
+  const school=sh.getRange(row,2).getDisplayValue().trim();
+  const phone=normalizeWhatsappPhone_(sh.getRange(row,3).getDisplayValue());
+  const code=sh.getRange(row,4).getDisplayValue().replace(/\D/g,'');
+  if(!school||!/^\d{6}$/.test(code)) return;
+  const message=schoolApprovalMessage_(school,code);
+  sh.getRange(row,7).setValue(new Date());
+  sh.getRange(row,8).setValue(message).setWrap(true);
+  const linkCell=sh.getRange(row,9);
+  if(phone.length>=10&&phone.length<=15){
+    const url='https://wa.me/'+phone+'?text='+encodeURIComponent(message);
+    const richText=SpreadsheetApp.newRichTextValue().setText('WhatsApp ile gönder').setLinkUrl(url).build();
+    linkCell.setRichTextValue(richText);
+  }else{
+    linkCell.setValue('Telefon numarası gerekli');
+  }
+}
 function onEdit(e){
   const sh=e.range.getSheet(), name=sh.getName(), row=e.range.getRow();
   if(row<2) return;
   if(name==='Okul Kayitlari'){
-    if(e.range.getColumn()===5&&String(e.value||'')==='ONAYLANDI'){
-      const school=sh.getRange(row,2).getDisplayValue(), phone=sh.getRange(row,3).getDisplayValue().replace(/\D/g,''), code=sh.getRange(row,4).getDisplayValue();
-      const message='Okul kaydınız onaylandı. Kullanıcı: '+school+' | 6 haneli giriş kodunuz: '+code;
-      sh.getRange(row,7).setValue(new Date()); sh.getRange(row,8).setValue(message); sh.getRange(row,9).setFormula('=HYPERLINK("https://wa.me/'+phone+'?text='+encodeURIComponent(message)+'","WhatsApp ile gönder")');
-    }
+    const status=sh.getRange(row,5).getDisplayValue().trim().toLocaleUpperCase('tr');
+    if(status==='ONAYLANDI'&&[2,3,4,5].includes(e.range.getColumn())) writeSchoolApproval_(sh,row);
     rebuildSchoolRosterById_(sh.getRange(row,1).getDisplayValue());
     return;
   }
