@@ -6,6 +6,10 @@ const TRAINER_HEADERS=['Antrenör ID','Okul Kayıt ID','Okul Adı','Okul Kodu','
 function doGet(e){
   const name=String(e.parameter.sheet||'Courses');
   if(!ALLOWED_SHEETS.includes(name))return json_({ok:false,error:'Geçersiz veri kaynağı'});
+  if(name==='Takimlar'){
+    migrateLegacyTeamsToSchoolSheets_();
+    return json_({ok:true,data:publicSchoolTeams_(),updatedAt:new Date().toISOString()});
+  }
   const sh=SpreadsheetApp.getActive().getSheetByName(name); if(!sh)return json_({ok:false,error:'Sekme bulunamadı'});
   const values=sh.getDataRange().getDisplayValues(); const headers=values.shift()||[];
   const publicFields={
@@ -78,15 +82,67 @@ function registerSchool_(body){
   }finally{lock.releaseLock()}
 }
 
-function findActiveTeam_(schoolId,teamId,code){
-  const sh=getOrCreate_('Takimlar',TEAM_HEADERS);
-  if(sh.getLastRow()<2) return null;
-  return sh.getRange(2,1,sh.getLastRow()-1,TEAM_HEADERS.length).getDisplayValues().find(r=>
-    r[1]===schoolId&&r[0]===teamId&&r[4]===code&&String(r[5]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF'
-  )||null;
+function teamRosterRow_(teamId,schoolId,schoolName,teamName,code,status,order,createdAt,updatedAt){
+  return ['Takım',teamId,schoolId,schoolName,'',teamName,order,'','','',status||'AKTİF','',updatedAt||new Date(),createdAt||new Date(),teamId,teamName,code];
 }
-function uniqueTeamCode_(teamSheet,schoolSheet,requested,excludeTeamId){
-  const teamRows=teamSheet.getLastRow()>1?teamSheet.getRange(2,1,teamSheet.getLastRow()-1,TEAM_HEADERS.length).getDisplayValues():[];
+function schoolTeamEntries_(schoolId,schoolName,createSheet){
+  const ss=SpreadsheetApp.getActive();
+  const sh=createSheet?getSchoolRosterSheet_(schoolName,schoolId):ss.getSheetByName(schoolRosterSheetName_(schoolName,schoolId));
+  if(!sh||sh.getLastRow()<2) return {sheet:sh,entries:[]};
+  const rows=sh.getRange(2,1,sh.getLastRow()-1,SCHOOL_ROSTER_HEADERS.length).getDisplayValues();
+  const entries=[];
+  rows.forEach((r,index)=>{
+    if(normalize_(r[0])!=='takım') return;
+    const id=clean_(r[14]||r[1],40), name=clean_(r[15]||r[5],70), teamCode=String(r[16]||'').replace(/\D/g,'');
+    if(!id||!name||!teamCode) return;
+    entries.push({sheetRow:index+2,source:r,data:[id,r[2]||schoolId,r[3]||schoolName,name,teamCode,r[10]||'AKTİF',Number(r[6])||0,r[13]||'',r[12]||'']});
+  });
+  return {sheet:sh,entries:entries};
+}
+function allSchoolTeamEntries_(){
+  const schools=SpreadsheetApp.getActive().getSheetByName('Okul Kayitlari');
+  if(!schools||schools.getLastRow()<2) return [];
+  const result=[];
+  schools.getDataRange().getDisplayValues().slice(1).filter(r=>r[0]&&r[1]).forEach(school=>{
+    schoolTeamEntries_(school[0],school[1],false).entries.forEach(entry=>result.push(entry));
+  });
+  return result;
+}
+function publicSchoolTeams_(){
+  return allSchoolTeamEntries_().map(entry=>{
+    const r=entry.data;
+    return {'Takım ID':r[0],'Okul Kayıt ID':r[1],'Okul Adı':r[2],'Takım Adı':r[3],'Durum':r[5],'Sıra':r[6],'Oluşturma Tarihi':r[7]};
+  });
+}
+function migrateLegacyTeamsToSchoolSheets_(){
+  const properties=PropertiesService.getScriptProperties(), key='TEAM_STORAGE_IN_SCHOOL_SHEETS_V1';
+  if(properties.getProperty(key)==='done') return;
+  const ss=SpreadsheetApp.getActive(), legacy=ss.getSheetByName('Takimlar'), schools=ss.getSheetByName('Okul Kayitlari');
+  if(legacy&&legacy.getLastRow()>1&&schools&&schools.getLastRow()>1){
+    const schoolRows=schools.getDataRange().getDisplayValues().slice(1);
+    const legacyRows=legacy.getRange(2,1,legacy.getLastRow()-1,TEAM_HEADERS.length).getDisplayValues();
+    legacyRows.filter(r=>r[0]&&r[1]).forEach(r=>{
+      const school=schoolRows.find(s=>s[0]===r[1]);
+      if(!school) return;
+      const target=schoolTeamEntries_(school[0],school[1],true);
+      if(target.entries.some(entry=>entry.data[0]===r[0])) return;
+      target.sheet.appendRow(teamRosterRow_(r[0],school[0],school[1],r[3],r[4],r[5]||'AKTİF',Number(r[6])||target.entries.length+1,r[7]||new Date(),r[8]||new Date()));
+    });
+  }
+  properties.setProperty(key,'done');
+}
+function findActiveTeam_(schoolId,teamId,code){
+  migrateLegacyTeamsToSchoolSheets_();
+  const schools=SpreadsheetApp.getActive().getSheetByName('Okul Kayitlari');
+  if(!schools||schools.getLastRow()<2) return null;
+  const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>r[0]===schoolId);
+  if(!school) return null;
+  return (schoolTeamEntries_(schoolId,school[1],false).entries.find(entry=>{
+    const r=entry.data;
+    return r[0]===teamId&&r[4]===code&&String(r[5]||'AKTİF').toLocaleUpperCase('tr')==='AKTİF';
+  })||{}).data||null;
+}
+function uniqueTeamCode_(teamRows,schoolSheet,requested,excludeTeamId){
   const schoolCodes=new Set(schoolSheet.getLastRow()>1?schoolSheet.getRange(2,4,schoolSheet.getLastRow()-1,1).getDisplayValues().flat():[]);
   const used=new Set(teamRows.filter(r=>r[0]!==excludeTeamId).map(r=>r[4]).concat([...schoolCodes]));
   const preferred=String(requested||'').replace(/\D/g,'');
@@ -100,10 +156,12 @@ function uniqueTeamCode_(teamSheet,schoolSheet,requested,excludeTeamId){
   return code;
 }
 function clubTeams_(schoolId,includeCodes){
-  const sh=getOrCreate_('Takimlar',TEAM_HEADERS);
-  if(sh.getLastRow()<2) return [];
-  return sh.getRange(2,1,sh.getLastRow()-1,TEAM_HEADERS.length).getDisplayValues()
-    .filter(r=>r[1]===schoolId)
+  migrateLegacyTeamsToSchoolSheets_();
+  const schools=SpreadsheetApp.getActive().getSheetByName('Okul Kayitlari');
+  if(!schools||schools.getLastRow()<2) return [];
+  const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>r[0]===schoolId);
+  if(!school) return [];
+  return schoolTeamEntries_(schoolId,school[1],false).entries.map(entry=>entry.data)
     .sort((a,b)=>(Number(a[6])||999)-(Number(b[6])||999)||String(a[3]).localeCompare(String(b[3]),'tr'))
     .map(r=>({id:r[0],schoolId:r[1],schoolName:r[2],name:r[3],code:includeCodes?r[4]:'',status:r[5]||'AKTİF',order:Number(r[6])||0,createdAt:r[7],updatedAt:r[8]}));
 }
@@ -136,20 +194,23 @@ function manageClubTeam_(body){
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(10000)) return json_({ok:false,error:'Takım servisi yoğun. Lütfen tekrar deneyin.'});
   try{
-    const teams=getOrCreate_('Takimlar',TEAM_HEADERS), schools=getOrCreate_('Okul Kayitlari',['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Durumu','Kayıt Tarihi','Onay Tarihi','WhatsApp Mesajı','WhatsApp Bağlantısı','Yönetici Notu','Takım Logosu (Manuel)']);
-    const rows=teams.getLastRow()>1?teams.getRange(2,1,teams.getLastRow()-1,TEAM_HEADERS.length).getDisplayValues():[];
-    const duplicateName=rows.find(r=>r[1]===account.schoolId&&normalize_(r[3])===normalize_(teamName)&&r[0]!==teamId);
+    migrateLegacyTeamsToSchoolSheets_();
+    const schools=getOrCreate_('Okul Kayitlari',['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Durumu','Kayıt Tarihi','Onay Tarihi','WhatsApp Mesajı','WhatsApp Bağlantısı','Yönetici Notu','Takım Logosu (Manuel)']);
+    const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>r[0]===account.schoolId);
+    if(!school) return json_({ok:false,error:'Kulüp kaydı bulunamadı.'});
+    const storage=schoolTeamEntries_(account.schoolId,school[1],true), rows=storage.entries.map(entry=>entry.data);
+    const duplicateName=rows.find(r=>normalize_(r[3])===normalize_(teamName)&&r[0]!==teamId);
     if(duplicateName) return json_({ok:false,error:'Bu takım adı kulübünüzde zaten kullanılıyor.'});
-    const code=uniqueTeamCode_(teams,schools,body.teamCode,teamId);
+    const code=uniqueTeamCode_(allSchoolTeamEntries_().map(entry=>entry.data),schools,body.teamCode,teamId);
     if(operation==='create'){
-      const id='TKM-'+Utilities.getUuid().slice(0,8).toUpperCase(), order=rows.filter(r=>r[1]===account.schoolId).length+1;
-      teams.appendRow([id,account.schoolId,account.schoolName,teamName,code,'AKTİF',order,new Date(),new Date()]);
+      const id='TKM-'+Utilities.getUuid().slice(0,8).toUpperCase(), order=rows.length+1;
+      storage.sheet.appendRow(teamRosterRow_(id,account.schoolId,school[1],teamName,code,'AKTİF',order,new Date(),new Date()));
       if(order===1) syncTeamUsers_(account.schoolId,id,teamName,code,true);
     }else{
-      const index=rows.findIndex(r=>r[0]===teamId&&r[1]===account.schoolId);
+      const index=rows.findIndex(r=>r[0]===teamId);
       if(index<0) return json_({ok:false,error:'Güncellenecek takım bulunamadı.'});
-      const row=index+2;
-      teams.getRange(row,4,1,6).setValues([[teamName,code,'AKTİF',Number(body.order)||Number(rows[index][6])||1,rows[index][7]||new Date(),new Date()]]);
+      const entry=storage.entries[index];
+      storage.sheet.getRange(entry.sheetRow,1,1,SCHOOL_ROSTER_HEADERS.length).setValues([teamRosterRow_(teamId,account.schoolId,school[1],teamName,code,'AKTİF',Number(body.order)||Number(rows[index][6])||1,rows[index][7]||new Date(),new Date())]);
       syncTeamUsers_(account.schoolId,teamId,teamName,code,false);
     }
     rebuildSchoolRosterById_(account.schoolId);
@@ -340,7 +401,7 @@ function onEdit(e){
     rebuildSchoolRosterById_(sh.getRange(row,1).getDisplayValue());
     return;
   }
-  if(name==='Sporcu Kayitlari'||name==='Antrenor Kayitlari'||name==='Takimlar') rebuildSchoolRosterById_(sh.getRange(row,2).getDisplayValue());
+  if(name==='Sporcu Kayitlari'||name==='Antrenor Kayitlari') rebuildSchoolRosterById_(sh.getRange(row,2).getDisplayValue());
 }
 
 const SCHOOL_ROSTER_HEADERS=['Kayıt Türü','Kullanıcı ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Kullanıcı Adı','Görev','Profil Kodu','Profil Görseli','Takım Logosu','Durum','Çevrim İçi','Son Görülme','Kayıt Tarihi','Takım ID','Takım Adı','Takım Kodu'];
@@ -357,11 +418,14 @@ function rebuildSchoolRosterById_(schoolId){
   const school=schools.getDataRange().getDisplayValues().slice(1).find(r=>r[0]===schoolId);
   if(!school) return;
   const target=getSchoolRosterSheet_(school[1],school[0]);
+  const teamRows=target.getLastRow()>1?target.getRange(2,1,target.getLastRow()-1,SCHOOL_ROSTER_HEADERS.length).getDisplayValues().filter(r=>normalize_(r[0])==='takım'):[];
   if(target.getLastRow()>1) target.getRange(2,1,target.getLastRow()-1,SCHOOL_ROSTER_HEADERS.length).clearContent();
-  const output=[], athletes=ss.getSheetByName('Sporcu Kayitlari'), trainers=ss.getSheetByName('Antrenor Kayitlari');
+  const output=teamRows.slice(), teamCount=teamRows.length, athletes=ss.getSheetByName('Sporcu Kayitlari'), trainers=ss.getSheetByName('Antrenor Kayitlari');
   if(athletes&&athletes.getLastRow()>1) athletes.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Sporcu',r[0],r[1],r[2],r[3],r[4],'Sporcu',r[5],r[6],r[7],'AKTİF',r[8],r[9],r[10],r[11]||'',r[12]||'',r[13]||'']));
   if(trainers&&trainers.getLastRow()>1) trainers.getDataRange().getDisplayValues().slice(1).filter(r=>r[1]===schoolId).forEach(r=>output.push(['Antrenör',r[0],r[1],r[2],r[3],r[4],r[5],r[9]||'',r[10]||'',r[6],r[7],'','',r[8],r[11]||'',r[12]||'',r[13]||'']));
   if(output.length) target.getRange(2,1,output.length,SCHOOL_ROSTER_HEADERS.length).setValues(output);
+  if(teamCount) target.getRange(2,1,teamCount,SCHOOL_ROSTER_HEADERS.length).setBackground('#fff2e8').setFontWeight('bold');
+  if(output.length>teamCount) target.getRange(teamCount+2,1,output.length-teamCount,SCHOOL_ROSTER_HEADERS.length).setBackground('#ffffff').setFontWeight('normal');
   target.setFrozenRows(1); target.autoResizeColumns(1,SCHOOL_ROSTER_HEADERS.length);
 }
 function syncSchoolRosterSheets(){

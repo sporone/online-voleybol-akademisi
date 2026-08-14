@@ -248,6 +248,7 @@ const SESSION_ACTIVITY_KEY = "volleyballSessionLastActivity";
 const SESSION_IDLE_LIMIT = 15 * 60 * 1000;
 const PRESENCE_HEARTBEAT_INTERVAL = 10000;
 const PRESENCE_STALE_AFTER = 45000;
+const SCHOOL_LIST_REFRESH_INTERVAL = 3000;
 const markSessionActivity = () => localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
 const clearSessionActivity = () => localStorage.removeItem(SESSION_ACTIVITY_KEY);
 const presenceTime = (value) => {
@@ -328,14 +329,58 @@ const teamsForSchool = (teams, school) => {
 async function fetchRegistrationSheet(sheet) {
   if (!registrationApi) return [];
   const separator = registrationApi.includes("?") ? "&" : "?";
-  const response = await fetch(`${registrationApi}${separator}sheet=${encodeURIComponent(sheet)}&_=${Date.now()}`, {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(`${registrationApi}${separator}sheet=${encodeURIComponent(sheet)}&_=${Date.now()}-${attempt}`, {
+        cache: "no-store",
+        credentials: "omit",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`Kayıt bilgileri alınamadı (${response.status})`);
+      const result = await response.json();
+      if (result.ok === false) throw new Error(result.error || "Kayıt bilgileri alınamadı.");
+      return Array.isArray(result.data) ? result.data : [];
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
+}
+function syncSchoolStorage(schoolRows) {
+  const localSchools = readSchools();
+  const schoolKey = (value) => String(value || "").trim().toLocaleLowerCase("tr");
+  const teamLogoBySchool = new Map();
+  schoolRows.forEach((row) => {
+    const logo = registrationValue(row, "Takım Logosu (Manuel)");
+    const schoolName = registrationValue(row, "Okul Adı");
+    if (logo && schoolName) teamLogoBySchool.set(schoolKey(schoolName), logo);
   });
-  if (!response.ok) throw new Error(`Kayıt bilgileri alınamadı (${response.status})`);
-  const result = await response.json();
-  if (result.ok === false) throw new Error(result.error || "Kayıt bilgileri alınamadı.");
-  return Array.isArray(result.data) ? result.data : [];
+  readAthletes().forEach((athlete) => {
+    if (athlete.teamLogo && athlete.schoolName && !teamLogoBySchool.has(schoolKey(athlete.schoolName)))
+      teamLogoBySchool.set(schoolKey(athlete.schoolName), athlete.teamLogo);
+  });
+  const schools = schoolRows.map((row) => {
+    const id = registrationValue(row, "Kayıt ID");
+    const local = localSchools.find((item) => item.id === id) || {};
+    const schoolName = registrationValue(row, "Okul Adı");
+    return {
+      ...local,
+      id,
+      schoolName,
+      phone: registrationValue(row, "Telefon") || local.phone || "",
+      code: registrationValue(row, "6 Haneli Kod") || local.code || "",
+      status: registrationValue(row, "Onay Durumu"),
+      createdAt: registrationValue(row, "Kayıt Tarihi"),
+      approvedAt: registrationValue(row, "Onay Tarihi"),
+      managerNote: registrationValue(row, "Yönetici Notu"),
+      teamLogo: registrationValue(row, "Takım Logosu (Manuel)") || teamLogoBySchool.get(schoolKey(schoolName)) || local.teamLogo || "",
+      source: "google-sheets",
+    };
+  }).filter((school) => school.id && school.schoolName);
+  localStorage.setItem("volleyballSchools", JSON.stringify(schools));
+  return schools;
 }
 function syncRegistrationStorage(schoolRows, athleteRows) {
   const localSchools = readSchools();
@@ -555,7 +600,14 @@ function App() {
         const syncedAthlete = synced.athletes.find((item) => item.id === currentAthleteId) || null;
         if (currentAthleteId) setCurrentAthlete(syncedAthlete);
         setOnlineAthletes(dedupeActiveAthletes(synced.athletes));
-        setCurrentClub((current) => current ? synced.schools.find((item) => item.id === current.id) || current : current);
+        setCurrentClub((current) => {
+          if (!current) return current;
+          const refreshedClub = synced.schools.find((item) => item.id === current.id);
+          if (refreshedClub) return refreshedClub;
+          localStorage.removeItem("volleyballCurrentClub");
+          sessionStorage.removeItem(PROFILE_TOKEN_KEY);
+          return null;
+        });
         if (Array.isArray(teamRows)) syncTeamStorage(teamRows);
         setRegistrationRevision((value) => value + 1);
       } catch (error) {
@@ -6431,7 +6483,8 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
   const [type, setType] = useState("club");
   const [selectedClub, setSelectedClub] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
-  const [schools, setSchools] = useState(() => readSchools());
+  const [schools, setSchools] = useState(() => registrationApi ? [] : readSchools());
+  const [schoolsReady, setSchoolsReady] = useState(!registrationApi);
   const [teams, setTeams] = useState(() => readTeams());
   const [session, setSession] = useState(() => {
     if (import.meta.env.PROD && !sessionStorage.getItem(PROFILE_TOKEN_KEY)) return null;
@@ -6454,15 +6507,18 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     let disposed = false;
     const refreshSchools = async () => {
       try {
-        const [schoolRows, athleteRows, teamRows] = await Promise.all([
-          fetchRegistrationSheet("Okul Kayitlari"),
-          fetchRegistrationSheet("Sporcu Kayitlari"),
-          fetchRegistrationSheet("Takimlar").catch(() => null),
-        ]);
-        if (!disposed) {
-          setSchools(syncRegistrationStorage(schoolRows, athleteRows).schools);
-          if (Array.isArray(teamRows)) setTeams(syncTeamStorage(teamRows));
-        }
+        const schoolRows = await fetchRegistrationSheet("Okul Kayitlari");
+        if (disposed) return;
+        const syncedSchools = syncSchoolStorage(schoolRows);
+        setSchools(syncedSchools);
+        setSchoolsReady(true);
+        setSelectedClub((current) => current && !syncedSchools.some((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr") === current.trim().toLocaleLowerCase("tr")) ? "" : current);
+        fetchRegistrationSheet("Sporcu Kayitlari").then((athleteRows) => {
+          if (!disposed) syncRegistrationStorage(schoolRows, athleteRows);
+        }).catch((error) => console.warn("Sporcu listesi yenilenemedi:", error));
+        fetchRegistrationSheet("Takimlar").then((teamRows) => {
+          if (!disposed) setTeams(syncTeamStorage(teamRows));
+        }).catch((error) => console.warn("Takım listesi yenilenemedi:", error));
       } catch (error) { console.warn("Okul listesi yenilenemedi:", error); }
       try {
         const trainerRows = await fetchRegistrationSheet("Antrenor Kayitlari");
@@ -6470,9 +6526,28 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
       } catch { /* Antrenör sekmesi oluşturulana kadar yerel kayıtları koru. */ }
     };
     refreshSchools();
-    const timer = window.setInterval(refreshSchools, 10000);
-    return () => { disposed = true; window.clearInterval(timer); };
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshSchools(); };
+    const timer = window.setInterval(refreshSchools, SCHOOL_LIST_REFRESH_INTERVAL);
+    window.addEventListener("focus", refreshSchools);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshSchools);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
+  useEffect(() => {
+    if (!schoolsReady || session?.type !== "club") return;
+    const activeSchool = schools.some((school) => String(school.id) === String(session.school?.id));
+    if (activeSchool) return;
+    closeProfileServerSession();
+    localStorage.removeItem("volleyballCurrentClub");
+    clearSessionActivity();
+    setSession(null);
+    onSessionChange(null);
+    setNotice("Bu kulüp kaydı artık aktif değil. Güncel okul listesinden seçim yapın.");
+  }, [schoolsReady, schools, session?.type, session?.school?.id]);
   const getSchools = () => schools;
   const clubOptions = [...new Set(getSchools()
     .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
@@ -6595,7 +6670,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     <div className="profile-login-intro"><span className="eyebrow"><ShieldCheck/> KİŞİSEL PROFİL ALANI</span><h1>Kulübüne ve profiline güvenle eriş.</h1><p>Kulüpler kendi kadrolarını görür; sporcular ve antrenörler bağlı oldukları kulüp üzerinden akademiye katılır.</p></div>
     <section className="profile-login-card">
       <div className="registration-tabs profile-login-tabs"><button className={type==="club"?"active":""} onClick={()=>{setType("club");setSelectedTeamId("");setNotice("")}}><School/> Kulüp</button><button className={type==="athlete"?"active":""} onClick={()=>{setType("athlete");setSelectedTeamId("");setNotice("")}}><UserPlus/> Sporcu</button><button className={type==="trainer"?"active":""} onClick={()=>{setType("trainer");setSelectedTeamId("");setNotice("")}}><GraduationCap/> Antrenör</button></div>
-      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>{type==="club"?"Kulübünüzü seçip size özel kulüp kodunu girin.":"Kulübünüzü ve takımınızı seçip takım kodunu girin."}</small></span></div><SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setSelectedTeamId("");setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type!=="club"&&<label>Takım<select name="teamId" required value={selectedTeamId} onChange={(event)=>setSelectedTeamId(event.target.value)} disabled={!selectedClub}><option value="">{selectedClub?(loginTeams.length?"Bağlı olduğunuz takımı seçin":"Bu kulüp henüz takım oluşturmadı"):"Önce kulübünüzü seçin"}</option>{loginTeams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>{type==="club"?"6 haneli kulüp giriş kodu":"6 haneli takım kodu"}<input name="accessCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={busy||clubOptions.length===0||!selectedClub||(type!=="club"&&!selectedTeamId)}>{busy?"Güvenli giriş kontrol ediliyor…":"Profile giriş yap"} <ArrowRight/></button></form>
+      <form className="registration-form" onSubmit={submit}><div className="form-heading">{profileIcon}<span><b>{profileTitle}</b><small>{type==="club"?"Kulübünüzü seçip size özel kulüp kodunu girin.":"Kulübünüzü ve takımınızı seçip takım kodunu girin."}</small></span></div>{!schoolsReady&&<p className="field-help" role="status">Güncel okul listesi yükleniyor…</p>}<SearchableSchoolPicker value={selectedClub} onChange={(club)=>{setSelectedClub(club);setSelectedTeamId("");setNotice("")}} options={clubOptions} logoFor={clubLogo}/>{type!=="club"&&<label>Takım<select name="teamId" required value={selectedTeamId} onChange={(event)=>setSelectedTeamId(event.target.value)} disabled={!selectedClub}><option value="">{selectedClub?(loginTeams.length?"Bağlı olduğunuz takımı seçin":"Bu kulüp henüz takım oluşturmadı"):"Önce kulübünüzü seçin"}</option>{loginTeams.map((team)=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}{type==="athlete"&&<label>Sporcu adı<input name="athleteName" required placeholder="@kullaniciadi" autoCapitalize="none" spellCheck="false"/></label>}{type==="trainer"&&<label>Antrenör adı<input name="trainerName" required placeholder="@antrenoradi" autoCapitalize="none" spellCheck="false"/></label>}<label>{type==="club"?"6 haneli kulüp giriş kodu":"6 haneli takım kodu"}<input name="accessCode" required inputMode="numeric" maxLength="6" pattern="[0-9]{6}" placeholder="000000"/></label><button className="btn" disabled={!schoolsReady||busy||clubOptions.length===0||!selectedClub||(type!=="club"&&!selectedTeamId)}>{busy?"Güvenli giriş kontrol ediliyor…":"Profile giriş yap"} <ArrowRight/></button></form>
       {notice&&<div className="profile-login-error" role="alert"><WifiOff/>{notice}</div>}
     </section>
   </div>;
