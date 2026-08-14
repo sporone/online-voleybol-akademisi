@@ -250,6 +250,9 @@ const PRESENCE_HEARTBEAT_INTERVAL = 10000;
 const PRESENCE_STALE_AFTER = 45000;
 const SCHOOL_LIST_REFRESH_INTERVAL = 3000;
 const RELATED_REGISTRATION_REFRESH_INTERVAL = 15000;
+// Hızlı giriş kuralı: aynı veri sekmesi için eş zamanlı istekler tek ağ isteğini paylaşır.
+const REGISTRATION_REQUEST_DEDUP_WINDOW = 2500;
+const registrationSheetRequests = new Map();
 const markSessionActivity = () => localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
 const clearSessionActivity = () => localStorage.removeItem(SESSION_ACTIVITY_KEY);
 const presenceTime = (value) => {
@@ -329,25 +332,32 @@ const teamsForSchool = (teams, school) => {
 };
 async function fetchRegistrationSheet(sheet) {
   if (!registrationApi) return [];
+  const existingRequest = registrationSheetRequests.get(sheet);
+  if (existingRequest && Date.now() - existingRequest.startedAt < REGISTRATION_REQUEST_DEDUP_WINDOW) return existingRequest.promise;
   const separator = registrationApi.includes("?") ? "&" : "?";
-  let lastError;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await fetch(`${registrationApi}${separator}sheet=${encodeURIComponent(sheet)}&_=${Date.now()}-${attempt}`, {
-        cache: "no-store",
-        credentials: "omit",
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) throw new Error(`Kayıt bilgileri alınamadı (${response.status})`);
-      const result = await response.json();
-      if (result.ok === false) throw new Error(result.error || "Kayıt bilgileri alınamadı.");
-      return Array.isArray(result.data) ? result.data : [];
-    } catch (error) {
-      lastError = error;
-      if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 250));
+  const promise = (async () => {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch(`${registrationApi}${separator}sheet=${encodeURIComponent(sheet)}&_=${Date.now()}-${attempt}`, {
+          cache: "no-store",
+          credentials: "omit",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error(`Kayıt bilgileri alınamadı (${response.status})`);
+        const result = await response.json();
+        if (result.ok === false) throw new Error(result.error || "Kayıt bilgileri alınamadı.");
+        return Array.isArray(result.data) ? result.data : [];
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 150));
+      }
     }
-  }
-  throw lastError;
+    throw lastError;
+  })();
+  registrationSheetRequests.set(sheet, { startedAt:Date.now(), promise });
+  promise.catch(() => registrationSheetRequests.delete(sheet));
+  return promise;
 }
 function syncSchoolStorage(schoolRows) {
   const localSchools = readSchools();
@@ -6536,8 +6546,9 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
   const [type, setType] = useState("club");
   const [selectedClub, setSelectedClub] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
-  const [schools, setSchools] = useState(() => registrationApi ? [] : readSchools());
-  const [schoolsReady, setSchoolsReady] = useState(!registrationApi);
+  // Önce son doğrulanmış okul listesini göster, güncel veriyi arka planda sessizce yenile.
+  const [schools, setSchools] = useState(() => readSchools());
+  const [schoolsReady, setSchoolsReady] = useState(() => !registrationApi || readSchools().length > 0);
   const [teams, setTeams] = useState(() => readTeams());
   const [session, setSession] = useState(() => {
     if (import.meta.env.PROD && !sessionStorage.getItem(PROFILE_TOKEN_KEY)) return null;
@@ -6606,19 +6617,26 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     onSessionChange(null);
     setNotice("Bu kulüp kaydı artık aktif değil. Güncel okul listesinden seçim yapın.");
   }, [schoolsReady, schools, session?.type, session?.school?.id]);
-  const getSchools = () => schools;
-  const clubOptions = [...new Set(getSchools()
+  const approvedLoginSchools = useMemo(() => schools
     .filter((school) => String(school.status || "").trim().toLocaleUpperCase("tr") === "ONAYLANDI")
-    .map((school) => school.schoolName)
-    .filter(Boolean))]
-    .sort((a,b) => a.localeCompare(b,"tr"));
+    .sort((a,b) => String(a.schoolName).localeCompare(String(b.schoolName),"tr")), [schools]);
+  const clubOptions = useMemo(() => [...new Set(approvedLoginSchools.map((school) => school.schoolName).filter(Boolean))], [approvedLoginSchools]);
+  const schoolLogoMap = useMemo(() => {
+    const logos = new Map();
+    approvedLoginSchools.forEach((school) => {
+      if (school.teamLogo) logos.set(String(school.schoolName || "").trim().toLocaleLowerCase("tr"), school.teamLogo);
+    });
+    readAthletes().forEach((athlete) => {
+      const key = String(athlete.schoolName || "").trim().toLocaleLowerCase("tr");
+      if (key && athlete.teamLogo && !logos.has(key)) logos.set(key, athlete.teamLogo);
+    });
+    return logos;
+  }, [approvedLoginSchools]);
   const clubLogo = (club) => {
     const key = String(club || "").trim().toLocaleLowerCase("tr");
-    return getSchools().find((school) => String(school.schoolName || "").trim().toLocaleLowerCase("tr") === key && school.teamLogo)?.teamLogo
-      || readAthletes().find((athlete) => String(athlete.schoolName || "").trim().toLocaleLowerCase("tr") === key && athlete.teamLogo)?.teamLogo
-      || "";
+    return schoolLogoMap.get(key) || "";
   };
-  const selectedSchoolForLogin = getSchools().find((school)=>String(school.schoolName||"").trim().toLocaleLowerCase("tr")===selectedClub.trim().toLocaleLowerCase("tr"));
+  const selectedSchoolForLogin = approvedLoginSchools.find((school)=>String(school.schoolName||"").trim().toLocaleLowerCase("tr")===selectedClub.trim().toLocaleLowerCase("tr"));
   const loginTeams = type === "athlete" ? teamsForSchool(teams, selectedSchoolForLogin || selectedClub) : [];
   const matchesSchool = (person, school) => {
     if (!person || !school) return false;
@@ -6633,7 +6651,7 @@ function ProfilesPage({ go, initialNotice="", onActivityChange, onSessionChange 
     const teamId = type === "athlete" ? String(data.get("teamId") || "").trim() : "";
     if (!/^\d{6}$/.test(accessCode)) { setNotice(`${type === "club" ? "Kulüp" : type === "trainer" ? "Antrenör" : "Takım"} kodu 6 haneli olmalıdır.`); setBusy(false); return; }
     if (type === "athlete" && !teamId) { setNotice("Bağlı olduğunuz takımı seçin."); setBusy(false); return; }
-    const selectedSchool = getSchools().find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && (type !== "club" || String(item.code) === accessCode));
+    const selectedSchool = approvedLoginSchools.find((item) => item.schoolName.toLocaleLowerCase("tr") === schoolName.toLocaleLowerCase("tr") && (type !== "club" || String(item.code) === accessCode));
     const userName = type === "athlete" ? String(data.get("athleteName") || "").trim() : type === "trainer" ? String(data.get("trainerName") || "").trim() : "";
     let verified = null;
     try {
