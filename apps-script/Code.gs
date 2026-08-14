@@ -10,6 +10,8 @@ const SCHOOL_HEADERS=['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Dur
 const TEAM_HEADERS=['Takım ID','Okul Kayıt ID','Okul Adı','Takım Adı','6 Haneli Takım Kodu','Durum','Sıra','Oluşturma Tarihi','Güncelleme Tarihi'];
 const ATHLETE_HEADERS=['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi','Takım ID','Takım Adı','Takım Kodu'];
 const TRAINER_HEADERS=['Antrenör ID','Okul Kayıt ID','Okul Adı','Antrenör Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli','Takım ID','Takım Adı','Takım Kodu'];
+const CHAT_HEADERS=['Mesaj ID','Kanal','Gönderen Türü','Gönderen ID','Gönderen Adı','Okul ID','Okul Adı','Profil Kodu','Takım Logosu','Mesaj','Gönderim Tarihi','Silinme Tarihi'];
+const CHAT_TTL_MS=24*60*60*1000;
 function doGet(e){
   const name=String(e.parameter.sheet||'Courses');
   if(!ALLOWED_SHEETS.includes(name))return json_({ok:false,error:'Geçersiz veri kaynağı'});
@@ -69,6 +71,8 @@ function doPost(e){
     if(body.action==='profileLogin') return profileLogin_(body);
     if(body.action==='validateProfileSession') return validateProfileSession_(body);
     if(body.action==='logoutProfile') return logoutProfile_(body);
+    if(body.action==='listChatMessages') return listChatMessages_(body);
+    if(body.action==='sendChatMessage') return sendChatMessage_(body);
     if(body.action==='saveExamAttempt') return saveExamAttempt_(body);
     if(body.action==='trackBlogView') return trackBlogView_(body);
     if(body.action==='adminLogin') return adminLogin_(body);
@@ -405,6 +409,76 @@ function logoutProfile_(body){
   const token=clean_(body.token,100);
   if(token) CacheService.getScriptCache().remove('profile:'+token);
   return json_({ok:true});
+}
+function chatMessageObject_(row){
+  const created=row[10] instanceof Date?row[10]:new Date(row[10]);
+  return {
+    id:String(row[0]||''),channel:String(row[1]||''),senderType:String(row[2]||''),senderId:String(row[3]||''),
+    senderName:String(row[4]||''),schoolId:String(row[5]||''),schoolName:String(row[6]||''),profileCode:String(row[7]||''),
+    teamLogo:String(row[8]||''),message:String(row[9]||''),createdAt:created.toISOString()
+  };
+}
+function pruneExpiredChatMessages_(sheet){
+  if(!sheet||sheet.getLastRow()<2) return 0;
+  const values=sheet.getRange(2,1,sheet.getLastRow()-1,CHAT_HEADERS.length).getValues();
+  const now=Date.now(); let removed=0;
+  for(let index=values.length-1;index>=0;index--){
+    const created=values[index][10] instanceof Date?values[index][10].getTime():new Date(values[index][10]).getTime();
+    const expires=values[index][11] instanceof Date?values[index][11].getTime():new Date(values[index][11]).getTime();
+    if((Number.isFinite(expires)&&expires<=now)||(!Number.isFinite(expires)&&(!Number.isFinite(created)||created+CHAT_TTL_MS<=now))){
+      sheet.deleteRow(index+2); removed++;
+    }
+  }
+  return removed;
+}
+function ensureChatCleanupTrigger_(){
+  const properties=PropertiesService.getScriptProperties();
+  if(properties.getProperty('CHAT_CLEANUP_TRIGGER_V1')==='ready') return;
+  try{
+    const exists=ScriptApp.getProjectTriggers().some(trigger=>trigger.getHandlerFunction()==='deleteExpiredChatMessages');
+    if(!exists) ScriptApp.newTrigger('deleteExpiredChatMessages').timeBased().everyHours(1).create();
+    properties.setProperty('CHAT_CLEANUP_TRIGGER_V1','ready');
+  }catch(error){/* Mesaj listeleme işlemi de süresi dolan kayıtları temizler. */}
+}
+function deleteExpiredChatMessages(){
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return 0;
+  try{return pruneExpiredChatMessages_(getOrCreate_('Sohbet Mesajlari',CHAT_HEADERS))}finally{lock.releaseLock()}
+}
+function listChatMessages_(body){
+  requireProfile_(body.token);
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return json_({ok:false,error:'Sohbet servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const sheet=getOrCreate_('Sohbet Mesajlari',CHAT_HEADERS);
+    pruneExpiredChatMessages_(sheet);
+    const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,CHAT_HEADERS.length).getValues():[];
+    const messages=rows.slice(-300).filter(row=>row[0]&&row[1]&&row[9]).map(chatMessageObject_);
+    return json_({ok:true,messages:messages,expiresInHours:24});
+  }finally{lock.releaseLock()}
+}
+function sendChatMessage_(body){
+  const account=requireProfile_(body.token);
+  const channel=String(body.channel||'').toLowerCase();
+  const message=clean_(body.message,500);
+  if(!['schools','trainers','athletes'].includes(channel)) return json_({ok:false,error:'Sohbet bölümü geçersiz.'});
+  if(!message) return json_({ok:false,error:'Mesaj boş bırakılamaz.'});
+  const cache=CacheService.getScriptCache(), rateKey='chat-send:'+clean_(account.id,60);
+  if(cache.get(rateKey)) return json_({ok:false,error:'Mesajları çok hızlı gönderiyorsunuz. Birkaç saniye bekleyin.'});
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return json_({ok:false,error:'Sohbet servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const sheet=getOrCreate_('Sohbet Mesajlari',CHAT_HEADERS);
+    pruneExpiredChatMessages_(sheet);
+    const createdAt=new Date(), expiresAt=new Date(createdAt.getTime()+CHAT_TTL_MS);
+    const senderType=String(account.type||'athlete');
+    const row=['MSG-'+Utilities.getUuid().slice(0,12).toUpperCase(),channel,senderType,account.id,account.name||account.schoolName,account.schoolId||account.id,account.schoolName||'',account.avatar||'',account.teamLogo||'',message,createdAt,expiresAt];
+    sheet.appendRow(row);
+    if(sheet.getLastRow()===2){sheet.getRange(2,11,1,2).setNumberFormat('dd.MM.yyyy HH:mm');sheet.autoResizeColumns(1,CHAT_HEADERS.length)}
+    cache.put(rateKey,'1',3);
+    ensureChatCleanupTrigger_();
+    return json_({ok:true,message:chatMessageObject_(row)});
+  }finally{lock.releaseLock()}
 }
 function saveExamAttempt_(body){
   const account=requireProfile_(body.token), attempt=body.attempt||{};

@@ -9,6 +9,7 @@ export const pageRoutes = {
   blog: "/voleybol-blog/",
   "volleyball-ai": "/voleybol-ai/",
   "notebooklm-ai": "/online-akademi/ai-asistan/",
+  chat: "/voleybol-sohbet/",
   admin: "/yonetici/",
   faq: "/sik-sorulan-sorular/",
   pricing: "/ucretler/", register: "/kayit/", "registered-schools": "/kayitli-spor-okullari/",
@@ -55,6 +56,7 @@ const metaByPage = {
   blog: ["Voleybol Blog | Teknik, Taktik ve Sporcu Gelişimi", "Voleybol teknikleri, taktik, pozisyon eğitimi, atletik performans, beslenme, sağlık ve mental gelişim yazıları."],
   "volleyball-ai": ["Voleybol AI Asistanı | Ücretsiz Voleybol Soru Cevap", "Yalnızca voleybol hakkında, akademinin eğitim içeriklerine dayanarak site içinde ve ücretsiz çalışan voleybol soru-cevap asistanı."],
   "notebooklm-ai": ["Voleybol AI Asistanı | Online Voleybol Akademisi", "Voleybol teknikleri, kurallar ve eğitim içerikleri hakkında AI destekli çalışma alanımızdan yararlanın."],
+  chat: ["Voleybol Chat | Online Voleybol Akademisi", "Kayıtlı spor okulları, antrenörler ve sporcular için 24 saatlik güvenli voleybol sohbet alanı."],
   faq: ["Sık Sorulan Sorular | Online Voleybol Akademisi", "Spor okulu ve sporcu kaydı, giriş, voleybol dersleri, eğitim videoları, sınavlar ve üyelik sistemi hakkında ayrıntılı yanıtlar."],
   pricing: ["Voleybol Akademisi Üyelik Ücretleri", "Sınırsız öğrenci erişimli aylık ve yıllık üyelik seçeneklerini inceleyin."],
   register: ["Spor Okulu ve Sporcu Kaydı", "Voleybol spor okulunuzu akademiye kaydedin veya onaylı okul kodunuzla sporcu profilinizi oluşturun."],
@@ -73,5 +75,5 @@ export function seoFor(page, course) {
     path: routeFor(page, course), noindex: true,
   };
   const [title, description] = metaByPage[page] || [`${String(page).replace(/-/g, " ")} | Voleybol Akademisi`, "Online Voleybol Akademisi bilgi sayfası."];
-  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "technical-cards", "bulletins", "ready365-library", "admin"].includes(page) };
+  return { title, description, path: routeFor(page), noindex: ["profiles", "exams", "videos", "courses", "technical-cards", "bulletins", "ready365-library", "chat", "admin"].includes(page) };
 }

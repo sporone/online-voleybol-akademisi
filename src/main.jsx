@@ -87,6 +87,7 @@ import { registerPwa } from "./pwa.js";
 const totalVideoCount = trainingVideos.length + individualTrainingVideos.length;
 const VolleyballAIPage = React.lazy(() => import("./volleyball-ai.jsx"));
 const NotebookLMWorkspacePage = React.lazy(() => import("./notebooklm-workspace.jsx"));
+const VolleyballChatPage = React.lazy(() => import("./volleyball-chat.jsx"));
 const BulletinsPage = React.lazy(() => import("./bulletins.jsx"));
 const Ready365LibraryPage = React.lazy(() => import("./ready365-library.jsx"));
 const Instagram = Heart,
@@ -213,6 +214,7 @@ const nav = [
   ["junior-referee", "Junior Hakem", Flag],
   ["blog", "Blog", Newspaper],
   ["notebooklm-ai", "Voleybol AI", MessageCircle],
+  ["chat", "Voleybol Chat", MessageCircle],
   ["demo", "Demo", Play],
   ["pricing", "Ücretler", BadgeTurkishLira],
   ["register", "Kayıt", UserPlus],
@@ -593,7 +595,7 @@ function App() {
     setMeta('link[rel="canonical"]', "href", `${SITE_URL}${seo.path}`);
   }, [page, selectedCourse]);
   useEffect(() => {
-    const protectedPages = ["courses", "course", "lesson", "videos", "exams", "technical-cards"];
+    const protectedPages = ["courses", "course", "lesson", "videos", "exams", "technical-cards", "chat"];
     if (page === "bulletins" && !currentClub) {
       setAuthNotice("Eğitim bültenleri yalnızca spor okulu hesabıyla kullanılabilir.");
       setPage("profiles");
@@ -735,7 +737,7 @@ function App() {
   }, [currentAthlete?.id, currentClub?.id, currentTrainer?.id]);
   const go = (p, course) => {
     if (["dashboard", "training", "performance"].includes(p)) p = "courses";
-    if (["courses", "course", "lesson", "videos", "exams"].includes(p) && !currentAthlete && !currentClub && !currentTrainer) {
+    if (["courses", "course", "lesson", "videos", "exams", "chat"].includes(p) && !currentAthlete && !currentClub && !currentTrainer) {
       setAuthNotice("Derslere, eğitim videolarına ve sınavlara erişmek için kayıtlı hesabınızla giriş yapın.");
       p = "profiles";
     }
@@ -817,6 +819,14 @@ function App() {
           <VolleyballAIPage courses={courses} go={go} />
         ) : page === "notebooklm-ai" ? (
           <NotebookLMWorkspacePage />
+        ) : page === "chat" ? (
+          <VolleyballChatPage account={currentAthlete
+            ? { ...currentAthlete, accountType: "athlete" }
+            : currentTrainer
+              ? { ...currentTrainer, accountType: "trainer" }
+              : currentClub
+                ? { ...currentClub, accountType: "club" }
+                : null} />
         ) : page === "admin" ? (
           <AdminPage />
         ) : page === "faq" ? (
@@ -1438,9 +1448,126 @@ const blogArticleDetails = {
   ],
 };
 
+const loadBlogExportImage = (src) => new Promise((resolve) => {
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.onload = () => resolve(image);
+  image.onerror = () => resolve(null);
+  image.src = new URL(src, window.location.origin).href;
+});
+
+function drawBlogCover(context, image, x, y, width, height) {
+  if (!image) {
+    const fallback = context.createLinearGradient(x, y, x + width, y + height);
+    fallback.addColorStop(0, "#071b33");
+    fallback.addColorStop(1, "#ff6b1a");
+    context.fillStyle = fallback;
+    context.fillRect(x, y, width, height);
+    return;
+  }
+  const scale = Math.max(width / image.width, height / image.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  context.drawImage(image, (image.width - sourceWidth) / 2, (image.height - sourceHeight) / 2, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function drawBlogWrappedText(context, text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word;
+    if (context.measureText(next).width <= maxWidth || !line) line = next;
+    else { lines.push(line); line = word; }
+  });
+  if (line) lines.push(line);
+  const visible = lines.slice(0, maxLines);
+  if (lines.length > maxLines) {
+    let last = visible[maxLines - 1];
+    while (last && context.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+    visible[maxLines - 1] = `${last.trim()}…`;
+  }
+  visible.forEach((item, index) => context.fillText(item, x, y + index * lineHeight));
+  return y + visible.length * lineHeight;
+}
+
+async function downloadBlogInstagramCard(post) {
+  await document.fonts?.ready;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Görsel oluşturulamadı.");
+  const [cover, logo] = await Promise.all([
+    loadBlogExportImage(post.image),
+    loadBlogExportImage("/brand-logo-transparent.png"),
+  ]);
+
+  context.fillStyle = "#f6f8fa";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  drawBlogCover(context, cover, 0, 0, 1080, 610);
+  const coverShade = context.createLinearGradient(0, 220, 0, 610);
+  coverShade.addColorStop(0, "rgba(7,27,51,0)");
+  coverShade.addColorStop(1, "rgba(7,27,51,.74)");
+  context.fillStyle = coverShade;
+  context.fillRect(0, 220, 1080, 390);
+  context.fillStyle = "#ff6b1a";
+  context.fillRect(0, 0, 18, 1350);
+
+  context.fillStyle = "#ff6b1a";
+  context.font = '900 24px Arial, sans-serif';
+  context.beginPath();
+  context.roundRect(68, 62, Math.min(430, 74 + context.measureText(post.category.toUpperCase()).width), 58, 29);
+  context.fill();
+  context.fillStyle = "#fff";
+  context.letterSpacing = "2px";
+  context.fillText(post.category.toUpperCase(), 98, 100);
+  context.letterSpacing = "0px";
+
+  if (logo) context.drawImage(logo, 70, 655, 88, 88);
+  context.fillStyle = "#071b33";
+  context.font = '900 29px Arial, sans-serif';
+  context.fillText("VOLEYBOL", 178, 689);
+  context.letterSpacing = "5px";
+  context.fillText("AKADEMİSİ", 178, 728);
+  context.letterSpacing = "0px";
+
+  context.fillStyle = "#071b33";
+  context.font = '900 70px "Barlow Condensed", Arial, sans-serif';
+  const titleBottom = drawBlogWrappedText(context, post.title, 70, 830, 940, 74, 3);
+  context.fillStyle = "#52677e";
+  context.font = '400 30px Arial, sans-serif';
+  drawBlogWrappedText(context, post.excerpt, 72, titleBottom + 22, 920, 44, 3);
+
+  const footerY = 1248;
+  context.fillStyle = "#dce5eb";
+  context.fillRect(70, footerY - 26, 940, 2);
+  context.fillStyle = "#ff6b1a";
+  context.font = '900 25px Arial, sans-serif';
+  context.fillText("voleybolokullari.com.tr", 70, footerY + 28);
+  context.fillStyle = "#647386";
+  context.font = '700 23px Arial, sans-serif';
+  context.textAlign = "right";
+  context.fillText(`${post.date}  •  ${post.read} okuma`, 1010, footerY + 28);
+  context.textAlign = "left";
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("PNG dosyası oluşturulamadı.");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${post.id}-instagram-4x5.png`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function BlogPage() {
   const [category, setCategory] = useState("Tümü");
   const [query, setQuery] = useState("");
+  const [exportingPostId, setExportingPostId] = useState("");
+  const [exportNotice, setExportNotice] = useState("");
   const postFromPath = () => blogPosts.find((post)=>window.location.pathname.replace(/\/+$/,"").endsWith(`/voleybol-blog/${post.id}`)) || null;
   const [selectedPost, setSelectedPost] = useState(postFromPath);
   const featured = blogPosts.find((post) => post.featured) || blogPosts[0];
@@ -1449,6 +1576,19 @@ function BlogPage() {
     && (!normalizedQuery || `${post.title} ${post.excerpt} ${post.category}`.toLocaleLowerCase("tr").includes(normalizedQuery)));
   const openPost = (post) => { window.history.pushState({page:"blog",post:post.id},"",`/voleybol-blog/${post.id}/`); setSelectedPost(post); window.scrollTo(0,0); };
   const closePost = () => { window.history.pushState({page:"blog"},"","/voleybol-blog/"); setSelectedPost(null); window.scrollTo(0,0); };
+  const exportPost = async (post) => {
+    if (exportingPostId) return;
+    setExportingPostId(post.id);
+    setExportNotice("");
+    try {
+      await downloadBlogInstagramCard(post);
+      setExportNotice("Instagram 4:5 görseli PNG olarak indirildi.");
+    } catch (error) {
+      setExportNotice(error.message || "Görsel indirilemedi. Tekrar deneyin.");
+    } finally {
+      setExportingPostId("");
+    }
+  };
   useEffect(()=>{const onPop=()=>setSelectedPost(postFromPath());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop)},[]);
   useEffect(()=>{
     if(!selectedPost)return;
@@ -1468,8 +1608,8 @@ function BlogPage() {
   if (selectedPost) return <div className="blog-page blog-article-page"><button className="blog-back" onClick={closePost}>← Blog yazılarına dön</button><article className="blog-article"><div className="blog-article-cover"><img src={selectedPost.image} alt={`${selectedPost.title} konulu gerçekçi voleybol fotoğrafı`}/><span>{selectedPost.category}</span></div><header><small>{selectedPost.date} • {selectedPost.read} okuma</small><h1>{selectedPost.title}</h1><p>{selectedPost.excerpt}</p><div className="blog-keywords">{selectedPost.keywords?.map((keyword)=><span key={keyword}>{keyword}</span>)}</div></header><div className="blog-article-body"><p className="blog-lead">{selectedPost.body}</p>{blogArticleDetails[selectedPost.id]?.map((section)=><section key={section.title}><h2>{section.title}</h2><p>{section.text}</p><ul>{section.points.map((point)=><li key={point}><CheckCircle2/>{point}</li>)}</ul></section>)}<aside><Target/><span><b>Sahaya taşı</b><small>Konuyu okuduktan sonra tek bir teknik hedef seç ve antrenmanda kontrollü tekrarlarla uygula.</small></span></aside></div></article></div>;
   return <div className="blog-page">
     <section className="blog-hero"><div><span className="eyebrow"><Newspaper/> VOLEYBOL BİLGİ MERKEZİ</span><h1>Sahayı daha iyi oku,<br/><em>oyununu geliştir.</em></h1><p>Teknik, taktik, performans ve sporcu sağlığına dair uygulanabilir voleybol içerikleri.</p></div><div className="blog-hero-mark"><span>V</span><i/><small>AKADEMİ BLOG</small></div></section>
-    <section className="blog-featured"><div className="blog-featured-image"><img src={featured.image} alt={`${featured.title} kapak görseli`}/><span>ÖNE ÇIKAN YAZI</span></div><div><small>{featured.category} • {featured.read} okuma</small><h2>{featured.title}</h2><p>{featured.excerpt}</p><button className="btn" onClick={()=>openPost(featured)}>Yazıyı oku <ArrowRight/></button></div></section>
-    <section className="blog-library"><header><div><small>GÜNCEL İÇERİKLER</small><h2>Voleybol blog yazıları</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Blogda ara" aria-label="Blog yazılarında ara"/></label></header><nav className="blog-categories" aria-label="Blog kategorileri">{blogCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</nav>{filteredPosts.length?<div className="blog-grid">{filteredPosts.map((post)=><article className="blog-card" key={post.id}><div><img loading="lazy" src={post.image} alt={`${post.title} konulu gerçekçi voleybol fotoğrafı`}/><span>{post.category}</span></div><section><small><CalendarDays/> {post.date}<i>•</i><Clock/> {post.read}</small><h3>{post.title}</h3><p>{post.excerpt}</p><button onClick={()=>openPost(post)}>Devamını oku <ArrowRight/></button></section></article>)}</div>:<div className="blog-empty"><Search/><h3>Yazı bulunamadı</h3><p>Arama kelimesini değiştir veya başka bir kategori seç.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
+    <section className="blog-featured"><div className="blog-featured-image"><img src={featured.image} alt={`${featured.title} kapak görseli`}/><span>ÖNE ÇIKAN YAZI</span><button className="blog-instagram-pin" onClick={()=>exportPost(featured)} disabled={exportingPostId===featured.id} aria-label={`${featured.title} Instagram görselini indir`} title="Instagram 4:5 PNG indir"><Download/></button></div><div><small>{featured.category} • {featured.read} okuma</small><h2>{featured.title}</h2><p>{featured.excerpt}</p><button className="btn" onClick={()=>openPost(featured)}>Yazıyı oku <ArrowRight/></button></div></section>
+    <section className="blog-library"><header><div><small>GÜNCEL İÇERİKLER</small><h2>Voleybol blog yazıları</h2></div><label><Search/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Blogda ara" aria-label="Blog yazılarında ara"/></label></header>{exportNotice&&<p className="blog-export-notice" role="status">{exportNotice}</p>}<nav className="blog-categories" aria-label="Blog kategorileri">{blogCategories.map((item)=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</nav>{filteredPosts.length?<div className="blog-grid">{filteredPosts.map((post)=><article className="blog-card" key={post.id}><div><img loading="lazy" src={post.image} alt={`${post.title} konulu gerçekçi voleybol fotoğrafı`}/><span>{post.category}</span><button className="blog-instagram-pin" onClick={()=>exportPost(post)} disabled={exportingPostId===post.id} aria-label={`${post.title} Instagram görselini indir`} title="Instagram 4:5 PNG indir"><Download/></button></div><section><small><CalendarDays/> {post.date}<i>•</i><Clock/> {post.read}</small><h3>{post.title}</h3><p>{post.excerpt}</p><button onClick={()=>openPost(post)}>Devamını oku <ArrowRight/></button></section></article>)}</div>:<div className="blog-empty"><Search/><h3>Yazı bulunamadı</h3><p>Arama kelimesini değiştir veya başka bir kategori seç.</p><button onClick={()=>{setQuery("");setCategory("Tümü")}}>Filtreleri temizle</button></div>}</section>
   </div>;
 }
 
@@ -7087,6 +7227,7 @@ function MobileNav({ page, go, isAuthenticated, isAthlete }) {
     ["junior-referee", Flag, "Junior Hakem"],
     ["blog", Newspaper, "Blog"],
     ["notebooklm-ai", MessageCircle, "Voleybol AI"],
+    ["chat", MessageCircle, "Sohbet"],
     ["demo", Play, "Demo"],
     ["pricing", BadgeTurkishLira, "Ücretler"],
     ["register", UserPlus, "Kayıt"],
