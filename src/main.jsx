@@ -71,6 +71,7 @@ import "./bulletins.css";
 import "./ready365-library.css";
 import "./quality-fixes.css";
 import "./home-modern.css";
+import "./home-stats.css";
 import "./page-titles-modern.css";
 import "./contact-messenger.css";
 import "./notebooklm-workspace.css";
@@ -619,10 +620,11 @@ function App() {
       if (active || disposed) return;
       active = true;
       try {
-        const [schoolRows, athleteRows, teamRows] = await Promise.all([
+        const [schoolRows, athleteRows, teamRows, trainerRows] = await Promise.all([
           fetchRegistrationSheet("Okul Kayitlari"),
           fetchRegistrationSheet("Sporcu Kayitlari"),
           fetchRegistrationSheet("Takimlar").catch(() => null),
+          fetchRegistrationSheet("Antrenor Kayitlari").catch(() => null),
         ]);
         if (disposed) return;
         const synced = syncRegistrationStorage(schoolRows, athleteRows);
@@ -639,6 +641,7 @@ function App() {
           return null;
         });
         if (Array.isArray(teamRows)) syncTeamStorage(teamRows);
+        if (Array.isArray(trainerRows)) syncTrainerStorage(trainerRows);
         setRegistrationRevision((value) => value + 1);
       } catch (error) {
         console.warn("Kayıt bilgileri yenilenemedi:", error);
@@ -1547,6 +1550,14 @@ function HomePage({ go, isAuthenticated }) {
   const moveReferenceDrag = (event) => { const area=referenceScrollRef.current; if(!area||!referenceDragRef.current.active)return; area.scrollLeft=referenceDragRef.current.scrollLeft-(event.clientX-referenceDragRef.current.startX); };
   const stopReferenceDrag = () => { referenceDragRef.current.active=false; referenceScrollRef.current?.classList.remove("dragging"); };
   const athleteCount = readAthletes().length;
+  const trainerCount = new Set(readTrainers()
+    .filter((trainer) => String(trainer.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF")
+    .map((trainer) => trainer.id || `${trainer.schoolName || ""}:${trainer.name || ""}`)
+    .filter(Boolean)).size;
+  const teamCount = new Set(readTeams()
+    .filter((team) => String(team.status || "AKTİF").toLocaleUpperCase("tr") === "AKTİF")
+    .map((team) => team.id || `${team.schoolId || team.schoolName || ""}:${team.name || ""}`)
+    .filter(Boolean)).size;
   const lessonCount = courses.reduce((total, course) => total + Number(course[7] || 0), 0);
   const quickLinks = isAuthenticated
     ? [[BookOpen,"Dersler","courses"],[Video,"Videolar","videos"],[ClipboardCheck,"Sınavlar","exams"]]
@@ -1572,7 +1583,7 @@ function HomePage({ go, isAuthenticated }) {
           </div>
         </section>
         <section className="home-modern-data" aria-label="Platform bilgileri">
-          {[[School,schoolCount,"Spor Okulu"],[Users,athleteCount,"Kayıtlı Sporcu"],[Video,totalVideoCount,"Toplam Video"],[BookOpen,lessonCount,"Ders Bölümü"]].map(([Icon,value,label])=><span key={label}><Icon/><b>{value}</b><small>{label}</small></span>)}
+          {[[School,schoolCount,"Spor Okulu"],[Users,athleteCount,"Kayıtlı Sporcu"],[GraduationCap,trainerCount,"Kayıtlı Antrenör"],[UserRound,teamCount,"Kayıtlı Takım"],[Video,totalVideoCount,"Toplam Video"],[BookOpen,lessonCount,"Ders Bölümü"]].map(([Icon,value,label])=><span key={label}><Icon/><b>{value}</b><small>{label}</small></span>)}
         </section>
         <section className="home-modern-rail">
           {referenceSchools.length>0&&<div className="home-reference-strip" aria-label="Kayıtlı spor okulları"><small>REFERANSLAR · KAYITLI SPOR OKULLARI</small><div className="home-reference-window" ref={referenceScrollRef} onPointerDown={startReferenceDrag} onPointerMove={moveReferenceDrag} onPointerUp={stopReferenceDrag} onPointerCancel={stopReferenceDrag} onPointerLeave={stopReferenceDrag}><div className="home-reference-track">{referenceSchools.map((school)=><span key={school.id||school.schoolName} title={school.schoolName}><TransparentTeamLogo src={referenceLogoPng(school.teamLogo)} name={school.schoolName}/></span>)}</div></div></div>}
