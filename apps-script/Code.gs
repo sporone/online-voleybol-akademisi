@@ -10,6 +10,7 @@ const SCHOOL_HEADERS=['Kayıt ID','Okul Adı','Telefon','6 Haneli Kod','Onay Dur
 const TEAM_HEADERS=['Takım ID','Okul Kayıt ID','Okul Adı','Takım Adı','6 Haneli Takım Kodu','Durum','Sıra','Oluşturma Tarihi','Güncelleme Tarihi'];
 const ATHLETE_HEADERS=['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi','Takım ID','Takım Adı','Takım Kodu'];
 const TRAINER_HEADERS=['Antrenör ID','Okul Kayıt ID','Okul Adı','Antrenör Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli','Takım ID','Takım Adı','Takım Kodu'];
+const ANNUAL_PLAN_HEADERS=['Etkinlik ID','Okul Kayıt ID','Okul Adı','Etkinlik Türü','Başlık','Tarih','Bitiş Tarihi','Saat','Konum','Açıklama','Oluşturan','Oluşturma Tarihi','Güncelleme Tarihi','Takım','Antrenör'];
 const CHAT_HEADERS=['Mesaj ID','Kanal','Gönderen Türü','Gönderen ID','Gönderen Adı','Okul ID','Okul Adı','Profil Kodu','Takım Logosu','Mesaj','Gönderim Tarihi','Silinme Tarihi'];
 const CHAT_TTL_MS=24*60*60*1000;
 function doGet(e){
@@ -74,6 +75,8 @@ function doPost(e){
     if(body.action==='listChatMessages') return listChatMessages_(body);
     if(body.action==='sendChatMessage') return sendChatMessage_(body);
     if(body.action==='saveExamAttempt') return saveExamAttempt_(body);
+    if(body.action==='listAnnualPlan') return listAnnualPlan_(body);
+    if(body.action==='saveAnnualPlan') return saveAnnualPlan_(body);
     if(body.action==='trackBlogView') return trackBlogView_(body);
     if(body.action==='adminLogin') return adminLogin_(body);
     if(body.action==='adminStats') return adminStats_(body);
@@ -111,6 +114,7 @@ function registerSchool_(body){
     if(duplicate) return json_({ok:false,error:'Bu okul adı daha önce kaydedilmiş. Farklı bir okul adı girin.'});
     const code=uniqueSchoolCode_(sh), trainerCode=uniqueTrainerCode_(sh), id='OKL-'+Utilities.getUuid().slice(0,8).toUpperCase();
     sh.appendRow([id,schoolName,phone,code,'BEKLİYOR',new Date(),'','','','','',trainerCode]);
+    getSchoolPlanSheet_(schoolName,id);
     clearProfileLookupCache_();
     return json_({ok:true,id:id,code:code,status:'BEKLİYOR'});
   }finally{lock.releaseLock()}
@@ -409,6 +413,54 @@ function logoutProfile_(body){
   const token=clean_(body.token,100);
   if(token) CacheService.getScriptCache().remove('profile:'+token);
   return json_({ok:true});
+}
+
+function schoolPlanSheetName_(schoolName,schoolId){
+  const safe=clean_(schoolName,68).replace(/[\\\/?*\[\]:]/g,' ').replace(/\s+/g,' ').trim()||'Okul';
+  const suffix=String(schoolId||'').replace(/^OKL-/,'').slice(-6);
+  return ('PLAN - '+safe+(suffix?' - '+suffix:'')).slice(0,99);
+}
+function getSchoolPlanSheet_(schoolName,schoolId){
+  return getOrCreate_(schoolPlanSheetName_(schoolName,schoolId),ANNUAL_PLAN_HEADERS);
+}
+function annualPlanItems_(account){
+  const sh=getSchoolPlanSheet_(account.schoolName,account.schoolId);
+  if(sh.getLastRow()<2) return [];
+  return sh.getRange(2,1,sh.getLastRow()-1,ANNUAL_PLAN_HEADERS.length).getDisplayValues()
+    .filter(row=>row[0]&&row[1]===account.schoolId)
+    .map(row=>({id:row[0],schoolId:row[1],schoolName:row[2],type:row[3],title:row[4],date:row[5],time:row[7],location:row[8],createdBy:row[10],createdAt:row[11],updatedAt:row[12],team:row[13],trainer:row[14]}))
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time).localeCompare(String(b.time)));
+}
+function listAnnualPlan_(body){
+  const account=requireProfile_(body.token);
+  return json_({ok:true,editable:account.type==='club',items:annualPlanItems_(account)});
+}
+function saveAnnualPlan_(body){
+  const account=requireProfile_(body.token);
+  if(account.type!=='club') return json_({ok:false,error:'Yıllık planı yalnızca spor okulu yöneticisi düzenleyebilir.'});
+  const operation=String(body.operation||'save').toLowerCase();
+  const id=clean_(body.id,50);
+  const sh=getSchoolPlanSheet_(account.schoolName,account.schoolId);
+  const rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,ANNUAL_PLAN_HEADERS.length).getDisplayValues():[];
+  const index=rows.findIndex(row=>row[0]===id&&row[1]===account.schoolId);
+  if(operation==='delete'){
+    if(index<0) return json_({ok:false,error:'Etkinlik bulunamadı.'});
+    sh.deleteRow(index+2);
+    return json_({ok:true,items:annualPlanItems_(account)});
+  }
+  const type=clean_(body.type,30), title=clean_(body.title,120);
+  const dates=(Array.isArray(body.dates)?body.dates:[body.date||body.startDate]).map(value=>clean_(value,10)).filter(Boolean).slice(0,1000);
+  if(!['Maç','Özel Maç','Resmi Maç','Antrenman','Yaz Kampı','Kış Kampı','Diğer'].includes(type)||title.length<2||!dates.length||dates.some(date=>!/^\d{4}-\d{2}-\d{2}$/.test(date))) return json_({ok:false,error:'Etkinlik türü, başlık veya tarih bilgileri geçersiz.'});
+  const now=new Date(), time=clean_(body.time,5), location=clean_(body.location,100), team=clean_(body.team,100), trainer=clean_(body.trainer,100);
+  if(index>=0){
+    const value=[id,account.schoolId,account.schoolName,type,title,dates[0],'',time,location,'',account.name||account.schoolName,rows[index][11]||now,now,team,trainer];
+    sh.getRange(index+2,1,1,ANNUAL_PLAN_HEADERS.length).setValues([value]);
+  }else{
+    const existing=new Set(rows.filter(row=>row[1]===account.schoolId).map(row=>[row[3],row[4],row[5],row[7],row[13],row[14]].join('|')));
+    const values=dates.filter(date=>!existing.has([type,title,date,time,team,trainer].join('|'))).map(date=>['PLN-'+Utilities.getUuid().slice(0,10).toUpperCase(),account.schoolId,account.schoolName,type,title,date,'',time,location,'',account.name||account.schoolName,now,now,team,trainer]);
+    if(values.length) sh.getRange(sh.getLastRow()+1,1,values.length,ANNUAL_PLAN_HEADERS.length).setValues(values);
+  }
+  return json_({ok:true,count:dates.length,items:annualPlanItems_(account)});
 }
 function chatMessageObject_(row){
   const created=row[10] instanceof Date?row[10]:new Date(row[10]);
