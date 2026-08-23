@@ -11,6 +11,13 @@ const TEAM_HEADERS=['Takım ID','Okul Kayıt ID','Okul Adı','Takım Adı','6 Ha
 const ATHLETE_HEADERS=['Sporcu ID','Okul Kayıt ID','Okul Adı','Okul Kodu','Sporcu Adı','Profil Kodu','Profil Görseli','Takım Logosu (Manuel)','Çevrim İçi','Son Görülme','Kayıt Tarihi','Takım ID','Takım Adı','Takım Kodu'];
 const TRAINER_HEADERS=['Antrenör ID','Okul Kayıt ID','Okul Adı','Antrenör Kodu','Antrenör Adı','Görev','Takım Logosu (Manuel)','Durum','Kayıt Tarihi','Profil Kodu','Profil Görseli','Takım ID','Takım Adı','Takım Kodu'];
 const ANNUAL_PLAN_HEADERS=['Etkinlik ID','Okul Kayıt ID','Okul Adı','Etkinlik Türü','Başlık','Tarih','Bitiş Tarihi','Saat','Konum','Açıklama','Oluşturan','Oluşturma Tarihi','Güncelleme Tarihi','Takım','Antrenör'];
+const SCHOOL_PLAN_FILE_IDS={
+  'OKL-05145285':'1X5oV2-VwwuQ1ztY71F63p3S_hL8CuA6YMC-u7NeGeGo',
+  'OKL-8A7D41A8':'1niAo8jTakqFqayZChP3ie8aW-o_Bx4a-ENGmjXmMEcw',
+  'OKL-55D9F9BA':'1tkCCFcfz4X6z-v8K9SIeNLLcWhlLPQjDkxHIvdci788',
+  'OKL-BFEE7286':'1d4bQ6LvakiTbkXRTE7BgTNBMFFixuuzs4lvHmDW3eBA',
+  'OKL-1D8586CD':'1_ol41cejqdxAgsppDgyiBdINhlP8-7S0O1bAq39vyRc'
+};
 const CHAT_HEADERS=['Mesaj ID','Kanal','Gönderen Türü','Gönderen ID','Gönderen Adı','Okul ID','Okul Adı','Profil Kodu','Takım Logosu','Mesaj','Gönderim Tarihi','Silinme Tarihi'];
 const CHAT_TTL_MS=24*60*60*1000;
 function doGet(e){
@@ -64,6 +71,7 @@ function doPost(e){
     if(body.action==='registerSchool') return registerSchool_(body);
     if(body.action==='listClubTeams') return listClubTeams_(body);
     if(body.action==='manageClubTeam') return manageClubTeam_(body);
+    if(body.action==='renewTrainerCode') return renewTrainerCode_(body);
     if(body.action==='assignTrainerTeams') return assignTrainerTeams_(body);
     if(body.action==='registerAthlete') return registerAthlete_(body);
     if(body.action==='registerTrainer') return registerTrainer_(body);
@@ -415,19 +423,51 @@ function logoutProfile_(body){
   return json_({ok:true});
 }
 
+function renewTrainerCode_(body){
+  const account=requireProfile_(body.token);
+  if(account.type!=='club') return json_({ok:false,error:'Antrenör kodunu yalnızca kulüp yöneticisi yenileyebilir.'});
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return json_({ok:false,error:'Kod servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const sh=getOrCreate_('Okul Kayitlari',SCHOOL_HEADERS), school=schoolById_(account.schoolId);
+    if(!school) return json_({ok:false,error:'Kulüp kaydı bulunamadı.'});
+    const code=uniqueTrainerCode_(sh), cell=sh.getRange(2,1,sh.getLastRow()-1,1).createTextFinder(String(account.schoolId)).matchEntireCell(true).findNext();
+    if(!cell) return json_({ok:false,error:'Kulüp satırı bulunamadı.'});
+    sh.getRange(cell.getRow(),12).setValue(code);
+    account.trainerCode=code;
+    CacheService.getScriptCache().put('profile:'+clean_(body.token,100),JSON.stringify(account),PROFILE_SESSION_SECONDS);
+    clearProfileLookupCache_();
+    return json_({ok:true,trainerCode:code,account:account});
+  }finally{lock.releaseLock()}
+}
+
 function schoolPlanSheetName_(schoolName,schoolId){
   const safe=clean_(schoolName,68).replace(/[\\\/?*\[\]:]/g,' ').replace(/\s+/g,' ').trim()||'Okul';
   const suffix=String(schoolId||'').replace(/^OKL-/,'').slice(-6);
   return ('PLAN - '+safe+(suffix?' - '+suffix:'')).slice(0,99);
 }
 function getSchoolPlanSheet_(schoolName,schoolId){
-  return getOrCreate_(schoolPlanSheetName_(schoolName,schoolId),ANNUAL_PLAN_HEADERS);
+  const properties=PropertiesService.getScriptProperties(),savedMap=JSON.parse(properties.getProperty('SCHOOL_PLAN_FILE_IDS')||'{}');
+  let fileId=SCHOOL_PLAN_FILE_IDS[String(schoolId||'')]||savedMap[String(schoolId||'')],ss;
+  if(fileId){ss=SpreadsheetApp.openById(fileId)}
+  else{
+    ss=SpreadsheetApp.create('PLANLAMA - '+clean_(schoolName,120));
+    fileId=ss.getId();
+    const map=savedMap;
+    map[String(schoolId||'')]=fileId;properties.setProperty('SCHOOL_PLAN_FILE_IDS',JSON.stringify(map));
+    const indexSheet=getOrCreate_('Data Dosyalari',['Veri Türü','Okul Kayıt ID','Okul Adı','Dosya Adı','Google Drive Bağlantısı','Durum']);
+    indexSheet.appendRow(['Yıllık Plan',schoolId,schoolName,'PLANLAMA - '+schoolName,ss.getUrl(),'AKTİF']);
+  }
+  let sheet=ss.getSheetByName('Yıllık Plan')||ss.getSheets()[0];
+  sheet.setName('Yıllık Plan');
+  if(sheet.getLastRow()===0)sheet.appendRow(ANNUAL_PLAN_HEADERS);
+  return sheet;
 }
 function annualPlanItems_(account){
   const sh=getSchoolPlanSheet_(account.schoolName,account.schoolId);
   if(sh.getLastRow()<2) return [];
   return sh.getRange(2,1,sh.getLastRow()-1,ANNUAL_PLAN_HEADERS.length).getDisplayValues()
-    .filter(row=>row[0]&&row[1]===account.schoolId)
+    .filter(row=>row[0])
     .map(row=>({id:row[0],schoolId:row[1],schoolName:row[2],type:row[3],title:row[4],date:row[5],time:row[7],location:row[8],createdBy:row[10],createdAt:row[11],updatedAt:row[12],team:row[13],trainer:row[14]}))
     .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time).localeCompare(String(b.time)));
 }

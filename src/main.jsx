@@ -1046,7 +1046,11 @@ function SearchableSchoolPicker({ value, onChange, options, logoFor, label="Kul�
 }
 async function sendRegistration(payload) {
   if (!registrationApi) throw new Error("Kayıt servisi yapılandırılmamış. İşlem kaydedilmedi.");
-  const response = await fetch(registrationApi, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+  const controller=new AbortController(),timeout=window.setTimeout(()=>controller.abort(),20000);
+  let response;
+  try{response=await fetch(registrationApi,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload),signal:controller.signal})}
+  catch(error){if(error.name==="AbortError")throw new Error("Sunucu yanıt vermedi. Lütfen tekrar deneyin.");throw error}
+  finally{window.clearTimeout(timeout)}
   if (!response.ok) throw new Error("Kayıt servisine ulaşılamadı.");
   const result = await response.json();
   if (result?.ok === false) throw new Error(result.error || "Kayıt işlemi tamamlanamadı.");
@@ -6709,51 +6713,68 @@ function ClubTeamManager({ school, members, trainers, onTrainersChange }) {
 
 function ClubTrainerInvite({ school }) {
   const [copied, setCopied] = useState(false);
-  const trainerCode = String(school?.trainerCode || "").replace(/\D/g, "");
+  const [trainerCode,setTrainerCode]=useState(()=>String(school?.trainerCode || "").replace(/\D/g, ""));
+  const [renewing,setRenewing]=useState(false);
+  const [codeNotice,setCodeNotice]=useState("");
   const message = `${school.schoolName} antrenör kayıt daveti\n\nKulüp: ${school.schoolName}\n6 haneli antrenör kodu: ${trainerCode}\n\nKayıt sayfasında Antrenör kaydı bölümünü açın, kulübümüzü seçin ve bu antrenör kodunu girerek profilinizi oluşturun. Kayıt sırasında takım seçmeniz gerekmez. Takım görevlendirmeniz kayıt tamamlandıktan sonra kulüp yöneticisi tarafından yapılacaktır. Sporcu takım kodlarını kullanmayın.\n\nKayıt: ${SITE_URL}${routeFor("register")}\nGiriş: ${SITE_URL}${routeFor("profiles")}`;
   const copyMessage = async () => {
     await navigator.clipboard.writeText(message);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
-  if (!/^\d{6}$/.test(trainerCode)) return <section className="club-code-share trainer-code-share"><div className="club-code-share-heading"><span className="club-code-share-icon"><GraduationCap/></span><span><small>ANTRENÖR DAVETİ</small><h2>Ayrı antrenör kodu</h2><p>Kodu oluşturmak için kulüp hesabından çıkış yapıp yeniden giriş yapın.</p></span></div></section>;
-  return <section className="club-code-share trainer-code-share"><div className="club-code-share-heading"><span className="club-code-share-icon"><GraduationCap/></span><span><small>ANTRENÖR DAVETİ</small><h2>Antrenör kayıt kodunu paylaş</h2><p>Bu kod kulüp giriş kodundan ve sporcu takım kodlarından tamamen ayrıdır.</p></span></div><div className="club-code-ticket trainer-code-ticket"><div><small>KULÜP</small><b>{school.schoolName}</b></div><div><small>6 HANELİ ANTRENÖR KODU</small><strong>{trainerCode}</strong></div></div><div className="club-code-share-actions"><button className="btn club-whatsapp-button" type="button" onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(message)}`,"_blank","noopener,noreferrer")}><MessageCircle/> WhatsApp ile paylaş</button><button className="btn ghost" type="button" onClick={copyMessage}><Copy/> {copied?"Mesaj kopyalandı":"Mesajı kopyala"}</button></div><p className="club-code-share-note"><ShieldCheck/> Antrenör kayıt sırasında takım seçmez; takım atamasını kulüp yöneticisi profil alanından yapar.</p></section>;
+  const renewCode=async()=>{setRenewing(true);setCodeNotice("");try{const result=await sendRegistration({action:"renewTrainerCode",token:sessionStorage.getItem(PROFILE_TOKEN_KEY)});setTrainerCode(result.trainerCode);setCodeNotice("Yeni antrenör kodu oluşturuldu.")}catch(error){setCodeNotice(error.message)}finally{setRenewing(false)}};
+  const hasCode=/^\d{6}$/.test(trainerCode);
+  return <section className="club-code-share trainer-code-share">
+    <div className="club-code-share-heading"><span className="club-code-share-icon"><GraduationCap/></span><span><small>ANTRENÖR DAVETİ</small><h2>Antrenör kayıt kodunu paylaş</h2><p>Bu kod kulüp giriş kodundan ve sporcu takım kodlarından tamamen ayrıdır.</p></span></div>
+    {hasCode&&<div className="club-code-ticket trainer-code-ticket"><div><small>KULÜP</small><b>{school.schoolName}</b></div><div><small>6 HANELİ ANTRENÖR KODU</small><strong>{trainerCode}</strong></div></div>}
+    <div className="club-code-share-actions">
+      {hasCode&&<button className="btn club-whatsapp-button" type="button" onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(message)}`,"_blank","noopener,noreferrer")}><MessageCircle/> WhatsApp ile paylaş</button>}
+      {hasCode&&<button className="btn ghost" type="button" onClick={copyMessage}><Copy/> {copied?"Mesaj kopyalandı":"Mesajı kopyala"}</button>}
+      <button className="btn ghost trainer-code-renew" type="button" disabled={renewing} onClick={renewCode}><KeyRound/> {renewing?"Oluşturuluyor…":"Yeni kod"}</button>
+    </div>
+    {codeNotice&&<p className="trainer-code-notice" role="status">{codeNotice}</p>}
+    <p className="club-code-share-note"><ShieldCheck/> Yeni kod yalnızca bundan sonraki antrenör kayıtlarında kullanılır.</p>
+  </section>;
 }
 
 const annualPlanTypes = ["Özel Maç","Resmi Maç","Antrenman","Yaz Kampı","Kış Kampı","Diğer"];
 const annualPlanTypeIndex = type => type==="Maç"?0:annualPlanTypes.indexOf(type);
 const annualPlanTypeColors = {"Maç":"#e85d22","Özel Maç":"#e85d22","Resmi Maç":"#d9364f","Antrenman":"#159269","Yaz Kampı":"#e7a21a","Kış Kampı":"#3188c9","Diğer":"#7d63c8"};
-const normalizeAnnualPlanItems = items => (items||[]).map(item=>{const match=String(item.location||"").match(/^\[\[(Özel Maç|Resmi Maç)\]\]\s*/);return match?{...item,type:match[1],location:String(item.location).replace(match[0],"")} : item});
+const normalizeAnnualPlanDate = value => {const raw=String(value||"").trim(),iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})/),local=raw.match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);return iso?`${iso[1]}-${iso[2]}-${iso[3]}`:local?`${local[3]}-${local[2]}-${local[1]}`:raw};
+const normalizeAnnualPlanItems = items => (items||[]).map(item=>{const match=String(item.location||"").match(/^\[\[(Özel Maç|Resmi Maç)\]\]\s*/),normalized={...item,date:normalizeAnnualPlanDate(item.date)};return match?{...normalized,type:match[1],location:String(item.location).replace(match[0],"")} : normalized});
 const annualPlanWeekdays = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
 const annualPlanMonths = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
-const annualPlanMinDate = "2026-09-01";
+const annualPlanMinDate = "2025-09-01";
 const annualPlanMaxYear = 2029;
 const emptyAnnualPlanForm = { id:"", type:"Antrenman", title:"", date:"", time:"", location:"", team:"", trainer:"", recurring:false, weekdays:[], months:[], recurringYears:[] };
 const localDateKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+const turkeyTodayKey = () => {const parts=new Intl.DateTimeFormat("tr-TR",{timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()),read=type=>parts.find(part=>part.type===type)?.value;return `${read("year")}-${read("month")}-${read("day")}`};
 function AnnualPlanPanel({ account, editable=false, teams=[], trainers=[] }) {
-  const [items,setItems]=useState([]);
+  const planCacheKey=`annualPlan:${account?.schoolId||account?.id||"school"}`;
+  const [items,setItems]=useState(()=>{try{return normalizeAnnualPlanItems(JSON.parse(localStorage.getItem(planCacheKey)||"[]"))}catch{return []}});
   const [form,setForm]=useState(emptyAnnualPlanForm);
   const [manualTeam,setManualTeam]=useState("");
   const [manualTrainer,setManualTrainer]=useState("");
   const [notice,setNotice]=useState("");
-  const [busy,setBusy]=useState(true);
+  const [busy,setBusy]=useState(false);
   const token=sessionStorage.getItem(PROFILE_TOKEN_KEY);
-  const currentYear=new Date().getFullYear();
+  const todayInTurkey=turkeyTodayKey();
+  const currentYear=Number(todayInTurkey.slice(0,4));
   const [year,setYear]=useState(currentYear);
-  const [calendarMonth,setCalendarMonth]=useState(currentYear===2026?8:new Date().getMonth());
+  const [calendarMonth,setCalendarMonth]=useState(Number(todayInTurkey.slice(5,7))-1);
   const [selectedDate,setSelectedDate]=useState("");
   const [plannerView,setPlannerView]=useState("week");
   const [reportMode,setReportMode]=useState("week");
   const [reportYear,setReportYear]=useState(currentYear);
-  const [reportMonth,setReportMonth]=useState(currentYear===2026?9:new Date().getMonth()+1);
+  const [reportMonth,setReportMonth]=useState(Number(todayInTurkey.slice(5,7)));
   const [reportWeek,setReportWeek]=useState(1);
-  const [weekStart,setWeekStart]=useState(()=>{const today=new Date(),day=(today.getDay()+6)%7,monday=new Date(today);monday.setDate(today.getDate()-day);return localDateKey(monday)});
-  const years=useMemo(()=>Array.from({length:annualPlanMaxYear-2026+1},(_,index)=>2026+index),[]);
-  const visibleItems=items.filter(item=>Number(String(item.date).slice(0,4))===year);
+  const [weekStart,setWeekStart]=useState(()=>{const today=new Date(`${todayInTurkey}T12:00:00`),day=(today.getDay()+6)%7,monday=new Date(today);monday.setDate(today.getDate()-day);return localDateKey(monday)});
+  const years=useMemo(()=>Array.from({length:annualPlanMaxYear-2025+1},(_,index)=>2025+index),[]);
+  const visibleItems=items.filter(item=>item.date>=annualPlanMinDate&&Number(String(item.date).slice(0,4))===year);
   useEffect(()=>{
     if(!token){setBusy(false);return;}
     let disposed=false;
-    sendRegistration({action:"listAnnualPlan",token}).then(result=>{if(!disposed)setItems(normalizeAnnualPlanItems(result.items))}).catch(error=>{if(!disposed)setNotice(error.message)}).finally(()=>{if(!disposed)setBusy(false)});
+    sendRegistration({action:"listAnnualPlan",token}).then(result=>{if(disposed)return;const loaded=normalizeAnnualPlanItems(result.items).filter(item=>item.date>=annualPlanMinDate);if(loaded.length||!items.length){setItems(loaded);localStorage.setItem(planCacheKey,JSON.stringify(loaded))}}).catch(error=>{if(!disposed)setNotice(error.message)}).finally(()=>{if(!disposed)setBusy(false)});
     return()=>{disposed=true};
   },[account?.schoolId,token]);
   const update=(field,value)=>{
@@ -6827,10 +6848,20 @@ function AnnualPlanPanel({ account, editable=false, teams=[], trainers=[] }) {
   const itemsByDate=useMemo(()=>items.reduce((map,item)=>{(map[item.date]||(map[item.date]=[])).push(item);return map},{}),[items]);
   const selectedItems=selectedDate?(itemsByDate[selectedDate]||[]):[];
   const agendaRows=Array.from({length:daysInMonth},(_,index)=>index+1).flatMap(day=>{const key=dateKey(day),dayItems=itemsByDate[key]||[];return dayItems.length?dayItems.map((item,itemIndex)=>({key:`${key}-${item.id}`,date:key,day,item,itemIndex})): [{key,date:key,day,item:null,itemIndex:0}]});
-  const changeMonth=(direction)=>{let next=calendarMonth+direction,nextYear=year;if(next<0){next=11;nextYear-=1}if(next>11){next=0;nextYear+=1}if(nextYear<2026||(nextYear===2026&&next<8))return;if(nextYear>annualPlanMaxYear)return;setCalendarMonth(next);setYear(nextYear);setSelectedDate("")};
+  const changeMonth=(direction)=>{let next=calendarMonth+direction,nextYear=year;if(next<0){next=11;nextYear-=1}if(next>11){next=0;nextYear+=1}if(nextYear<2025||(nextYear===2025&&next<8))return;if(nextYear>annualPlanMaxYear)return;setCalendarMonth(next);setYear(nextYear);setSelectedDate("")};
   const weekDates=Array.from({length:7},(_,index)=>{const date=new Date(`${weekStart}T12:00:00`);date.setDate(date.getDate()+index);return localDateKey(date)});
-  const changePlanner=(direction)=>{if(plannerView==="month"){changeMonth(direction);return}const date=new Date(`${weekStart}T12:00:00`);date.setDate(date.getDate()+direction*7);setWeekStart(localDateKey(date));setYear(date.getFullYear());setCalendarMonth(date.getMonth());setSelectedDate("")};
-  const plannerToday=()=>{const now=new Date(),today=localDateKey(now)<annualPlanMinDate?new Date(`${annualPlanMinDate}T12:00:00`):now,offset=(today.getDay()+6)%7,monday=new Date(today);monday.setDate(today.getDate()-offset);setWeekStart(localDateKey(monday));setYear(today.getFullYear());setCalendarMonth(today.getMonth());setSelectedDate(localDateKey(today))};
+  const plannerTitle=(()=>{
+    if(plannerView==="month")return `${annualPlanMonths[calendarMonth]} ${year}`;
+    const first=new Date(`${weekDates[0]}T12:00:00`),last=new Date(`${weekDates[6]}T12:00:00`);
+    if(first.getMonth()===last.getMonth()&&first.getFullYear()===last.getFullYear())return `${annualPlanMonths[first.getMonth()]} ${first.getFullYear()}`;
+    if(first.getFullYear()===last.getFullYear())return `${annualPlanMonths[first.getMonth()]} - ${annualPlanMonths[last.getMonth()]} ${first.getFullYear()}`;
+    return `${annualPlanMonths[first.getMonth()]} ${first.getFullYear()} - ${annualPlanMonths[last.getMonth()]} ${last.getFullYear()}`;
+  })();
+  const nextPlanItem=[...items].filter(item=>item.date>=todayInTurkey).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||"").localeCompare(String(b.time||"")))[0];
+  useEffect(()=>{const planner=document.querySelector(".annual-planner"),toolbar=planner?.querySelector(".planner-toolbar"),heading=toolbar?.querySelector(":scope>h3");if(heading)heading.textContent=plannerTitle;if(!planner)return;let footer=planner.querySelector(":scope>.planner-key-footer");if(!footer){footer=document.createElement("footer");footer.className="planner-key-footer";planner.append(footer)}let key=footer.querySelector(".planner-type-key");if(!key){key=document.createElement("div");key.className="planner-type-key";annualPlanTypes.forEach((type,index)=>{const item=document.createElement("span"),dot=document.createElement("i");dot.className=`type-${index}`;item.append(dot,document.createTextNode(type));key.append(item)});footer.append(key)}let count=footer.querySelector(".planner-item-count");if(!count){count=document.createElement("b");count.className="planner-item-count";footer.append(count)}count.textContent=`${items.length} etkinlik`},[plannerTitle,items.length]);
+  useEffect(()=>{const toolbar=document.querySelector(".annual-planner .planner-toolbar");if(!toolbar||!nextPlanItem)return;const button=document.createElement("button");button.type="button";button.className="planner-next-event";button.textContent=`Sonraki etkinlik · ${formatDate(nextPlanItem.date)}`;button.onclick=()=>{const date=new Date(`${nextPlanItem.date}T12:00:00`),offset=(date.getDay()+6)%7,monday=new Date(date);monday.setDate(date.getDate()-offset);setPlannerView("week");setWeekStart(localDateKey(monday));setYear(date.getFullYear());setCalendarMonth(date.getMonth());setSelectedDate(nextPlanItem.date)};toolbar.append(button);return()=>button.remove()},[nextPlanItem?.id,nextPlanItem?.date]);
+  const changePlanner=(direction)=>{if(plannerView==="month"){changeMonth(direction);return}const date=new Date(`${weekStart}T12:00:00`);date.setDate(date.getDate()+direction*7);if(localDateKey(date)<"2025-09-01")return;setWeekStart(localDateKey(date));setYear(date.getFullYear());setCalendarMonth(date.getMonth());setSelectedDate("")};
+  const plannerToday=()=>{const turkeyKey=turkeyTodayKey(),safeKey=turkeyKey<annualPlanMinDate?annualPlanMinDate:turkeyKey,today=new Date(`${safeKey}T12:00:00`),offset=(today.getDay()+6)%7,monday=new Date(today);monday.setDate(today.getDate()-offset);setWeekStart(localDateKey(monday));setYear(today.getFullYear());setCalendarMonth(today.getMonth());setSelectedDate(safeKey)};
   return <section className="annual-plan-panel">
     <header className="annual-plan-heading"><span className="annual-plan-icon"><CalendarDays/></span><span><small>OKUL YILLIK PLANI</small><h2>{account?.schoolName||account?.name} etkinlik takvimi</h2><p>{editable?"Maç, antrenman, kamp ve diğer etkinlikleri ekleyip güncelleyin.":"Spor okulunuzun yönetici tarafından yayınlanan yıllık planını görüntüleyin."}</p></span><label>Yıl<select value={year} onChange={event=>setYear(Number(event.target.value))}>{years.map(item=><option key={item}>{item}</option>)}</select></label></header>
     {editable&&<form className="annual-plan-form" onSubmit={save}><div className="annual-plan-form-title"><b>{form.id?"Etkinliği güncelle":"Yeni etkinlik ekle"}</b>{form.id&&<button type="button" onClick={reset}><X/> Vazgeç</button>}</div><label>Etkinlik türü<select value={form.type} onChange={event=>update("type",event.target.value)}>{annualPlanTypes.map(type=><option key={type}>{type}</option>)}</select></label><label className="annual-plan-title-field">Başlık<input value={form.title} onChange={event=>update("title",event.target.value)} required minLength="2" maxLength="120" placeholder="Örn. U14 hazırlık maçı"/></label><label className="annual-plan-repeat-toggle"><input type="checkbox" checked={form.recurring} disabled={Boolean(form.id)} onChange={event=>update("recurring",event.target.checked)}/><span>Tekrarlanan tarih ekle</span></label>{!form.recurring?<label>Tarih<input type="date" min={annualPlanMinDate} max={`${annualPlanMaxYear}-12-31`} value={form.date} onChange={event=>update("date",event.target.value)} required/></label>:<><fieldset className="annual-plan-days"><legend>Günleri seçin</legend>{annualPlanWeekdays.map((day,index)=><label key={day}><input type="checkbox" checked={form.weekdays.includes(index)} onChange={event=>update("weekdays",event.target.checked?[...form.weekdays,index]:form.weekdays.filter(value=>value!==index))}/><span>{day}</span></label>)}</fieldset><fieldset className="annual-plan-months"><legend>Yılları ve ayları seçin</legend><div className="annual-plan-month-years">{years.map(optionYear=>{const selected=form.recurringYears.includes(optionYear);return <button type="button" className={selected?"active":""} aria-pressed={selected} key={optionYear} onClick={()=>update("recurringYears",selected?form.recurringYears.filter(item=>item!==optionYear):[...form.recurringYears,optionYear])}>{optionYear}</button>})}</div>{annualPlanMonths.map((month,index)=><label key={month}><input type="checkbox" checked={form.months.includes(index+1)} onChange={event=>update("months",event.target.checked?[...form.months,index+1]:form.months.filter(value=>value!==index+1))}/><span>{month}</span></label>)}</fieldset></>}<label>Saat<input type="time" value={form.time} onChange={event=>update("time",event.target.value)}/></label><label>Konum<input value={form.location} onChange={event=>update("location",event.target.value)} maxLength="100" placeholder="Salon / tesis"/></label><label>Takım<select value={teams.some(team=>team.name===form.team)?form.team:form.team?"__manual__":""} onChange={event=>update("team",event.target.value==="__manual__"?"__manual__":event.target.value)}><option value="">Tüm takımlar / seçilmedi</option>{teams.map(team=><option key={team.id||team.name} value={team.name}>{team.name}</option>)}<option value="__manual__">Listede yok — manuel yaz</option></select>{form.team==="__manual__"&&<input autoFocus placeholder="Takım adını yazın" onChange={event=>update("team",event.target.value)}/>}</label><label>Antrenör<select value={trainers.some(trainer=>trainer.name===form.trainer)?form.trainer:form.trainer?"__manual__":""} onChange={event=>update("trainer",event.target.value==="__manual__"?"__manual__":event.target.value)}><option value="">Seçilmedi</option>{trainers.map(trainer=><option key={trainer.id||trainer.name} value={trainer.name}>{trainer.name}</option>)}<option value="__manual__">Listede yok — manuel yaz</option></select>{form.trainer==="__manual__"&&<input autoFocus placeholder="Antrenör adını yazın" onChange={event=>update("trainer",event.target.value)}/>}</label><button className="btn" disabled={busy}><Save/>{busy?"Kaydediliyor…":form.id?"Değişiklikleri kaydet":"Plana ekle"}</button></form>}

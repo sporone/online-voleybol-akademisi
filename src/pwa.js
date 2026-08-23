@@ -1,5 +1,10 @@
 export function registerPwa() {
-  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+  if (!import.meta.env.PROD) {
+    if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(registrations=>registrations.forEach(registration=>registration.unregister()));
+    if ("caches" in window) caches.keys().then(keys=>Promise.all(keys.map(key=>caches.delete(key))));
+    return;
+  }
+  if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", async () => {
     try {
       window.setTimeout(() => sessionStorage.removeItem("pwa-controller-reloaded"), 5000);
