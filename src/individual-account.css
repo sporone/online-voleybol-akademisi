@@ -1,0 +1,6 @@
+.user-access-code{display:block;padding:18px;background:#f5f1e9;border:1px solid #ddd5c7;border-radius:10px;font:600 16px/1.7 monospace;overflow-wrap:anywhere;user-select:all;color:#172329}
+.user-learning-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}
+.user-learning-links .btn{min-height:90px;white-space:normal;text-align:left;justify-content:space-between}
+.registration-card .registration-form p{line-height:1.7}
+.registration-card .registration-form input{min-width:0;width:100%;box-sizing:border-box}
+@media(max-width:700px){.user-learning-links{grid-template-columns:1fr}.user-access-code{font-size:14px}.registration-page{padding-bottom:110px}}

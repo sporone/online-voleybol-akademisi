@@ -12,7 +12,7 @@ export const pageRoutes = {
   chat: "/voleybol-sohbet/",
   admin: "/yonetici/",
   faq: "/sik-sorulan-sorular/",
-  pricing: "/ucretler/", register: "/kayit/", "registered-schools": "/kayitli-spor-okullari/",
+  pricing: "/ucretler/", register: "/kayit/",
   profiles: "/giris/", about: "/hakkimizda/", contact: "/iletisim/",
   privacy: "/gizlilik-politikasi/", help: "/yardim-merkezi/",
   coaches: "/egitmenler/", live: "/canli-dersler/",
@@ -33,6 +33,7 @@ export const routeFor = (page, course) => {
 
 export const resolveRoute = (pathname, courses) => {
   const path = (pathname || "/").replace(/\/+$/, "") || "/";
+  if(path === "/kayitli-spor-okullari") return {page:"register",course:null};
   if (/^\/voleybol-blog(?:\/[^/]+)?$/.test(path)) return { page: "blog", course: null };
   const lessonMatch = path.match(/^\/voleybol-dersleri\/([^/]+)\/egitim$/);
   const courseMatch = path.match(/^\/voleybol-dersleri\/([^/]+)$/);
@@ -56,12 +57,12 @@ const metaByPage = {
   blog: ["Voleybol Blog | Teknik, Taktik ve Sporcu Gelişimi", "Voleybol teknikleri, taktik, pozisyon eğitimi, atletik performans, beslenme, sağlık ve mental gelişim yazıları."],
   "volleyball-ai": ["Voleybol AI Asistanı | Ücretsiz Voleybol Soru Cevap", "Yalnızca voleybol hakkında, akademinin eğitim içeriklerine dayanarak site içinde ve ücretsiz çalışan voleybol soru-cevap asistanı."],
   "notebooklm-ai": ["Voleybol AI Asistanı | Online Voleybol Akademisi", "Voleybol teknikleri, kurallar ve eğitim içerikleri hakkında AI destekli çalışma alanımızdan yararlanın."],
-  chat: ["Voleybol Chat | Online Voleybol Akademisi", "Kayıtlı spor okulları, antrenörler ve sporcular için 24 saatlik güvenli voleybol sohbet alanı."],
+  chat: ["Voleybol Chat | Online Voleybol Akademisi", "Kayıtlı kullanıcılar için 24 saatlik güvenli voleybol sohbet alanı."],
   faq: ["Sık Sorulan Sorular | Online Voleybol Akademisi", "Spor okulu ve sporcu kaydı, giriş, voleybol dersleri, eğitim videoları, sınavlar ve üyelik sistemi hakkında ayrıntılı yanıtlar."],
   pricing: ["Voleybol Akademisi Üyelik Ücretleri", "Sınırsız öğrenci erişimli aylık ve yıllık üyelik seçeneklerini inceleyin."],
-  register: ["Spor Okulu ve Sporcu Kaydı", "Voleybol spor okulunuzu akademiye kaydedin veya onaylı okul kodunuzla sporcu profilinizi oluşturun."],
+  register: ["Kullanıcı Kaydı", "Kullanıcı hesabınızı oluşturun; voleybol derslerine, videolara ve sınavlara tek hesabınızla ulaşın."],
   "registered-schools": ["Kayıtlı Voleybol Spor Okulları", "Online Voleybol Akademisine kayıtlı spor okullarını isimleri ve kulüp logolarıyla inceleyin."],
-  profiles: ["Voleybol Akademisi Giriş", "Kayıtlı spor okulu veya sporcu hesabınızla Online Voleybol Akademisine giriş yapın."],
+  profiles: ["Voleybol Akademisi Giriş", "Kullanıcı hesabınızla Online Voleybol Akademisine giriş yapın."],
   demo: ["Online Voleybol Akademisi Demo", "Ders, eğitim videosu ve sınav modüllerinin örnek kullanımını inceleyin."],
   admin: ["Yönetici Alanı | Online Voleybol Akademisi", "Voleybol Akademisi güvenli içerik yönetimi alanı."],
   privacy: ["Gizlilik ve Kişisel Verilerin Korunması | Voleybol Akademisi", "Online Voleybol Akademisi okul, sporcu ve antrenör verilerinin işlenmesi, güvenliği, saklanması ve KVKK kapsamındaki haklar hakkında ayrıntılı gizlilik politikası."],

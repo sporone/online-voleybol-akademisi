@@ -17,3 +17,8 @@ test("Ders ve eğitim rotaları doğru sayfaya çözülür", () => {
 test("Bilinmeyen rota güvenli biçimde ana sayfaya düşer", () => {
   assert.equal(resolveRoute("/bulunmayan-sayfa/", [course]).page, "home");
 });
+
+test("former school directory routes to the single individual registration page",()=>{
+  assert.equal(resolveRoute('/kayitli-spor-okullari/',[]).page,'register');
+  assert.equal(routeFor('register'),'/kayit/');
+});

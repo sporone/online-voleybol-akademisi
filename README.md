@@ -35,15 +35,21 @@ Depoyu GitHub'a gönderin. Settings → Pages → Source alanında **GitHub Acti
 
 Detaylı veri alanları `docs/google-sheets-template.csv` dosyasındadır.
 
-## Okul ve sporcu kayıt sistemi
+## Bireysel kullanıcı hesabı
 
-`apps-script/Code.gs` dosyasını **Voleybol Akademisi - Okul ve Sporcu Kayıtları** Google Sheet'ine bağlı Apps Script projesine ekleyip Web App olarak yayınlayın. Oluşan `/exec` adresini `.env` içinde `VITE_REGISTRATION_API_URL` değerine yazın.
+Kayıt ve giriş artık yalnız bireysel kullanıcılar içindir. Kayıt formu yalnız @ kullanıcı adı ister; telefon, okul, takım ve rol alanları yoktur. Sunucu her kullanıcı için rastgele 128 bit biçiminde bir giriş kodu üretir, yalnız bir kez yanıtta gösterir ve yalnız tuzlanmış SHA-256 özetini saklar. Giriş kodu tarayıcı depolamasına veya kaynak koduna yazılmaz.
 
-- Okul başvuruları `Okul Kayitlari` sekmesine `BEKLİYOR` olarak eklenir.
-- Yönetici `Onay Durumu` hücresini `ONAYLANDI` yaptığında WhatsApp mesaj bağlantısı hazırlanır.
-- Sporcu kaydı yalnızca okul adı, 6 haneli kod ve `ONAYLANDI` durumu eşleştiğinde kabul edilir.
-- Tam otomatik WhatsApp gönderimi için ayrıca WhatsApp Business API gerekir; mevcut sürüm yöneticinin tıklayacağı hazır mesaj bağlantısını üretir.
+- Özel hesap tablosu: `Kullanici Kayitlari`; herkese açık GET ile okunamaz.
+- `registerUser`, `profileLogin`, `validateProfileSession`, `logoutProfile` bireysel akışı sağlar. Başarısız girişler kullanıcı adına göre sınırlandırılır. Profil oturumu 15 dakikadır.
+- Okul/sporcu/antrenör kayıtları, takım yönetimi ve atama uç noktaları kapalıdır. Önceki rol oturumları kabul edilmez. Sınav geçmişi oturum sahibine göre sunucuda süzülür.
+- Yönetici PIN, Script Properties ve yönetici API yetkileri korunur. Kullanıcı belirteçleri yönetici API'lerine erişemez.
 
-Canlı kayıt API adresi `src/config.js` dosyasında tutulur. Apps Script yeniden dağıtılırsa yalnızca bu dosyadaki `registrationApiUrl` değeri güncellenmelidir.
+### Yayın ve veri geçişi sırası
 
-Web uygulaması `Okul Kayitlari`, `Sporcu Kayitlari` ve `Antrenor Kayitlari` sekmelerini açılışta, pencere yeniden odaklandığında ve düzenli aralıklarla önbelleksiz olarak yeniler. Antrenör kayıtlarında `Antrenör ID`, `Okul Kayıt ID`, `Okul Adı`, `Okul Kodu`, `Antrenör Adı`, `Görev`, `Takım Logosu (Manuel)`, `Durum` ve `Kayıt Tarihi` başlıkları kullanılır. Yalnızca `AKTİF` durumundaki ve kulüp adı/kodu eşleşen antrenörler giriş yapabilir.
+1. `npm test`, `npm run build`, `npm run check` ve mobil/masaüstü kontrolünü çalıştırın.
+2. Doğrulanmış bağlı Apps Script projesinde `apps-script/Code.gs` dosyasını güncelleyin. Mevcut dağıtımda yeni sürüm kullanın; dağıtım kimliği ve URL aynı kalsın. Yönetici kodu üretme işlevini çalıştırmayın. İzinleri genişletmeyin.
+3. Eski kayıt/atama API'lerinin kapalı olduğunu ve yönetici oturumunun çalıştığını doğrulayın. Veri silme ayrı, açıkça yetkilendirilmiş bir işlemdir; kod yayını veri silmez.
+4. Yalnız doğrulanan eski okul, sporcu, antrenör ve takım satırlarını temizleyin; beklenmedik yeni veri varsa durun. Öğrenci yedeği üretmeyin. Ayrı yıllık plan dosyalarını silmeyin; eski bağlantıları kaldırırken bu dosyaları koruyun.
+5. GitHub Pages'in mevcut `main` iş akışıyla ön yüzü yayınlayın. Canlı Kayıt, Giriş ve Yönetici ekranlarını doğrulayın.
+
+Testler Apps Script işlevlerini bellek içi tablo/önbellekle çalıştırır; üretim hesabı veya üretim verisi oluşturmaz. `npm run check` var olan büyük ders görselleri nedeniyle başarısız olursa bu sınırı ayrıca raporlayın; ilgisiz görselleri değiştirmeyin.

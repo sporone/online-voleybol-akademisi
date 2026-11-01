@@ -34,7 +34,7 @@ if (/const\s+ADMIN_CODE_HASH\s*=/.test(appsScript)) fail("Yönetici kod özeti k
 else pass("Yönetici kodu yalnızca Script Properties üzerinden okunuyor");
 if (/return\s+\{\s*ok\s*:\s*true\s*,\s*demo\s*:\s*true/.test(main)) fail("Kayıt başarısızken sahte başarı yanıtı hâlâ mevcut");
 else pass("Kayıt servisi hataları sahte başarıya dönüştürülmüyor");
-if (!/validateProfileSession/.test(main) || !/profileLogin/.test(appsScript)) fail("Güvenli profil oturumu doğrulaması eksik");
+if (!/validateProfileSession/.test(read("src/individual-account.jsx")) || !/profileLogin/.test(appsScript)) fail("Güvenli profil oturumu doğrulaması eksik");
 else pass("Profil oturumları sunucu belirteciyle doğrulanıyor");
 
 const sourceFiles = filesBelow("src").filter((file) => /\.(?:js|jsx|css)$/.test(file));

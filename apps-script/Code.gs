@@ -1,4 +1,4 @@
-const ALLOWED_SHEETS=['Courses','Lessons','Coaches','Users','Progress','TrainingPlans','Announcements','Assessments','Quizzes','Reviews','Okul Kayitlari','Takimlar','Sporcu Kayitlari','Antrenor Kayitlari','Video Yonetimi','Bulten Yonetimi','Sinav Sonuclari'];
+const ALLOWED_SHEETS=['Courses','Lessons','Coaches','Announcements','Assessments','Quizzes','Reviews','Video Yonetimi','Bulten Yonetimi'];
 const PROFILE_SESSION_SECONDS=15*60;
 const PUBLIC_TEAM_CACHE_KEY='public-school-teams-v2';
 const PUBLIC_TEAM_CACHE_SECONDS=30;
@@ -68,23 +68,14 @@ function doPost(e){
     const raw=(e.postData&&e.postData.contents)||'{}';
     if(raw.length>50000) return json_({ok:false,error:'Kayıt verisi izin verilen boyutu aşıyor.'});
     const body=JSON.parse(raw);
-    if(body.action==='registerSchool') return registerSchool_(body);
-    if(body.action==='listClubTeams') return listClubTeams_(body);
-    if(body.action==='manageClubTeam') return manageClubTeam_(body);
-    if(body.action==='renewTrainerCode') return renewTrainerCode_(body);
-    if(body.action==='assignTrainerTeams') return assignTrainerTeams_(body);
-    if(body.action==='registerAthlete') return registerAthlete_(body);
-    if(body.action==='registerTrainer') return registerTrainer_(body);
-    if(body.action==='updateAthletePresence') return updateAthletePresence_(body);
-    if(body.action==='syncSchoolRoster') return syncSchoolRoster_(body);
-    if(body.action==='profileLogin') return profileLogin_(body);
+    if(body.action==='registerUser') return registerUser_(body);
+    if(body.action==='profileLogin') return loginUser_(body);
+    if(body.action==='listExamAttempts') return listUserExamAttempts_(body);
     if(body.action==='validateProfileSession') return validateProfileSession_(body);
     if(body.action==='logoutProfile') return logoutProfile_(body);
     if(body.action==='listChatMessages') return listChatMessages_(body);
     if(body.action==='sendChatMessage') return sendChatMessage_(body);
     if(body.action==='saveExamAttempt') return saveExamAttempt_(body);
-    if(body.action==='listAnnualPlan') return listAnnualPlan_(body);
-    if(body.action==='saveAnnualPlan') return saveAnnualPlan_(body);
     if(body.action==='trackBlogView') return trackBlogView_(body);
     if(body.action==='adminLogin') return adminLogin_(body);
     if(body.action==='adminStats') return adminStats_(body);
@@ -376,8 +367,10 @@ function requireProfile_(token){
   const key='profile:'+clean_(token,100);
   const cache=CacheService.getScriptCache(), raw=cache.get(key);
   if(!raw) throw new Error('Profil oturumu geçersiz veya süresi dolmuş. Lütfen tekrar giriş yapın.');
+  const account=JSON.parse(raw);
+  if(account.type!=='user') throw new Error('Eski hesap türleri kapatıldı. Kullanıcı hesabınızla giriş yapın.');
   cache.put(key,raw,PROFILE_SESSION_SECONDS);
-  return JSON.parse(raw);
+  return account;
 }
 function profileLogin_(body){
   const type=String(body.type||'').toLowerCase(), schoolName=clean_(body.schoolName,120), code=String(type==='club'?body.schoolCode:type==='trainer'?(body.trainerCode||body.teamCode||body.schoolCode):(body.teamCode||body.schoolCode)||'').replace(/\D/g,''), teamId=clean_(body.teamId,40), userName=clean_(body.userName,100);
@@ -545,7 +538,7 @@ function listChatMessages_(body){
     const sheet=getOrCreate_('Sohbet Mesajlari',CHAT_HEADERS);
     pruneExpiredChatMessages_(sheet);
     const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,CHAT_HEADERS.length).getValues():[];
-    const messages=rows.slice(-300).filter(row=>row[0]&&row[1]&&row[9]).map(chatMessageObject_);
+    const messages=rows.slice(-300).filter(row=>row[0]&&row[1]==='users'&&row[9]).map(chatMessageObject_);
     return json_({ok:true,messages:messages,expiresInHours:24});
   }finally{lock.releaseLock()}
 }
@@ -553,7 +546,7 @@ function sendChatMessage_(body){
   const account=requireProfile_(body.token);
   const channel=String(body.channel||'').toLowerCase();
   const message=clean_(body.message,500);
-  if(!['schools','trainers','athletes'].includes(channel)) return json_({ok:false,error:'Sohbet bölümü geçersiz.'});
+  if(channel!=='users') return json_({ok:false,error:'Sohbet bölümü geçersiz.'});
   if(!message) return json_({ok:false,error:'Mesaj boş bırakılamaz.'});
   const cache=CacheService.getScriptCache(), rateKey='chat-send:'+clean_(account.id,60);
   if(cache.get(rateKey)) return json_({ok:false,error:'Mesajları çok hızlı gönderiyorsunuz. Birkaç saniye bekleyin.'});
@@ -574,7 +567,7 @@ function sendChatMessage_(body){
 }
 function saveExamAttempt_(body){
   const account=requireProfile_(body.token), attempt=body.attempt||{};
-  if(!['athlete','trainer'].includes(account.type)) return json_({ok:false,error:'Yalnızca sporcu ve antrenör sınav sonucu kaydedebilir.'});
+  if(account.type!=='user') return json_({ok:false,error:'Kullanıcı hesabı gerekli.'});
   const attemptId=clean_(attempt.attemptId,80), examId=clean_(attempt.examId,30), examTitle=clean_(attempt.examTitle,180);
   const score=Math.max(0,Math.min(100,Number(attempt.score)||0)), questionCount=Math.max(1,Math.min(100,Number(attempt.questionCount)||1));
   const correctCount=Math.max(0,Math.min(questionCount,Number(attempt.correctCount)||0)), wrongCount=Math.max(0,questionCount-correctCount);
@@ -586,7 +579,7 @@ function saveExamAttempt_(body){
     const ids=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,1).getDisplayValues().flat():[];
     if(ids.includes(attemptId)) return json_({ok:true,duplicate:true,attemptId:attemptId});
     const passingScore=Math.max(0,Math.min(100,Number(attempt.passingScore)||70)), passed=score>=passingScore;
-    sh.appendRow([attemptId,account.schoolId,account.schoolName,account.id,account.name,account.type==='trainer'?'Antrenör':'Sporcu',examId,examTitle,Number(attempt.examOrder)||0,Number(attempt.attemptNumber)||1,questionCount,correctCount,wrongCount,score,passingScore,passed?'Geçti':'Kaldı',new Date()]);
+    sh.appendRow([attemptId,account.id,'',account.id,account.name,'Kullanıcı',examId,examTitle,Number(attempt.examOrder)||0,Number(attempt.attemptNumber)||1,questionCount,correctCount,wrongCount,score,passingScore,passed?'Geçti':'Kaldı',new Date()]);
     return json_({ok:true,attemptId:attemptId,passed:passed});
   }finally{lock.releaseLock()}
 }
@@ -813,6 +806,64 @@ function adminSaveBulletins_(body){
     sh.getRange(2,1,cleanRows.length,5).setValues(cleanRows);
     return json_({ok:true,count:cleanRows.length});
   }finally{lock.releaseLock()}
+}
+
+// Individual accounts: access codes are random, returned once and never stored as plaintext.
+const USER_HEADERS=['Kullanıcı ID','Kullanıcı Adı','Giriş Kodu Özeti','Tuz','Durum','Kayıt Tarihi'];
+function userName_(value){return String(value||'').trim().toLocaleLowerCase('tr')}
+function userCodeHash_(salt,code){
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,salt+'|'+code).map(b=>('0'+((b+256)%256).toString(16)).slice(-2)).join('');
+}
+function sameUserHash_(a,b){let diff=String(a).length^String(b).length;for(let i=0;i<String(a).length;i++)diff|=a.charCodeAt(i)^(b.charCodeAt(i)||0);return diff===0}
+function userRows_(){
+  const sh=SpreadsheetApp.getActive().getSheetByName('Kullanici Kayitlari');
+  return sh&&sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,USER_HEADERS.length).getDisplayValues():[];
+}
+function userSession_(row){
+  const account={type:'user',id:row[0],name:row[1]};
+  const session=createProfileSession_(account);
+  return {ok:true,token:session.token,expiresIn:PROFILE_SESSION_SECONDS,account:account};
+}
+function registerUser_(body){
+  const name=userName_(body.userName);
+  if(!/^@[a-z0-9._çğıöşü-]{2,30}$/.test(name))return json_({ok:false,error:'Kullanıcı adı @ ile başlamalı ve boşluk içermemelidir.'});
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000))return json_({ok:false,error:'Kayıt servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    if(userRows_().some(row=>userName_(row[1])===name))return json_({ok:false,error:'Bu kullanıcı adı alınmış.'});
+    const sh=getOrCreate_('Kullanici Kayitlari',USER_HEADERS);
+    const code=Utilities.getUuid().replace(/-/g,''),salt=Utilities.getUuid();
+    const row=['USR-'+Utilities.getUuid(),name,userCodeHash_(salt,code),salt,'AKTİF',new Date()];
+    sh.appendRow(row);
+    return json_(Object.assign(userSession_(row),{code:code}));
+  }finally{lock.releaseLock()}
+}
+function loginUser_(body){
+  const name=userName_(body.userName),code=String(body.code||'').trim().toLowerCase();
+  const cache=CacheService.getScriptCache(),key='user-login:'+userCodeHash_('login',name);
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000))return json_({ok:false,error:'Giriş servisi yoğun. Lütfen tekrar deneyin.'});
+  try{
+    const attempts=Number(cache.get(key)||0);
+    if(attempts>=5)return json_({ok:false,error:'Çok sayıda başarısız giriş. 15 dakika sonra tekrar deneyin.'});
+    const row=userRows_().find(row=>userName_(row[1])===name&&row[4]==='AKTİF');
+    const expected=row?row[2]:userCodeHash_('unknown','');
+    const actual=userCodeHash_(row?row[3]:'unknown',code);
+    if(!/^@[a-z0-9._çğıöşü-]{2,30}$/.test(name)||!(/^[a-f0-9]{32}$/.test(code))||!row||!sameUserHash_(expected,actual)){
+      cache.put(key,String(attempts+1),900);
+      return json_({ok:false,error:'Kullanıcı adı veya giriş kodu doğrulanamadı.'});
+    }
+    cache.remove(key);
+    return json_(userSession_(row));
+  }finally{lock.releaseLock()}
+}
+function listUserExamAttempts_(body){
+  const account=requireProfile_(body.token),sh=SpreadsheetApp.getActive().getSheetByName('Sinav Sonuclari');
+  if(!sh||sh.getLastRow()<2)return json_({ok:true,items:[]});
+  const all=sh.getDataRange().getDisplayValues(),headers=all.shift()||[];
+  const userColumn=headers.indexOf('Kullanıcı ID');
+  if(userColumn<0)throw new Error('Sınav tablosu başlıkları doğrulanamadı.');
+  return json_({ok:true,items:all.filter(row=>row[userColumn]===account.id).map(row=>Object.fromEntries(headers.map((key,i)=>[key,row[i]||''])))});
 }
 function rowsToObjects_(values){
   if(!values.length)return [];

@@ -26,7 +26,7 @@ export default function Ready365LibraryPage({account,go}){
   return <div className="page ready-library-page">
     <button className="ready-back" onClick={()=>go("profiles")}><ArrowLeft/> Profilime dön</button>
     <section className="ready-hero">
-      <div className="ready-hero-copy"><small><Library/> ANTRENÖR EĞİTİM ALANI</small><h1>Voleybol Antrenörlük Kütüphanesi</h1><p>Voleybol antrenman planlaması, beceri gelişimi, takım sistemleri ve antrenör yönetimi için hazırlanmış profesyonel PDF kütüphanesi.</p><div><span><FileText/> 21 PDF kaynak</span><span><BookOpen/> 6 ana bölüm</span><span><ShieldCheck/> Kulüp ve antrenör erişimi</span></div></div>
+      <div className="ready-hero-copy"><small><Library/> ANTRENÖR EĞİTİM ALANI</small><h1>Voleybol Antrenörlük Kütüphanesi</h1><p>Voleybol antrenman planlaması, beceri gelişimi, takım sistemleri ve antrenör yönetimi için hazırlanmış profesyonel PDF kütüphanesi.</p><div><span><FileText/> 21 PDF kaynak</span><span><BookOpen/> 6 ana bölüm</span><span><ShieldCheck/> Kullanıcı hesabı erişimi</span></div></div>
       <figure className="ready-hero-visual"><img src="/antrenor-egitim-kutuphanesi-hero.webp" alt="Akademi logolu formalarıyla voleybol antrenörü ve genç sporcular" fetchPriority="high"/></figure>
     </section>
     <section className="ready-toolbar"><label><Search/><span className="sr-only">Kaynak veya konu ara</span><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Kaynak veya konu ara"/></label><div>{ready365Categories.map((item)=><button className={category===item?"active":""} onClick={()=>setCategory(item)} key={item}>{item}</button>)}</div></section>

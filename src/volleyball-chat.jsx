@@ -18,15 +18,10 @@ const CHAT_API = import.meta.env.VITE_REGISTRATION_API_URL || appConfig.registra
 const CHAT_TOKEN_KEY = "volleyballProfileToken";
 const LOCAL_CHAT_KEY = "volleyballChatPreviewMessages";
 const CHAT_TTL = 24 * 60 * 60 * 1000;
-const channels = [
-  { id: "schools", label: "Spor Okulları", description: "Kulüp yönetimi ve okul topluluğu", icon: Building2 },
-  { id: "trainers", label: "Antrenörler", description: "Antrenman ve takım iletişimi", icon: GraduationCap },
-  { id: "athletes", label: "Sporcular", description: "Sporcu topluluğu ve saha paylaşımı", icon: Users },
-];
-
-const accountRole = (account) => account?.accountType || account?.type || (String(account?.id || "").startsWith("OKL-") ? "club" : String(account?.id || "").startsWith("ANT-") ? "trainer" : "athlete");
-const channelForRole = (role) => ({ club: "schools", trainer: "trainers", athlete: "athletes" })[role] || "athletes";
-const roleLabel = (role) => ({ club: "Spor Okulu", trainer: "Antrenör", athlete: "Sporcu" })[role] || "Üye";
+const channels = [{id:"users",label:"Kullanıcılar",description:"Voleybol topluluğu",icon:Users}];
+const accountRole = () => "user";
+const channelForRole = () => "users";
+const roleLabel = () => "Kullanıcı";
 
 function readLocalMessages() {
   try {
